@@ -1,0 +1,78 @@
+# Install, update, and remove
+
+## Requirements
+
+- Linux with GNOME Shell **50.x**. This release declares Shell major version 50 only.
+- The `gnome-extensions` command, normally installed with GNOME Shell.
+- A GNOME session. Wayland is the development-validated session; X11 has not been independently tested.
+
+Check the running Shell version:
+
+```sh
+gnome-shell --version
+```
+
+If the major version is not 50, this release is outside its declared compatibility range.
+
+## Build and install
+
+Run these commands from the repository root:
+
+```sh
+mkdir -p dist
+gnome-extensions pack ./extension --out-dir ./dist
+gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.zip
+gnome-extensions enable perdana.island@perdana
+```
+
+You can also install the generated archive with the GNOME Extensions application or Extension Manager, then enable **Perdana Island**.
+
+If `perdana.island@perdana` is not listed immediately after installing it, GNOME Shell has not rescanned extension folders for the new UUID. On Wayland, sign out and back in once, then enable the extension. This one-time scan is only needed when GNOME has not discovered the new UUID. Later JavaScript changes may also require a Shell session reload because GNOME can cache imported modules for the life of the session.
+
+## Update
+
+Pack and install a fresh archive:
+
+```sh
+gnome-extensions pack ./extension --out-dir ./dist
+gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.zip
+gnome-extensions disable perdana.island@perdana
+gnome-extensions enable perdana.island@perdana
+```
+
+If the running extension still shows the previous code, reload the GNOME Shell session. On Wayland, sign out and back in; on X11, **Alt+F2**, enter `r`, then press **Enter** usually reloads Shell.
+
+## Replace the previous extension
+
+The current UUID is `perdana.island@perdana`. If the earlier `pulo-island@perdana` extension is still installed, enable and verify the new extension, then disable the previous one:
+
+```sh
+gnome-extensions disable pulo-island@perdana
+```
+
+On first enable, the new extension copies task and Shelf data to `~/.local/share/perdana.island/` only when the matching destination does not already exist. It leaves the old data directory intact.
+
+## Verify
+
+```sh
+gnome-extensions info perdana.island@perdana
+```
+
+After enabling, the output should show **Perdana Island**, version 29 or later, and `State: ACTIVE`.
+
+## Remove
+
+```sh
+gnome-extensions disable perdana.island@perdana
+gnome-extensions uninstall perdana.island@perdana
+```
+
+Removal leaves data in `~/.local/share/perdana.island/`. Remove that directory manually only if you also want to delete saved tasks and Shelf files.
+
+## Troubleshooting
+
+- **Rejected as incompatible:** check `gnome-shell --version`; this release declares only GNOME Shell 50.x.
+- **Island does not appear:** enable **Perdana Island** and inspect `gnome-extensions info perdana.island@perdana`.
+- **Rebuild appears unchanged:** GNOME Shell may have cached JavaScript; reload the Shell session as described above.
+- **Music page is empty:** start a player that exports MPRIS metadata on the current user's session bus.
+- **Files do not appear in Shelf:** use **Add files** or copy them to the Shelf folder. Direct drop onto the island is not available in GNOME Shell.

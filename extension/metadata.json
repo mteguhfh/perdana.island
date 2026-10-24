@@ -1,0 +1,7 @@
+{
+  "uuid": "perdana.island@perdana",
+  "name": "Perdana Island",
+  "description": "A GNOME Shell island for media, focus, files, tasks, clipboard, and system status.",
+  "version": 29,
+  "shell-version": ["50"]
+}

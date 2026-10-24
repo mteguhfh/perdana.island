@@ -1,0 +1,750 @@
+.perdana-island {
+  background-color: #000000;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0 0 19px 19px;
+}
+
+.perdana-island--expanded {
+  border-radius: 0 0 34px 34px;
+}
+
+.perdana-island--custom-shape {
+  background-color: #000000;
+}
+
+.perdana-island--custom-shape:not(.perdana-island--v12) .perdana-island__equalizer:not(.perdana-island__page-equalizer) {
+  margin-top: 10px;
+}
+
+.perdana-island__compact-button {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: #ffffff;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.perdana-island__compact-button:hover,
+.perdana-island__compact-button:focus {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.perdana-island__compact {
+  spacing: 0;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 16px 0 14px;
+  background-color: transparent;
+}
+
+.perdana-island__compact-leading {
+  width: 24px;
+  height: 38px;
+}
+
+.perdana-island__compact-artwork {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background-color: #1d1d1f;
+}
+
+.perdana-island__compact-artwork-icon {
+  icon-size: 24px;
+  color: #ffffff;
+}
+
+.perdana-island__compact-track-title {
+  min-width: 0;
+  margin-left: 12px;
+  margin-right: 14px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.perdana-island__focus-compact {
+  min-width: 0;
+  min-height: 38px;
+  spacing: 10px;
+  padding: 0;
+}
+
+.perdana-island__focus-compact-icon {
+  icon-size: 18px;
+  color: #ff9f43;
+}
+
+.perdana-island__focus-compact-label {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.perdana-island__focus-compact-time {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__compact-center {
+  min-width: 0;
+  min-height: 38px;
+}
+
+.perdana-island__idle-eyes {
+  spacing: 16px;
+  min-width: 34px;
+  min-height: 20px;
+}
+
+.perdana-island__eye {
+  width: 9px;
+  height: 20px;
+  border-radius: 5px;
+  background-color: #ffffff;
+}
+
+.perdana-island__compact-clock {
+  min-width: 56px;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__equalizer {
+  spacing: 2px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0;
+}
+
+.perdana-island__bar {
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background-color: #ffffff;
+}
+
+.perdana-island__header {
+  spacing: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+.perdana-island__date {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.perdana-island__clock {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__panel {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.perdana-island__page-viewport {
+  min-width: 0;
+  min-height: 0;
+  background-color: transparent;
+}
+
+.perdana-island__page {
+  min-width: 0;
+  min-height: 0;
+  background-color: transparent;
+}
+
+.perdana-island__tabs {
+  min-height: 0;
+  background-color: transparent;
+}
+
+.perdana-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 16px;
+  color: rgba(255, 255, 255, 0.72);
+  background-color: transparent;
+  box-shadow: none;
+  font-size: 13px;
+}
+
+.perdana-button:hover {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.11);
+}
+
+.perdana-button:focus {
+  box-shadow: inset 0 0 0 1px #ff9f43;
+}
+
+.perdana-button--nav {
+  min-width: 32px;
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 15px;
+  color: rgba(255, 255, 255, 0.55);
+  background-color: transparent;
+}
+
+.perdana-button--nav:hover {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.perdana-button--nav-active {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+.perdana-button--nav-active:hover {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+.perdana-island__tab-content {
+  spacing: 6px;
+}
+
+.perdana-island__tab-icon {
+  icon-size: 15px;
+  color: currentColor;
+}
+
+.perdana-island__tab-label {
+  color: currentColor;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.perdana-island__icon {
+  icon-size: 17px;
+  color: currentColor;
+}
+
+.perdana-island__album-art {
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  background-color: #292929;
+}
+
+.perdana-island__album-art-icon {
+  icon-size: 78px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.perdana-island__track-title {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.perdana-island__artist {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+}
+
+.perdana-island__page-equalizer {
+  spacing: 2px;
+}
+
+.perdana-island__track-time {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__progress-hitarea {
+  min-height: 14px;
+  background-color: transparent;
+}
+
+.perdana-island__progress-track {
+  min-height: 4px;
+  max-height: 4px;
+  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.perdana-island__progress-fill {
+  min-width: 1px;
+  min-height: 4px;
+  max-height: 4px;
+  border-radius: 3px;
+  background-color: #ffffff;
+}
+
+.perdana-button--media {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 16px;
+  color: #ffffff;
+}
+
+.perdana-button--play {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 18px;
+  color: #000000;
+  background-color: #ffffff;
+}
+
+.perdana-button--play:hover {
+  color: #000000;
+  background-color: #e8e8e8;
+}
+
+.perdana-island__empty-media {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 14px;
+  text-align: center;
+}
+
+.perdana-island__focus-dial {
+  width: 96px;
+  height: 96px;
+}
+
+.perdana-island__focus-ring {
+  width: 96px;
+  height: 96px;
+}
+
+.perdana-island__timer-block {
+  spacing: 2px;
+}
+
+.perdana-island__timer {
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__timer-subtitle {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+}
+
+.perdana-island__focus-segments,
+.perdana-island__focus-controls,
+.perdana-island__todo-actions {
+  spacing: 7px;
+}
+
+.perdana-island__focus-custom {
+  spacing: 7px;
+}
+
+.perdana-island__focus-custom-entry {
+  min-width: 68px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9px;
+  color: #ffffff;
+  background-color: #151515;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__focus-custom-entry:focus {
+  border-color: #ff9f43;
+}
+
+.perdana-button--focus-unit {
+  min-width: 90px;
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 9px;
+  color: #ffffff;
+  background-color: #151515;
+  font-size: 12px;
+}
+
+.perdana-island__focus-unit-content {
+  width: 100%;
+  spacing: 6px;
+}
+
+.perdana-island__focus-unit-label {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.perdana-island__focus-unit-arrow {
+  icon-size: 12px;
+  margin-right: 1px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.perdana-button--focus-apply {
+  min-width: 56px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 15px;
+  color: #1a0f00;
+  background-color: #ff9f43;
+  font-size: 12px;
+}
+
+.perdana-button--segment {
+  min-width: 58px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 16px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.perdana-button--segment-active {
+  color: #111111;
+  background-color: #ffffff;
+}
+
+.perdana-button--shelf-folder {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: 15px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.perdana-action {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 17px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.11);
+}
+
+.perdana-action__contents {
+  spacing: 5px;
+}
+
+.perdana-action__label {
+  color: currentColor;
+  font-size: 12px;
+}
+
+.perdana-action--primary {
+  color: #1a0f00;
+  background-color: #ff9f43;
+}
+
+.perdana-action--primary:hover {
+  background-color: #ffb066;
+}
+
+.perdana-action--neutral {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.perdana-island__focus-stats-label {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+
+.perdana-island__todo-heading {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.perdana-island__todo-count {
+  color: #ffffff;
+  font-size: 42px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__todo-subtitle,
+.perdana-island__muted {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+
+.perdana-island__task-row {
+  spacing: 7px;
+  min-height: 36px;
+  padding: 0 9px;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.075);
+}
+
+.perdana-island__task-row--done {
+  background-color: rgba(25, 105, 63, 0.38);
+}
+
+.perdana-island__task-check-button {
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  background-color: transparent;
+}
+
+.perdana-island__task-check-button:hover {
+  background-color: transparent;
+}
+
+.perdana-island__task-marker {
+  width: 15px;
+  height: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 9px;
+}
+
+.perdana-island__task-marker--done {
+  border-color: #36d98b;
+  background-color: #36d98b;
+}
+
+.perdana-island__task-check {
+  icon-size: 11px;
+  color: #06190f;
+}
+
+.perdana-island__task-text {
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.perdana-island__task-text--done {
+  color: rgba(255, 255, 255, 0.64);
+  text-decoration: line-through;
+}
+
+.perdana-button--task-delete {
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0;
+}
+
+.perdana-action--todo {
+  min-height: 29px;
+  padding: 0 7px;
+  border-radius: 15px;
+  background-color: rgba(255, 255, 255, 0.11);
+}
+
+.perdana-action--todo .perdana-action__label {
+  font-size: 11px;
+}
+
+.perdana-island__task-entry {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 15px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+}
+
+.perdana-island__shelf-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 17px;
+  background-color: rgba(255, 255, 255, 0.045);
+}
+
+.perdana-island__shelf-title {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.perdana-button--file {
+  min-width: 0;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 14px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+}
+
+.perdana-island__clip-contents {
+  spacing: 10px;
+  padding: 0 12px;
+}
+
+.perdana-island__clip-row {
+  min-height: 32px;
+  spacing: 6px;
+}
+
+.perdana-island__clip-item {
+  min-height: 32px;
+  padding: 0;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.perdana-island__clip-text {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.perdana-island__clip-delete {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 11px;
+  color: rgba(255, 255, 255, 0.68);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.perdana-island__today-weekday {
+  color: #ff9f43;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.perdana-island__today-day {
+  color: #ffffff;
+  font-size: 54px;
+  font-weight: 600;
+}
+
+.perdana-island__today-month {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+
+.perdana-island__today-tile {
+  border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.perdana-island__progress-ring {
+  width: 34px;
+  height: 34px;
+}
+
+.perdana-island__today-title {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 10px;
+}
+
+.perdana-island__today-value {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__today-detail {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 9px;
+}
+
+.perdana-island__notice-banner {
+  spacing: 14px;
+  padding: 0 28px;
+  min-width: 394px;
+  min-height: 76px;
+  color: #ffffff;
+}
+
+.perdana-island__power-indicator {
+  min-width: 28px;
+  max-width: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  width: 28px;
+  height: 28px;
+  margin-right: 12px;
+}
+
+.perdana-island__notice-icon-wrap {
+  min-width: 28px;
+  max-width: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  width: 28px;
+  height: 28px;
+  margin-right: 12px;
+}
+
+.perdana-island__notice-copy {
+  spacing: 1px;
+  min-width: 0;
+}
+
+.perdana-island__notice-right {
+  spacing: 4px;
+}
+
+.perdana-island__notice-icon {
+  icon-size: 24px;
+  color: #ffffff;
+}
+
+.perdana-island__notice-title {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.perdana-island__notice-subtitle {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 14px;
+}
+
+.perdana-island__notice-percent {
+  color: #ffffff;
+  font-size: 32px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.perdana-island__notice-time {
+  font-size: 22px;
+}
+
+.perdana-island__volume-track {
+  min-height: 4px;
+  border-radius: 2px;
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.perdana-island__volume-fill {
+  min-height: 4px;
+  border-radius: 2px;
+  background-color: #ffffff;
+}
+
+.perdana-island--reduced-motion .perdana-island__bar {
+  animation: none;
+  transform: scaleY(0.35);
+}
