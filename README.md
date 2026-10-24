@@ -8,7 +8,7 @@
 
 Perdana Island is a GNOME Shell extension that places media controls, a focus timer, a file shelf, tasks, recent clipboard text, and system information in a compact island attached to the top edge of the desktop.
 
-A separate KDE Plasma 6 widget is available on the [`codex/kde-plasma` branch](https://github.com/txtperdana/perdana.island/tree/codex/kde-plasma). It includes Music, Focus, Tasks, and Clipboard pages. See [README-KDE.md](README-KDE.md) for its requirements, limitations, and installation steps.
+A separate KDE Plasma 6 widget is available on the [`kde-plasma` branch](https://github.com/txtperdana/perdana.island/tree/kde-plasma). It includes Music, Focus, Tasks, and Clipboard pages. See [README-KDE.md](README-KDE.md) for its requirements, limitations, installation steps, and usage guide.
 
 ## Feature previews
 
