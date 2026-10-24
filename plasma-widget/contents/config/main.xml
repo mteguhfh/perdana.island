@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          https://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="tasksJson" type="String">
+      <default>[]</default>
+    </entry>
+    <entry name="clipboardHistory" type="String">
+      <default>[]</default>
+    </entry>
+    <entry name="focusSeconds" type="Int">
+      <default>1500</default>
+    </entry>
+    <entry name="focusStartedAt" type="String">
+      <default>0</default>
+    </entry>
+    <entry name="focusMode" type="String">
+      <default>focus</default>
+    </entry>
+    <entry name="focusSessionsDate" type="String">
+      <default></default>
+    </entry>
+    <entry name="focusSessionsToday" type="Int">
+      <default>0</default>
+    </entry>
+  </group>
+</kcfg>

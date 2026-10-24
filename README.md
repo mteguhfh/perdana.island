@@ -8,6 +8,8 @@
 
 Perdana Island is a GNOME Shell extension that places media controls, a focus timer, a file shelf, tasks, recent clipboard text, and system information in a compact island attached to the top edge of the desktop.
 
+The GNOME extension remains the default release. A separate native KDE Plasma 6 widget is being developed on [`codex/kde-plasma`](https://github.com/txtperdana/perdana.island/tree/codex/kde-plasma), in [`plasma-widget/`](plasma-widget/README.md). It currently includes Music, Focus, Tasks, and Clipboard pages; the GNOME-only Shelf and system metrics are not shown in that port.
+
 ## Feature previews
 
 These images show representative UI states with sample content. Media, battery, and system values in a running extension come from the current desktop session.
@@ -44,9 +46,17 @@ These images show representative UI states with sample content. Media, battery, 
 ![GLib and Gio](https://img.shields.io/badge/system-GLib%20%2B%20Gio-555555)
 ![Gvc audio](https://img.shields.io/badge/audio-Gvc%20%2B%20Shell%20VolumeStatus-555555)
 
+The KDE development branch uses a separate Plasma package and UI runtime:
+
+![KDE Plasma 6 widget](https://img.shields.io/badge/architecture-KDE%20Plasma%206%20widget-1d99f3?logo=kde&logoColor=white)
+![Qt Quick QML](https://img.shields.io/badge/UI-Qt%20Quick%20%2B%20QML-41cd52?logo=qt&logoColor=white)
+![MPRIS model](https://img.shields.io/badge/media-MPRIS%20model-383838)
+
 The extension runs inside GNOME Shell through the GJS `Extension` lifecycle. Its interface is built from Shell `St` actors and Clutter layouts/animations, attached to GNOME Shell's chrome layer. GLib and Gio provide timers, file access, and filesystem monitoring. Media metadata and playback controls use MPRIS on the session D-Bus; output volume uses GNOME's Gvc mixer API and Shell volume status module. CPU, memory, disk, and battery readings are collected from Linux system interfaces when available.
 
 The extension declares GNOME Shell **50.x** compatibility. It does not run on KDE Plasma, Cinnamon, Xfce, or other desktop environments that do not use GNOME Shell.
+
+That compatibility statement applies to the GNOME extension in `extension/`. The development branch adds a separate KDE Plasma widget; its current pages and requirements are documented in [`plasma-widget/README.md`](plasma-widget/README.md). The feature preview images above are from the GNOME build.
 
 | Distribution / release | GNOME Shell | Support status |
 | --- | --- | --- |
@@ -84,6 +94,7 @@ GNOME Shell does not provide the dragged desktop file list to these island actor
 
 ```text
 extension/                 GNOME Shell extension source
+plasma-widget/             KDE Plasma 6 widget on this development branch
 assets/screenshots/        Feature preview images
 docs/                      Product requirements, usage, and installation guides
 ```
