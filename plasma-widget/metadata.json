@@ -1,0 +1,13 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Id": "perdana.island.plasma",
+    "Name": "Perdana Island",
+    "Description": "Media, focus, tasks, and clipboard in a compact Plasma widget.",
+    "Category": "Utilities",
+    "Icon": "applications-multimedia",
+    "Version": "31",
+    "Website": "https://github.com/txtperdana/perdana.island"
+  },
+  "X-Plasma-API-Minimum-Version": "6.0"
+}

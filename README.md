@@ -6,9 +6,9 @@
 [![MPRIS](https://img.shields.io/badge/media-MPRIS%20over%20D--Bus-383838)](https://specifications.freedesktop.org/mpris-spec/latest/)
 [![Fedora 44](https://img.shields.io/badge/validated-Fedora%2044-51a2da?logo=fedora&logoColor=white)](https://fedoraproject.org/)
 
-Perdana Island is a GNOME Shell extension that places media controls, a focus timer, a file shelf, tasks, recent clipboard text, and system information in a compact island attached to the top edge of the desktop.
+Perdana Island provides separate native packages for GNOME Shell and KDE Plasma. The GNOME Shell 50 extension places media controls, a focus timer, a file shelf, tasks, recent clipboard text, and system information in a compact island attached to the top edge of the desktop. The KDE Plasma 6 widget provides Music, Focus, Tasks, and Clipboard pages. Both packages live in this repository, in `extension/` and `plasma-widget/` respectively, and share the project release version while keeping their code and installation packages separate.
 
-A separate KDE Plasma 6 widget is available on the [`kde-plasma` branch](https://github.com/txtperdana/perdana.island/tree/kde-plasma). It includes Music, Focus, Tasks, and Clipboard pages. See [README-KDE.md](README-KDE.md) for its requirements, limitations, installation steps, and usage guide.
+See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
 ## Feature previews
 
@@ -72,6 +72,15 @@ gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.z
 gnome-extensions enable perdana.island@perdana
 ```
 
+## Platform packages and releases
+
+The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
+
+- `Perdana-Island-GNOME-v31.shell-extension.zip` for GNOME Shell.
+- `Perdana-Island-KDE-Plasma-v31.zip` for KDE Plasma 6.
+
+The archive versions follow the tag and the package metadata. Pushing a `v*` tag runs the release workflow, which checks that both packages match the tag, builds the two archives, and attaches them to one GitHub release. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the current v31 archives locally, run `./scripts/package-release.sh v31`.
+
 ## Use
 
 Click the island to open it. When media or a focus timer is active, hovering over the island opens its page. Select a page from the tab bar. Press **Escape** or click outside to close it. See [How to use](docs/HOW-TO-USE.md) for each page's controls.
@@ -86,9 +95,12 @@ GNOME Shell does not provide the dragged desktop file list to these island actor
 
 ```text
 extension/                 GNOME Shell extension source
+plasma-widget/             KDE Plasma 6 widget source and package metadata
 assets/screenshots/        Feature preview images
 docs/                      Product requirements, usage, and installation guides
 README-KDE.md              KDE Plasma 6 widget guide
+.github/workflows/         Release workflow that publishes both platform archives
+scripts/                   Local release packaging script
 ```
 
 No license file is included yet; choose a project license before publishing the repository as open source.

@@ -5,7 +5,7 @@
 [![Kirigami](https://img.shields.io/badge/components-Kirigami-1d99f3?logo=kde&logoColor=white)](https://develop.kde.org/docs/getting-started/kirigami/)
 [![MPRIS](https://img.shields.io/badge/media-MPRIS%20over%20D--Bus-383838)](https://specifications.freedesktop.org/mpris-spec/latest/)
 
-This is the KDE Plasma 6 port of Perdana Island. It is a native Plasma widget that can sit in a panel or on the desktop. It is maintained on the [`kde-plasma` branch](https://github.com/txtperdana/perdana.island/tree/kde-plasma); the default `main` branch contains the GNOME Shell extension.
+This is the KDE Plasma 6 implementation of Perdana Island. It is a native Plasma widget that can sit in a panel or on the desktop. Its source and package metadata are in [`plasma-widget/`](plasma-widget/) on the same `main` branch as the GNOME extension, which remains in `extension/`. Both desktop packages use the shared project release version and are published as separate archives.
 
 ## What the KDE version includes
 
@@ -47,13 +47,15 @@ These are compatibility targets, not confirmed distro support. KDE's [Plasma 6 p
 
 ## Install
 
-The widget requires KDE Plasma 6 and the package manager `kpackagetool6`. Clone the KDE branch and install the applet package:
+The widget requires KDE Plasma 6 and the package manager `kpackagetool6`. Clone the repository and install the applet package from its root:
 
 ```sh
-git clone --branch kde-plasma --single-branch https://github.com/txtperdana/perdana.island.git
+git clone https://github.com/txtperdana/perdana.island.git
 cd perdana.island
 kpackagetool6 --type=Plasma/Applet --install plasma-widget
 ```
+
+For a packaged build, download the KDE Plasma archive from a Perdana Island GitHub release and pass that archive path to `kpackagetool6 --type=Plasma/Applet --install`.
 
 In Plasma, enter panel or desktop edit mode, choose **Add Widgets**, search for **Perdana Island**, then drag it into the panel or onto the desktop. If you already have an earlier version installed, update its package with:
 

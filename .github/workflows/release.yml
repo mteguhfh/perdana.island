@@ -1,0 +1,29 @@
+name: Publish desktop packages
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build GNOME and KDE packages
+        run: ./scripts/package-release.sh "$GITHUB_REF_NAME"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          gh release create "$RELEASE_TAG"
+          "dist/Perdana-Island-GNOME-${RELEASE_TAG}.shell-extension.zip"
+          "dist/Perdana-Island-KDE-Plasma-${RELEASE_TAG}.zip"
+          --title "Perdana Island ${RELEASE_TAG}"
+          --generate-notes
