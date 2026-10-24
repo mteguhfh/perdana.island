@@ -29,15 +29,16 @@ The extension is for GNOME users who want quick media controls and short focus s
 - **Focus:** Focus, Short, Long, and custom durations; Start/Pause, Reset, and Skip; completion notice and daily session count.
 - **Shelf:** file chooser, local file copy, open-folder action, and refresh after filesystem changes.
 - **To-do:** add, complete, and delete tasks; persist the list as JSON.
-- **Clipboard:** collect recent text only while the page is open, skip sensitive MIME types, allow recopy and delete, and keep the history in memory.
+- **Clipboard:** collect recent text only while the page is open, skip sensitive MIME types, allow recopy and delete, and persist up to four entries locally between sessions.
 - **Today:** local date plus available processor, memory, disk, and battery metrics.
 - **System notices:** charger connect/disconnect and output-volume changes; each notice dismisses automatically.
 
 ## Data and upgrade behavior
 
 - New data directory: `$XDG_DATA_HOME/perdana.island` (normally `~/.local/share/perdana.island`).
-- On first enable, copy tasks and files under `shelf/` from the former `pulo-island` data directory only when the corresponding destination does not exist.
-- Do not delete or overwrite the old data during migration.
+- Reconcile tasks from both the Perdana and legacy Pulo data directories, then synchronize task changes to both locations for compatibility across extension UUIDs.
+- Copy files under `shelf/` from the former `pulo-island` data directory only when the corresponding destination does not exist.
+- Store recent clipboard text in the Perdana data directory with user-only permissions.
 
 ## Platform and architecture
 
@@ -49,4 +50,4 @@ The extension is for GNOME users who want quick media controls and short focus s
 
 ## Constraints
 
-GNOME Shell's internal volume module and bundled Gvc API are tied to Shell releases and need a compatibility review before targeting another major version. GNOME Shell actors do not receive the desktop file list for direct drop onto the island, so file selection or copying into the Shelf folder is required. Clipboard history is deliberately transient.
+GNOME Shell's internal volume module and bundled Gvc API are tied to Shell releases and need a compatibility review before targeting another major version. GNOME Shell actors do not receive the desktop file list for direct drop onto the island, so file selection or copying into the Shelf folder is required. Clipboard polling is limited to the open Clipboard page; accepted text entries persist locally, while sensitive MIME types are skipped.

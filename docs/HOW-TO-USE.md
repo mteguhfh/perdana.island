@@ -32,7 +32,7 @@ Use **Add task** to create an item. Select its check control to mark it complete
 
 ## Clipboard
 
-Open the Clipboard page to collect recent text copies. Select a row to copy it again and use its delete control to remove it. Sampling happens only while this page is open. History stays in memory and clears when the extension or GNOME Shell session ends. Entries marked sensitive by MIME type are skipped.
+Open the Clipboard page to collect recent text copies. Select a row to copy it again and use its delete control to remove it. Sampling happens only while this page is open. Up to four entries are saved locally and restored after sign-out or an extension update. Entries marked sensitive by MIME type are skipped.
 
 ## Today and system notices
 
@@ -40,4 +40,4 @@ Today shows the local date and available CPU, memory, disk, and battery readings
 
 ## Data location
 
-Tasks and Shelf files are in `~/.local/share/perdana.island/`. On first enable, matching task and Shelf data from `~/.local/share/pulo-island/` is copied if the new location does not already contain it; the original data is retained.
+Tasks, clipboard history, and Shelf files are in `~/.local/share/perdana.island/`. Task changes are also synchronized to `~/.local/share/pulo-island/tasks.json` for compatibility with the previous extension UUID. Task data from either location is reconciled on enable; Shelf files are copied from the previous location when a matching file is not already present.

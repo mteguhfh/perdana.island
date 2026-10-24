@@ -33,7 +33,7 @@ These images show representative UI states with sample content. Media, battery, 
 - Focus offers Focus, Short, Long, and custom durations in seconds or minutes. Completion shows a temporary notice.
 - Shelf copies chosen files into a local folder, opens that folder, and refreshes when files change.
 - To-do supports adding, completing, editing, and deleting tasks. Tasks persist between sessions.
-- Clipboard keeps recent text in memory while its page is open. Entries can be recopied or removed; sensitive MIME types are skipped.
+- Clipboard keeps up to four recent text entries between sessions. Sampling runs only while its page is open; entries can be recopied or removed, and sensitive MIME types are skipped.
 - Today shows available CPU, memory, disk, and battery information.
 - Charging, charger disconnect, and output-volume changes show short notices.
 
@@ -76,7 +76,7 @@ Click the island to open it. When media or a focus timer is active, hovering ove
 
 ## Data and limitations
 
-Tasks and Shelf files are stored in `~/.local/share/perdana.island/`. On first enable, matching task and Shelf data from the previous `~/.local/share/pulo-island/` directory is copied only when a destination file does not already exist. The previous directory is kept as a backup. Clipboard history is memory-only.
+Tasks, clipboard history, and Shelf files are stored in `~/.local/share/perdana.island/`. Task data is reconciled with `~/.local/share/pulo-island/tasks.json` and synchronized to both locations, so changes survive switching between the old and new extension UUIDs. Shelf files are copied from the previous location when a matching destination file is absent. Clipboard history is stored locally in a private directory and limited to four entries; delete entries from the Clipboard page to remove them.
 
 GNOME Shell does not provide the dragged desktop file list to these island actors. Add files through **Add files**, or copy them into the Shelf folder; direct drop onto the island is unavailable.
 

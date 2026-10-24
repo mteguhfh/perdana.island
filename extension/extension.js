@@ -182,9 +182,16 @@ export default class PerdanaIslandExtension extends Extension {
             'perdana.island',
         ]);
         this._taskFile = GLib.build_filenamev([this._taskDirectory, 'tasks.json']);
+        this._clipboardFile = GLib.build_filenamev([this._taskDirectory, 'clipboard.json']);
+        this._legacyTaskFile = GLib.build_filenamev([
+            GLib.get_user_data_dir(),
+            LEGACY_DATA_DIRECTORY,
+            'tasks.json',
+        ]);
         this._shelfDirectory = GLib.build_filenamev([this._taskDirectory, 'shelf']);
         this._migrateLegacyData();
         this._tasks = this._loadTasks();
+        this._clipboardItems = this._loadClipboardItems();
         this._shelfItems = this._loadShelfItems();
         this._shelfMonitor = this._monitorShelfDirectory();
         this._shelfRefreshSource = 0;
@@ -2230,24 +2237,64 @@ export default class PerdanaIslandExtension extends Extension {
             GLib.get_user_data_dir(),
             LEGACY_DATA_DIRECTORY,
         ]);
-        const legacyTasks = Gio.File.new_for_path(
-            GLib.build_filenamev([legacyDirectory, 'tasks.json'])
-        );
-        const currentTasks = Gio.File.new_for_path(this._taskFile);
+        const currentTasks = this._readTasksFromFile(this._taskFile);
+        const legacyTasks = this._readTasksFromFile(this._legacyTaskFile);
 
-        try {
-            if (legacyTasks.query_exists(null) && !currentTasks.query_exists(null)) {
-                GLib.mkdir_with_parents(this._taskDirectory, 0o755);
-                legacyTasks.copy(currentTasks, Gio.FileCopyFlags.NONE, null, null);
-            }
-        } catch (error) {
-            logError(error, 'Perdana Island could not migrate its task list');
+        if (currentTasks !== null || legacyTasks !== null) {
+            const useLegacy = legacyTasks !== null
+                && (currentTasks === null
+                    || this._getFileModifiedTime(this._legacyTaskFile)
+                        >= this._getFileModifiedTime(this._taskFile));
+            const tasks = useLegacy ? legacyTasks : currentTasks;
+            this._writeTasksToFile(this._taskFile, tasks);
+            this._writeTasksToFile(this._legacyTaskFile, tasks);
         }
 
         this._copyLegacyShelf(
             Gio.File.new_for_path(GLib.build_filenamev([legacyDirectory, 'shelf'])),
             Gio.File.new_for_path(this._shelfDirectory)
         );
+    }
+
+    _readTasksFromFile(path) {
+        try {
+            const [success, contents] = GLib.file_get_contents(path);
+            if (!success)
+                return null;
+            const data = JSON.parse(new TextDecoder().decode(contents));
+            if (!Array.isArray(data))
+                return null;
+            return data.filter(task => task
+                && typeof task.id === 'string'
+                && typeof task.text === 'string'
+                && typeof task.done === 'boolean');
+        } catch (_error) {
+            return null;
+        }
+    }
+
+    _getFileModifiedTime(path) {
+        try {
+            const info = Gio.File.new_for_path(path).query_info(
+                'time::modified,time::modified-usec',
+                Gio.FileQueryInfoFlags.NONE,
+                null
+            );
+            const seconds = info.get_attribute_uint64('time::modified');
+            const microseconds = info.get_attribute_uint32('time::modified-usec');
+            return seconds * 1_000_000 + microseconds;
+        } catch (_error) {
+            return 0;
+        }
+    }
+
+    _writeTasksToFile(path, tasks) {
+        try {
+            GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
+            GLib.file_set_contents(path, JSON.stringify(tasks));
+        } catch (error) {
+            logError(error, 'Perdana Island could not synchronize its task list');
+        }
     }
 
     _copyLegacyShelf(source, destination) {
@@ -2306,6 +2353,7 @@ export default class PerdanaIslandExtension extends Extension {
                     return;
                 this._clipboardItems.unshift(value);
                 this._clipboardItems = this._clipboardItems.slice(0, 4);
+                this._saveClipboardItems();
                 this._renderPanel();
             });
         } catch (_error) {
@@ -2316,7 +2364,40 @@ export default class PerdanaIslandExtension extends Extension {
     _deleteClipboardItem(item) {
         this._clipboardItems = this._clipboardItems.filter(value => value !== item);
         this._clipboardSuppressedValue = item;
+        this._saveClipboardItems();
         this._renderPanel();
+    }
+
+    _loadClipboardItems() {
+        try {
+            const [success, contents] = GLib.file_get_contents(this._clipboardFile);
+            if (!success)
+                return [];
+            const data = JSON.parse(new TextDecoder().decode(contents));
+            if (!Array.isArray(data))
+                return [];
+            return [...new Set(data
+                .filter(value => typeof value === 'string')
+                .map(value => value.trim().slice(0, 1200))
+                .filter(Boolean))].slice(0, 4);
+        } catch (_error) {
+            return [];
+        }
+    }
+
+    _saveClipboardItems() {
+        try {
+            GLib.mkdir_with_parents(this._taskDirectory, 0o700);
+            GLib.file_set_contents(this._clipboardFile, JSON.stringify(this._clipboardItems.slice(0, 4)));
+            Gio.File.new_for_path(this._taskDirectory).set_attribute_uint32(
+                'unix::mode', 0o700, Gio.FileQueryInfoFlags.NONE, null
+            );
+            Gio.File.new_for_path(this._clipboardFile).set_attribute_uint32(
+                'unix::mode', 0o600, Gio.FileQueryInfoFlags.NONE, null
+            );
+        } catch (error) {
+            logError(error, 'Perdana Island could not save its local clipboard history');
+        }
     }
 
     _loadShelfItems() {
@@ -2940,29 +3021,12 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _loadTasks() {
-        try {
-            const [success, contents] = GLib.file_get_contents(this._taskFile);
-            if (!success)
-                return [];
-            const data = JSON.parse(new TextDecoder().decode(contents));
-            if (!Array.isArray(data))
-                return [];
-            return data.filter(task => task
-                && typeof task.id === 'string'
-                && typeof task.text === 'string'
-                && typeof task.done === 'boolean');
-        } catch (_error) {
-            return [];
-        }
+        return this._readTasksFromFile(this._taskFile) ?? [];
     }
 
     _saveTasks() {
-        try {
-            GLib.mkdir_with_parents(this._taskDirectory, 0o755);
-            GLib.file_set_contents(this._taskFile, JSON.stringify(this._tasks));
-        } catch (error) {
-            logError(error, 'Perdana Island could not save its local task list');
-        }
+        this._writeTasksToFile(this._taskFile, this._tasks);
+        this._writeTasksToFile(this._legacyTaskFile, this._tasks);
     }
 
     _clearTimeout(property) {

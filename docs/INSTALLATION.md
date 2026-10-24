@@ -50,7 +50,7 @@ The current UUID is `perdana.island@perdana`. If the earlier `pulo-island@perdan
 gnome-extensions disable pulo-island@perdana
 ```
 
-On first enable, the new extension copies task and Shelf data to `~/.local/share/perdana.island/` only when the matching destination does not already exist. It leaves the old data directory intact.
+The extension reconciles `tasks.json` with `~/.local/share/pulo-island/tasks.json` and synchronizes task changes to both locations, so the list survives switching between extension UUIDs. Shelf files are copied to `~/.local/share/perdana.island/shelf/` when a matching destination is absent. Existing data is retained.
 
 ## Verify
 
@@ -58,7 +58,7 @@ On first enable, the new extension copies task and Shelf data to `~/.local/share
 gnome-extensions info perdana.island@perdana
 ```
 
-After enabling, the output should show **Perdana Island**, version 29 or later, and `State: ACTIVE`.
+After enabling, the output should show **Perdana Island**, version 30 or later, and `State: ACTIVE`.
 
 ## Remove
 
@@ -67,7 +67,7 @@ gnome-extensions disable perdana.island@perdana
 gnome-extensions uninstall perdana.island@perdana
 ```
 
-Removal leaves data in `~/.local/share/perdana.island/`. Remove that directory manually only if you also want to delete saved tasks and Shelf files.
+Removal leaves data in `~/.local/share/perdana.island/` and the legacy task backup in `~/.local/share/pulo-island/`. Remove those directories manually only if you also want to delete saved tasks, clipboard history, and Shelf files.
 
 ## Troubleshooting
 
