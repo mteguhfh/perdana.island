@@ -327,7 +327,10 @@ export default class PerdanaIslandExtension extends Extension {
         this._motionSettings = null;
 
         if (this._root) {
-            this._root.disconnect(this._allocationSignal);
+            if (this._allocationSignal) {
+                this._root.disconnect(this._allocationSignal);
+                this._allocationSignal = 0;
+            }
             Main.layoutManager.removeChrome(this._root);
             this._root.destroy();
             this._root = null;
@@ -379,6 +382,14 @@ export default class PerdanaIslandExtension extends Extension {
             this._setExpanded(true);
         });
 
+        this._compactContents = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            x_expand: true,
+            y_expand: true,
+            x_align: Clutter.ActorAlign.FILL,
+            y_align: Clutter.ActorAlign.FILL,
+            reactive: false,
+        });
         this._compact = new St.BoxLayout({
             x_expand: true,
             y_expand: true,
@@ -410,7 +421,7 @@ export default class PerdanaIslandExtension extends Extension {
 
         this._compactCenter = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
-            x_expand: true,
+            reactive: false,
             style_class: 'perdana-island__compact-center',
         });
         this._idleEyes = new St.BoxLayout({
@@ -430,10 +441,11 @@ export default class PerdanaIslandExtension extends Extension {
         this._compactCenter.add_child(this._idleEyes);
         this._compactCenter.add_child(this._compactClockLabel);
         this._compactCenter.connect('notify::allocation', () => this._layoutCompactCenter());
+        this._compactContents.add_child(this._compact);
+        this._compactContents.add_child(this._compactCenter);
         this._equalizer = this._makeEqualizer();
         this._compact.add_child(this._compactLeading);
         this._compact.add_child(this._compactTrackTitle);
-        this._compact.add_child(this._compactCenter);
         this._focusCompact = new St.BoxLayout({
             visible: false,
             x_expand: true,
@@ -452,7 +464,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._focusCompact.add_child(this._focusCompactTime);
         this._compact.add_child(this._focusCompact);
         this._compact.add_child(this._equalizer);
-        this._compactButton.set_child(this._compact);
+        this._compactButton.set_child(this._compactContents);
         this._content.add_child(this._compactButton);
         this._header = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
@@ -522,9 +534,17 @@ export default class PerdanaIslandExtension extends Extension {
             this._compactButton.set_position(0, 0);
             this._compactButton.set_size(width, height);
         }
+        if (this._compactContents) {
+            this._compactContents.set_position(0, 0);
+            this._compactContents.set_size(width, height);
+        }
         if (this._compact) {
             this._compact.set_position(0, 0);
             this._compact.set_size(width, height);
+        }
+        if (this._compactCenter) {
+            this._compactCenter.set_position(0, 0);
+            this._compactCenter.set_size(width, height);
         }
         if (this._header) {
             this._header.set_position(0, 0);
@@ -861,6 +881,7 @@ export default class PerdanaIslandExtension extends Extension {
                     this._root.set_size(this._collapsedWidth(), COLLAPSED_HEIGHT);
                     this._layoutIsland();
                     this._positionIsland();
+                    this._updateCollapsedLabel();
                     if (!this._isPlaying() && !this._focusSource)
                         this._scheduleBlink();
                 },
