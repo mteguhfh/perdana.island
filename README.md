@@ -8,6 +8,8 @@
 
 Perdana Island is a GNOME Shell extension that places media controls, a focus timer, a file shelf, tasks, recent clipboard text, and system information in a compact island attached to the top edge of the desktop.
 
+A separate KDE Plasma 6 widget is available on the [`codex/kde-plasma` branch](https://github.com/txtperdana/perdana.island/tree/codex/kde-plasma). It includes Music, Focus, Tasks, and Clipboard pages. See [README-KDE.md](README-KDE.md) for its requirements, limitations, and installation steps.
+
 ## Feature previews
 
 These images show representative UI states with sample content. Media, battery, and system values in a running extension come from the current desktop session.
@@ -46,7 +48,7 @@ These images show representative UI states with sample content. Media, battery, 
 
 The extension runs inside GNOME Shell through the GJS `Extension` lifecycle. Its interface is built from Shell `St` actors and Clutter layouts/animations, attached to GNOME Shell's chrome layer. GLib and Gio provide timers, file access, and filesystem monitoring. Media metadata and playback controls use MPRIS on the session D-Bus; output volume uses GNOME's Gvc mixer API and Shell volume status module. CPU, memory, disk, and battery readings are collected from Linux system interfaces when available.
 
-The extension declares GNOME Shell **50.x** compatibility. It does not run on KDE Plasma, Cinnamon, Xfce, or other desktop environments that do not use GNOME Shell.
+The GNOME extension declares GNOME Shell **50.x** compatibility. This GNOME package does not run on KDE Plasma, Cinnamon, Xfce, or other desktop environments that do not use GNOME Shell. The separate KDE widget and its requirements are documented in [README-KDE.md](README-KDE.md).
 
 | Distribution / release | GNOME Shell | Support status |
 | --- | --- | --- |
@@ -86,6 +88,7 @@ GNOME Shell does not provide the dragged desktop file list to these island actor
 extension/                 GNOME Shell extension source
 assets/screenshots/        Feature preview images
 docs/                      Product requirements, usage, and installation guides
+README-KDE.md              KDE Plasma 6 widget guide
 ```
 
 No license file is included yet; choose a project license before publishing the repository as open source.
