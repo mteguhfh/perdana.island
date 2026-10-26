@@ -9,7 +9,8 @@ fi
 
 VERSION="${RELEASE_TAG#v}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GNOME_VERSION="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' "$PROJECT_ROOT/extension/metadata.json")"
+GNOME_VERSION_NAME="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("version-name", ""))' "$PROJECT_ROOT/extension/metadata.json")"
+GNOME_VERSION="${GNOME_VERSION_NAME#v}"
 PLASMA_VERSION="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["KPlugin"]["Version"])' "$PROJECT_ROOT/plasma-widget/metadata.json")"
 
 if [[ "$GNOME_VERSION" != "$VERSION" || "$PLASMA_VERSION" != "$VERSION" ]]; then
@@ -30,6 +31,7 @@ mkdir -p "$DIST_DIR"
 rm -f "$GNOME_ARCHIVE" "$PLASMA_ARCHIVE"
 
 (cd "$PROJECT_ROOT/extension" && zip -qr "$GNOME_ARCHIVE" .)
+(cd "$PROJECT_ROOT" && zip -q "$GNOME_ARCHIVE" LICENSE)
 (cd "$PROJECT_ROOT/plasma-widget" && zip -qr "$PLASMA_ARCHIVE" .)
 
 printf 'Created release archives:\n%s\n%s\n' "$GNOME_ARCHIVE" "$PLASMA_ARCHIVE"

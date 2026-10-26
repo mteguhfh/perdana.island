@@ -6,7 +6,7 @@
 [![MPRIS](https://img.shields.io/badge/media-MPRIS%20over%20D--Bus-383838)](https://specifications.freedesktop.org/mpris-spec/latest/)
 [![Fedora 44](https://img.shields.io/badge/validated-Fedora%2044-51a2da?logo=fedora&logoColor=white)](https://fedoraproject.org/)
 
-Perdana Island provides separate native packages for GNOME Shell and KDE Plasma. The GNOME Shell 50 extension places media controls, a focus timer, a file shelf, tasks, recent clipboard text, and system information in a compact island attached to the top edge of the desktop. The KDE Plasma 6 widget provides Music, Focus, Tasks, and Clipboard pages. Both packages live in this repository, in `extension/` and `plasma-widget/` respectively, and share the project release version while keeping their code and installation packages separate.
+Perdana Island provides separate native packages for GNOME Shell and KDE Plasma. The GNOME Shell 50 extension places media controls, synced lyrics, a focus timer, a file shelf, tasks, recent clipboard text, notifications, settings, and system information in a compact island attached to the top edge of the desktop. The KDE Plasma 6 widget provides Music, Focus, Tasks, and Clipboard pages. Both packages live in this repository, in `extension/` and `plasma-widget/` respectively, and share the project release version while keeping their code and installation packages separate.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
@@ -32,10 +32,12 @@ These images show representative UI states with sample content. Media, battery, 
 - Resting eyes react to the pointer; hovering also reveals the clock.
 - Playing media and a running focus timer appear in compact form. Hovering opens the matching page.
 - Music uses MPRIS metadata and supports seeking, previous, play/pause, and next when the player exposes those controls.
+- Lyrics follow playback timestamps. When a player does not provide synced lyrics, the extension looks up track metadata with LRCLIB.
 - Focus offers Focus, Short, Long, and custom durations in seconds or minutes. Completion shows a temporary notice.
-- Shelf copies chosen files into a local folder, opens that folder, and refreshes when files change.
+- Shelf offers Grid and List views, image thumbnails, a scrollable list capped at 10 visible items, and a local folder that refreshes when files change.
 - To-do supports adding, completing, editing, and deleting tasks. Tasks persist between sessions.
 - Clipboard keeps up to four recent text entries between sessions. Sampling runs only while its page is open; entries can be recopied or removed, and sensitive MIME types are skipped.
+- Notifications can be cleared or activated to open their originating application. Settings control the resting style, glass effect, accent color, notices, and visible tabs.
 - Today shows available CPU, memory, disk, and battery information.
 - Charging, charger disconnect, and output-volume changes show short notices.
 
@@ -67,7 +69,7 @@ Quick install from this repository:
 
 ```sh
 mkdir -p dist
-gnome-extensions pack ./extension --out-dir ./dist
+gnome-extensions pack ./extension --extra-source=./LICENSE --out-dir ./dist
 gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.zip
 gnome-extensions enable perdana.island@perdana
 ```
@@ -76,10 +78,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
 
-- `Perdana-Island-GNOME-v31.shell-extension.zip` for GNOME Shell.
-- `Perdana-Island-KDE-Plasma-v31.zip` for KDE Plasma 6.
+- `Perdana-Island-GNOME-v45.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
+- `Perdana-Island-KDE-Plasma-v45.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and the package metadata. Pushing a `v*` tag runs the release workflow, which checks that both packages match the tag, builds the two archives, and attaches them to one GitHub release. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the current v31 archives locally, run `./scripts/package-release.sh v31`.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the current v45 archives locally, run `./scripts/package-release.sh v45`.
 
 ## Use
 
@@ -87,7 +89,7 @@ Click the island to open it. When media or a focus timer is active, hovering ove
 
 ## Data and limitations
 
-Tasks, clipboard history, and Shelf files are stored in `~/.local/share/perdana.island/`. Task data is reconciled with `~/.local/share/pulo-island/tasks.json` and synchronized to both locations, so changes survive switching between the old and new extension UUIDs. Shelf files are copied from the previous location when a matching destination file is absent. Clipboard history is stored locally in a private directory and limited to four entries; delete entries from the Clipboard page to remove them.
+Tasks, preferences, clipboard history, and Shelf files are stored in `~/.local/share/perdana.island/`. Task data is reconciled with `~/.local/share/pulo-island/tasks.json` and synchronized to both locations, so changes survive switching between the old and new extension UUIDs. Shelf files are copied from the previous location when a matching destination file is absent. Clipboard history is stored locally in a private directory and limited to four entries; sampling runs only while the Clipboard page is open. Clipboard text is not sent to third parties. LRCLIB lyric lookup sends the current track title, artist, optional album, and duration to `lrclib.net`.
 
 GNOME Shell does not provide the dragged desktop file list to these island actors. Add files through **Add files**, or copy them into the Shelf folder; direct drop onto the island is unavailable.
 
@@ -103,4 +105,4 @@ README-KDE.md              KDE Plasma 6 widget guide
 scripts/                   Local release packaging script
 ```
 
-No license file is included yet; choose a project license before publishing the repository as open source.
+The GNOME extension is distributed under [GPL-3.0-or-later](LICENSE), a license compatible with GNOME Shell's GPL-2.0-or-later terms. For the EGO package and submission checklist, see [GNOME Extensions submission](docs/GNOME-EXTENSIONS-SUBMISSION.md).

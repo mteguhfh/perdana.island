@@ -1,11 +1,17 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 import Clutter from 'gi://Clutter';
+import Cairo from 'cairo';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gvc from 'gi://Gvc';
 import Pango from 'gi://Pango';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
+import Soup from 'gi://Soup?version=3.0';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import * as VolumeStatus from 'resource:///org/gnome/shell/ui/status/volume.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -14,27 +20,43 @@ const MPRIS_PATH = '/org/mpris/MediaPlayer2';
 const MPRIS_PLAYER_IFACE = 'org.mpris.MediaPlayer2.Player';
 const DEFAULT_FOCUS_SECONDS = 25 * 60;
 const DEFAULT_BREAK_SECONDS = 5 * 60;
+const DEFAULT_ACCENT_COLOR = '#5577B8';
+const MAX_SHELF_ITEMS = 10;
 const MICROSECONDS_PER_SECOND = 1_000_000;
 const LEGACY_DATA_DIRECTORY = 'pulo-island';
 const COLLAPSED_WIDTH = 150;
 const PLAYING_WIDTH = 236;
 const COLLAPSED_HEIGHT = 38;
 const CONTENT_WIDTH = 460;
+const PAGE_WIDTHS = {
+    media: 460,
+    lyrics: 740,
+    focus: 680,
+    shelf: 520,
+    tasks: 600,
+    clipboard: 600,
+    today: 940,
+    notifications: 560,
+    settings: 640,
+};
 const OPEN_HEIGHT = 256;
+const PAGE_HEIGHTS = {lyrics: 300, focus: 290, shelf: 440, settings: 468};
 const HEADER_HEIGHT = 42;
 const TABBAR_HEIGHT = 46;
-const PAGE_HEIGHT = OPEN_HEIGHT - HEADER_HEIGHT - TABBAR_HEIGHT;
 const PAGE_INSET = 28;
 const MEDIA_ART_SIZE = 58;
 const MEDIA_COPY_GAP = 22;
 const MEDIA_COPY_RIGHT_INSET = 38;
 const PAGES = [
     {key: 'media', label: 'Music', icon: 'audio-x-generic-symbolic'},
+    {key: 'lyrics', label: 'Lyrics', icon: 'text-x-generic-symbolic'},
     {key: 'focus', label: 'Focus', icon: 'alarm-symbolic'},
     {key: 'shelf', label: 'Shelf', icon: 'folder-symbolic'},
     {key: 'tasks', label: 'To-do', icon: 'view-list-symbolic'},
     {key: 'clipboard', label: 'Clipboard', icon: 'edit-copy-symbolic'},
     {key: 'today', label: 'Today', icon: 'x-office-calendar-symbolic'},
+    {key: 'notifications', label: 'Notifications', icon: 'preferences-system-notifications-symbolic'},
+    {key: 'settings', label: 'Settings', icon: 'preferences-system-symbolic'},
 ];
 
 function unpack(value) {
@@ -46,6 +68,133 @@ function formatTime(totalSeconds) {
     const minutes = Math.floor(safeSeconds / 60);
     const seconds = safeSeconds % 60;
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function normalizeHexColor(value) {
+    const match = String(value || '').trim().match(/^#?([a-f\d]{6})$/i);
+    return match ? `#${match[1].toUpperCase()}` : null;
+}
+
+function hexColorToRgb(value) {
+    const normalized = normalizeHexColor(value) || DEFAULT_ACCENT_COLOR;
+    return [1, 3, 5].map(offset => Number.parseInt(normalized.slice(offset, offset + 2), 16) / 255);
+}
+
+function isoWeekNumber(date) {
+    const utc = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const weekday = utc.getUTCDay() || 7;
+    utc.setUTCDate(utc.getUTCDate() + 4 - weekday);
+    const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+    return Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
+}
+
+const CLIPBOARD_EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const CLIPBOARD_URL_PATTERN = /\b(?:(?:https?|ftp|file):\/\/|www\.)[^\s<>"']+/gi;
+const CLIPBOARD_DOMAIN_PATTERN = /(^|[^\w@.-])((?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s<>"']*)?)/gi;
+
+function maskClipboardPart(value) {
+    const text = String(value || '');
+    if (text.length <= 1)
+        return `${text || '•'}•••`;
+    return `${text[0]}•••${text.length > 2 ? text.at(-1) : ''}`;
+}
+
+function maskClipboardDomain(value) {
+    const labels = String(value || '').split('.');
+    if (labels.length < 2)
+        return maskClipboardPart(value);
+
+    const last = labels.length - 1;
+    const suffixLength = labels.length > 2 && labels[last].length === 2 && labels[last - 1].length <= 3
+        ? 2
+        : 1;
+    return labels.map((label, index) => index >= labels.length - suffixLength
+        ? label
+        : maskClipboardPart(label)).join('.');
+}
+
+function maskClipboardEmail(value) {
+    const at = value.lastIndexOf('@');
+    if (at < 0)
+        return maskClipboardPart(value);
+    return `${maskClipboardPart(value.slice(0, at))}@${maskClipboardDomain(value.slice(at + 1))}`;
+}
+
+function maskClipboardLink(value) {
+    let link = String(value || '');
+    const punctuation = link.match(/[.,!?;:)\]}]+$/)?.[0] || '';
+    if (punctuation)
+        link = link.slice(0, -punctuation.length);
+
+    const prefix = link.match(/^(?:(?:https?|ftp|file):\/\/|www\.)/i)?.[0] || '';
+    if (prefix.toLowerCase() === 'file://')
+        return `${prefix}•••${punctuation}`;
+
+    const remainder = link.slice(prefix.length);
+    const authorityEnd = remainder.search(/[/?#]/);
+    const authority = authorityEnd < 0 ? remainder : remainder.slice(0, authorityEnd);
+    const suffix = authorityEnd < 0 ? '' : remainder.slice(authorityEnd);
+    const host = authority.slice(authority.lastIndexOf('@') + 1);
+    const port = host.match(/:(\d+)$/)?.[1] || '';
+    const hostname = port ? host.slice(0, -(port.length + 1)) : host;
+    const maskedHost = maskClipboardDomain(hostname);
+    return `${prefix}${maskedHost}${port ? ':•••' : ''}${suffix ? '/•••' : ''}${punctuation}`;
+}
+
+function maskClipboardPreview(value) {
+    const links = [];
+    const emails = [];
+    const marker = (kind, index) => `\uE000${kind}${index}\uE001`;
+    let preview = String(value || '').replace(CLIPBOARD_URL_PATTERN, link => {
+        const index = links.push(maskClipboardLink(link)) - 1;
+        return marker('L', index);
+    });
+    preview = preview.replace(CLIPBOARD_DOMAIN_PATTERN, (match, boundary, link) => {
+        const index = links.push(maskClipboardLink(link)) - 1;
+        return `${boundary}${marker('L', index)}`;
+    });
+    preview = preview.replace(CLIPBOARD_EMAIL_PATTERN, email => {
+        const index = emails.push(maskClipboardEmail(email)) - 1;
+        return marker('E', index);
+    });
+    return preview.replace(/\uE000([LE])(\d+)\uE001/g, (_match, kind, index) =>
+        (kind === 'L' ? links : emails)[Number(index)]);
+}
+
+function isPasswordLikeClipboardText(value) {
+    const text = String(value || '').trim();
+    if (!text)
+        return false;
+
+    if (/(?:^|[\s,{;])['"]?\b(?:password|passwd|pwd|passphrase|secret|(?:api|access|refresh)[ _-]?token)\b['"]?\s*[:=]\s*['"]?\S+/i.test(text)
+        || /-----BEGIN [A-Z ]*PRIVATE KEY-----/i.test(text)
+        || /\bBearer\s+[A-Z0-9._~+/-]{16,}/i.test(text)
+        || /^eyJ[A-Z0-9_-]{8,}\.eyJ[A-Z0-9_-]{8,}\.[A-Z0-9_-]{8,}$/i.test(text)
+        || /^(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-|sk-(?:proj-)?|AIzaSy)[A-Z0-9_-]{16,}/i.test(text)
+        || /\bhttps?:\/\/[^/@\s]+:[^/@\s]+@/i.test(text)
+        || /[?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|password|passwd|secret|session|signature|auth|code)=[^&#\s]{8,}/i.test(text)) {
+        return true;
+    }
+
+    if (/\s|@|(?:https?|ftp|file):\/\/|\bwww\./i.test(text)
+        || /\b[a-z0-9-]+\.[a-z]{2,}(?:\/|$)/i.test(text)) {
+        return false;
+    }
+
+    const hasLower = /[a-z]/.test(text);
+    const hasUpper = /[A-Z]/.test(text);
+    const hasDigit = /\d/.test(text);
+    const hasSymbol = /[^a-z0-9]/i.test(text);
+    const classes = [hasLower, hasUpper, hasDigit, hasSymbol].filter(Boolean).length;
+    const frequencies = new Map();
+    for (const character of text)
+        frequencies.set(character, (frequencies.get(character) || 0) + 1);
+    const entropy = [...frequencies.values()].reduce((sum, count) => {
+        const probability = count / text.length;
+        return sum - probability * Math.log2(probability);
+    }, 0);
+    return (text.length >= 16 && classes >= 3 && entropy >= 3.8)
+        || (text.length >= 24 && entropy >= 3.2);
 }
 
 function makeLabel(text, styleClass = '') {
@@ -135,11 +284,50 @@ export default class PerdanaIslandExtension extends Extension {
         this._progressLine = null;
         this._progressFill = null;
         this._mediaEqualizer = null;
+        this._progressSeeking = false;
+        this._progressSeekRatio = 0;
+        this._progressCanSeek = false;
+        this._lyricsSession = null;
+        this._lyricsCancellable = null;
+        this._lyricsFallbackSource = 0;
+        this._lyricsCache = new Map();
+        this._lyricsRetryAt = 0;
+        this._lyricsBackoffUntil = 0;
+        this._lyricsLastRequestAt = 0;
+        this._lyricsCurrentTrackKey = null;
+        this._lyricsRequestKey = null;
+        this._lyricsData = null;
+        this._lyricsStatus = 'Start playback to find lyrics';
+        this._lyricsDisplayedIndex = -1;
+        this._lyricsDisplayGap = false;
+        this._lyricsStatusLabel = null;
+        this._lyricsViewport = null;
+        this._lyricsRail = null;
+        this._lyricsWaitLabel = null;
+        this._lyricsRenderedLines = null;
+        this._lyricsLineLabels = [];
+        this._lyricsLayoutWidth = 0;
+        this._lyricsLayoutHeight = 0;
+        this._lyricsPlaybackButton = null;
         this._pinned = false;
         this._activePage = 'media';
+        this._calendarMonthOffset = 0;
+        this._calendarDateKey = '';
+        this._notificationItems = [];
+        this._notificationSources = new Map();
+        this._notificationSourceAddedSignal = 0;
+        this._notificationSourceRemovedSignal = 0;
+        this._notificationTray = null;
+        this._notificationSequence = 0;
+        this._clearingNotifications = false;
+        this._glassBlurRegions = [];
+        this._glassBlurFrozen = false;
         this._clipboardItems = [];
+        this._clipboardNotice = null;
         this._clipboardSuppressedValue = null;
         this._shelfItems = [];
+        this._shelfNotice = null;
+        this._shelfNoticeSource = 0;
         this._previousPageIndex = 0;
         this._focusRemaining = DEFAULT_FOCUS_SECONDS;
         this._focusDuration = DEFAULT_FOCUS_SECONDS;
@@ -183,6 +371,7 @@ export default class PerdanaIslandExtension extends Extension {
         ]);
         this._taskFile = GLib.build_filenamev([this._taskDirectory, 'tasks.json']);
         this._clipboardFile = GLib.build_filenamev([this._taskDirectory, 'clipboard.json']);
+        this._preferencesFile = GLib.build_filenamev([this._taskDirectory, 'preferences.json']);
         this._legacyTaskFile = GLib.build_filenamev([
             GLib.get_user_data_dir(),
             LEGACY_DATA_DIRECTORY,
@@ -190,16 +379,25 @@ export default class PerdanaIslandExtension extends Extension {
         ]);
         this._shelfDirectory = GLib.build_filenamev([this._taskDirectory, 'shelf']);
         this._migrateLegacyData();
+        this._preferences = this._loadPreferences();
+        if (!this._visiblePages().some(page => page.key === this._activePage))
+            this._activePage = this._visiblePages()[0]?.key || 'settings';
         this._tasks = this._loadTasks();
         this._clipboardItems = this._loadClipboardItems();
         this._shelfItems = this._loadShelfItems();
+        this._shelfMonitorSignal = 0;
         this._shelfMonitor = this._monitorShelfDirectory();
         this._shelfRefreshSource = 0;
+        this._taskFocusSource = 0;
         this._playersLoaded = false;
         this._playersError = false;
 
         this._buildInterface();
+        this._applyGlassPreference();
         this._monitorSignal = Main.layoutManager.connect('monitors-changed', () => {
+            if (this._expanded)
+                this._root.set_size(this._expandedWidth(), this._expandedHeight());
+            this._layoutIsland();
             this._positionIsland();
         });
         this._allocationSignal = this._root.connect('notify::allocation', () => this._layoutIsland());
@@ -218,12 +416,14 @@ export default class PerdanaIslandExtension extends Extension {
             this._updateHeaderClock();
             return GLib.SOURCE_CONTINUE;
         });
-        this._chargingSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
+        this._chargingSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
             if (!this._enabled)
                 return GLib.SOURCE_REMOVE;
             this._pollChargingState();
             return GLib.SOURCE_CONTINUE;
         });
+
+        this._connectNotifications();
 
         this._busSignal = Gio.DBus.session.signal_subscribe(
             'org.freedesktop.DBus',
@@ -241,22 +441,299 @@ export default class PerdanaIslandExtension extends Extension {
         this._discoverPlayers();
     }
 
+    _loadPreferences() {
+        const visiblePages = Object.fromEntries(PAGES.map(page => [page.key, true]));
+        const defaults = {
+            glass: false,
+            accentColor: DEFAULT_ACCENT_COLOR,
+            restingStyle: 'hover-clock',
+            systemNotices: true,
+            shelfView: 'grid',
+            visiblePages,
+        };
+        try {
+            const stored = JSON.parse(this._readText(this._preferencesFile) || '{}');
+            const savedPages = stored.visiblePages && typeof stored.visiblePages === 'object'
+                ? stored.visiblePages
+                : {};
+            for (const page of PAGES) {
+                if (typeof savedPages[page.key] === 'boolean')
+                    defaults.visiblePages[page.key] = savedPages[page.key];
+            }
+            defaults.glass = Boolean(stored.glass);
+            defaults.accentColor = normalizeHexColor(stored.accentColor) || defaults.accentColor;
+            defaults.restingStyle = ['hover-clock', 'eyes-clock'].includes(stored.restingStyle)
+                ? stored.restingStyle
+                : 'hover-clock';
+            defaults.systemNotices = stored.systemNotices !== false;
+            defaults.shelfView = ['grid', 'list'].includes(stored.shelfView)
+                ? stored.shelfView
+                : 'grid';
+        } catch (_error) {
+            // Corrupt or missing preferences fall back to the default appearance.
+        }
+        defaults.visiblePages.settings = true;
+        return defaults;
+    }
+
+    _savePreferences() {
+        try {
+            GLib.mkdir_with_parents(this._taskDirectory, 0o755);
+            GLib.file_set_contents(this._preferencesFile, JSON.stringify(this._preferences, null, 2));
+        } catch (error) {
+            logError(error, 'Perdana Island could not save preferences');
+        }
+    }
+
+    _visiblePages() {
+        return PAGES.filter(page => page.key === 'settings'
+            || this._preferences?.visiblePages?.[page.key] !== false);
+    }
+
+    _setPreference(key, value) {
+        this._preferences[key] = value;
+        this._savePreferences();
+        if (key === 'systemNotices' && !value && this._systemNoticeActive)
+            this._dismissSystemNotice(true);
+        if (key === 'glass')
+            this._applyGlassPreference();
+        if (key === 'accentColor') {
+            this._focusRing?.queue_repaint();
+            this._applyAccentStyles();
+        }
+        if (key === 'restingStyle') {
+            this._compactVisualState = null;
+            this._layoutCompactCenter();
+            this._updateCollapsedLabel();
+        }
+        if (['settings', 'shelf'].includes(this._activePage))
+            this._renderPanel();
+    }
+
+    _applyAccentStyles(actor = this._root) {
+        if (!actor || !this._preferences)
+            return;
+        const color = normalizeHexColor(this._preferences.accentColor) || DEFAULT_ACCENT_COLOR;
+        const [red, green, blue] = hexColorToRgb(color).map(value => Math.round(value * 255));
+        const channel = value => {
+            const normalized = value / 255;
+            return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+        };
+        const luminance = 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue);
+        const foreground = luminance > 0.179 ? '#111111' : '#ffffff';
+        const soft = `rgba(${red}, ${green}, ${blue}, 0.24)`;
+        const styles = new Map([
+            ['perdana-island__focus-compact-icon', `color: ${color};`],
+            ['perdana-island__clipboard-notice', `color: ${color};`],
+            ['perdana-island__today-weekday', `color: ${color};`],
+            ['perdana-island__calendar-day--today', `color: ${color};`],
+            ['perdana-island__settings-title-icon', `color: ${color};`],
+            ['perdana-button--nav-active', `background-color: ${soft}; color: #ffffff;`],
+            ['perdana-button--segment-active', `background-color: ${soft}; color: #ffffff;`],
+            ['perdana-island__setting-option--active', `background-color: ${soft}; color: #ffffff;`],
+            ['perdana-button--focus-apply', `background-color: ${color}; color: ${foreground};`],
+            ['perdana-action--primary', `background-color: ${color}; color: ${foreground};`],
+        ]);
+        const visit = current => {
+            const classNames = (current.get_style_class_name?.() || '').split(/\s+/);
+            for (const [className, style] of styles) {
+                if (current.has_style_class_name?.(className) || classNames.includes(className))
+                    current.set_style(style);
+            }
+            for (const child of current.get_children?.() || [])
+                visit(child);
+        };
+        visit(actor);
+    }
+
+    _setPageVisible(key, visible) {
+        if (key === 'settings')
+            return;
+        this._preferences.visiblePages[key] = Boolean(visible);
+        this._savePreferences();
+        if (!this._visiblePages().some(page => page.key === this._activePage))
+            this._activePage = 'settings';
+        if (this._activePage !== 'today')
+            this._stopTodayTicker();
+        if (this._activePage !== 'clipboard')
+            this._stopClipboardTicker();
+        this._layoutTabs(this._expandedWidth());
+        this._renderPanel();
+    }
+
+    _applyGlassPreference() {
+        if (!this._root || !this._surface)
+            return;
+        const enabled = Boolean(this._preferences?.glass);
+        if (enabled) {
+            this._root.add_style_class_name('perdana-island--glass');
+        } else {
+            this._root.remove_style_class_name('perdana-island--glass');
+        }
+        for (const region of this._glassBlurRegions) {
+            region.visible = enabled;
+            if (enabled && !region._perdanaBlurEffect) {
+                try {
+                    region._perdanaBlurEffect = new Shell.BlurEffect({
+                        mode: Shell.BlurMode.BACKGROUND,
+                        radius: 36,
+                        brightness: 1,
+                    });
+                    region.add_effect_with_name('perdana-island-glass', region._perdanaBlurEffect);
+                } catch (error) {
+                    region.visible = false;
+                    logError(error, 'Perdana Island could not enable background blur');
+                }
+            }
+        }
+        this._layoutGlassBlur();
+        this._surface.queue_repaint();
+    }
+
+    _connectNotifications() {
+        this._notificationTray = Main.messageTray;
+        if (!this._notificationTray)
+            return;
+        this._notificationSourceAddedSignal = this._notificationTray.connect(
+            'source-added', (_tray, source) => this._connectNotificationSource(source)
+        );
+        this._notificationSourceRemovedSignal = this._notificationTray.connect(
+            'source-removed', (_tray, source) => this._disconnectNotificationSource(source)
+        );
+        for (const source of this._notificationTray.getSources())
+            this._connectNotificationSource(source);
+    }
+
+    _connectNotificationSource(source) {
+        if (!source || this._notificationSources.has(source))
+            return;
+        const addedSignal = source.connect('notification-added', (_source, notification) =>
+            this._trackNotification(source, notification));
+        const removedSignal = source.connect('notification-removed', (_source, notification) =>
+            this._untrackNotification(notification));
+        this._notificationSources.set(source, {addedSignal, removedSignal});
+        for (const notification of source.notifications || [])
+            this._trackNotification(source, notification);
+    }
+
+    _disconnectNotificationSource(source) {
+        const signals = this._notificationSources.get(source);
+        if (signals) {
+            if (signals.addedSignal)
+                source.disconnect(signals.addedSignal);
+            if (signals.removedSignal)
+                source.disconnect(signals.removedSignal);
+            this._notificationSources.delete(source);
+        }
+        this._notificationItems = this._notificationItems.filter(item => item.source !== source);
+        this._renderNotificationsIfVisible();
+    }
+
+    _trackNotification(source, notification) {
+        if (!notification || this._notificationItems.some(item => item.notification === notification))
+            return;
+        this._notificationItems.unshift({
+            id: ++this._notificationSequence,
+            source,
+            notification,
+            app: String(source.title || source.app?.get_name?.() || 'Application'),
+            title: String(notification.title || source.title || 'Notification'),
+            body: String(notification.body || ''),
+        });
+        this._notificationItems = this._notificationItems.slice(0, 100);
+        this._renderNotificationsIfVisible();
+    }
+
+    _untrackNotification(notification) {
+        this._notificationItems = this._notificationItems.filter(item => item.notification !== notification);
+        this._renderNotificationsIfVisible();
+    }
+
+    _renderNotificationsIfVisible() {
+        if (!this._clearingNotifications && this._enabled
+            && this._activePage === 'notifications' && this._pageViewport)
+            this._renderPanel();
+    }
+
+    _clearNotifications() {
+        this._clearingNotifications = true;
+        for (const item of [...this._notificationItems]) {
+            try {
+                item.notification.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
+            } catch (_error) {
+                this._untrackNotification(item.notification);
+            }
+        }
+        this._notificationItems = [];
+        this._clearingNotifications = false;
+        this._renderNotificationsIfVisible();
+    }
+
+    _disconnectNotifications() {
+        const tray = this._notificationTray;
+        if (tray) {
+            if (this._notificationSourceAddedSignal)
+                tray.disconnect(this._notificationSourceAddedSignal);
+            if (this._notificationSourceRemovedSignal)
+                tray.disconnect(this._notificationSourceRemovedSignal);
+        }
+        for (const [source, signals] of this._notificationSources) {
+            if (signals.addedSignal)
+                source.disconnect(signals.addedSignal);
+            if (signals.removedSignal)
+                source.disconnect(signals.removedSignal);
+        }
+        this._notificationSources.clear();
+        this._notificationItems = [];
+        this._notificationTray = null;
+        this._notificationSourceAddedSignal = 0;
+        this._notificationSourceRemovedSignal = 0;
+    }
+
     disable() {
         this._enabled = false;
-        this._clearTimeout('_hoverOpenSource');
-        this._clearTimeout('_hoverCloseSource');
-        this._clearTimeout('_focusSource');
-        this._clearTimeout('_focusNoticeSource');
-        this._clearTimeout('_clockSource');
-        this._clearTimeout('_mediaSource');
-        this._clearTimeout('_todaySource');
-        this._clearTimeout('_chargingSource');
-        this._clearTimeout('_noticeDismissSource');
-        this._clearTimeout('_blinkSource');
-        this._clearTimeout('_clipboardSource');
-        this._clearTimeout('_shelfRefreshSource');
+        this._hoverOpenSource && GLib.source_remove(this._hoverOpenSource);
+        this._hoverOpenSource = 0;
+        this._hoverCloseSource && GLib.source_remove(this._hoverCloseSource);
+        this._hoverCloseSource = 0;
+        this._focusSource && GLib.source_remove(this._focusSource);
+        this._focusSource = 0;
+        this._focusNoticeSource && GLib.source_remove(this._focusNoticeSource);
+        this._focusNoticeSource = 0;
+        this._clockSource && GLib.source_remove(this._clockSource);
+        this._clockSource = 0;
+        this._mediaSource && GLib.source_remove(this._mediaSource);
+        this._mediaSource = 0;
+        this._lyricsFallbackSource && GLib.source_remove(this._lyricsFallbackSource);
+        this._lyricsFallbackSource = 0;
+        this._todaySource && GLib.source_remove(this._todaySource);
+        this._todaySource = 0;
+        this._chargingSource && GLib.source_remove(this._chargingSource);
+        this._chargingSource = 0;
+        this._noticeDismissSource && GLib.source_remove(this._noticeDismissSource);
+        this._noticeDismissSource = 0;
+        this._blinkSource && GLib.source_remove(this._blinkSource);
+        this._blinkSource = 0;
+        this._clipboardSource && GLib.source_remove(this._clipboardSource);
+        this._clipboardSource = 0;
+        this._shelfRefreshSource && GLib.source_remove(this._shelfRefreshSource);
+        this._shelfRefreshSource = 0;
+        this._shelfNoticeSource && GLib.source_remove(this._shelfNoticeSource);
+        this._shelfNoticeSource = 0;
+        this._taskFocusSource && GLib.source_remove(this._taskFocusSource);
+        this._taskFocusSource = 0;
+        this._disconnectNotifications();
+        this._lyricsCancellable?.cancel();
+        this._lyricsCancellable = null;
+        if (this._lyricsSession)
+            this._lyricsSession.abort();
+        this._lyricsSession = null;
 
         if (this._shelfMonitor) {
+            if (this._shelfMonitorSignal) {
+                this._shelfMonitor.disconnect(this._shelfMonitorSignal);
+                this._shelfMonitorSignal = 0;
+            }
             this._shelfMonitor.cancel();
             this._shelfMonitor = null;
         }
@@ -327,6 +804,8 @@ export default class PerdanaIslandExtension extends Extension {
         this._motionSettings = null;
 
         if (this._root) {
+            // Widget signals belong to this actor tree; destroying its root
+            // releases all page actors and their signal handlers together.
             if (this._allocationSignal) {
                 this._root.disconnect(this._allocationSignal);
                 this._allocationSignal = 0;
@@ -342,6 +821,23 @@ export default class PerdanaIslandExtension extends Extension {
         this._progressLine = null;
         this._progressFill = null;
         this._mediaEqualizer = null;
+        this._lyricsStatusLabel = null;
+        this._lyricsViewport = null;
+        this._lyricsRail = null;
+        this._lyricsWaitLabel = null;
+        this._lyricsRenderedLines = null;
+        this._lyricsLineLabels = [];
+        this._lyricsLayoutWidth = 0;
+        this._lyricsLayoutHeight = 0;
+        this._lyricsPlaybackButton = null;
+        this._pageButtons?.clear();
+        this._glassBlurRegions = [];
+        this._todayTiles = [];
+        this._lyricsLineLabels = [];
+        for (const property of Object.keys(this)) {
+            if (this[property] instanceof Clutter.Actor)
+                this[property] = null;
+        }
 
     }
 
@@ -359,6 +855,16 @@ export default class PerdanaIslandExtension extends Extension {
         if (this._reducedMotion)
             this._root.add_style_class_name('perdana-island--reduced-motion');
         Main.layoutManager.addChrome(this._root, {affectsStruts: false});
+        this._glassBlurRegions = [0, 1].map(() => {
+            const region = new St.Widget({
+                reactive: false,
+                clip_to_allocation: true,
+                visible: false,
+                style_class: 'perdana-island__glass-blur',
+            });
+            this._root.add_child(region);
+            return region;
+        });
         this._surface = new St.DrawingArea();
         this._surface.connect('repaint', area => this._paintIslandShape(area));
         this._root.add_child(this._surface);
@@ -403,6 +909,7 @@ export default class PerdanaIslandExtension extends Extension {
         });
         this._compactArtwork = new St.Widget({
             layout_manager: new Clutter.BinLayout(),
+            clip_to_allocation: true,
             style_class: 'perdana-island__compact-artwork',
         });
         this._compactArtwork.set_position(0, 7);
@@ -527,6 +1034,7 @@ export default class PerdanaIslandExtension extends Extension {
         const height = Math.max(1, this._root.height);
         this._surface.set_position(0, 0);
         this._surface.set_size(width, height);
+        this._layoutGlassBlur(width, height);
         this._surface.queue_repaint();
         this._content.set_position(0, 0);
         this._content.set_size(width, height);
@@ -567,7 +1075,7 @@ export default class PerdanaIslandExtension extends Extension {
     _layoutPanel(width = CONTENT_WIDTH) {
         if (!this._panel || !this._pageViewport || !this._tabBar)
             return;
-        const pageHeight = PAGE_HEIGHT;
+        const pageHeight = Math.max(1, this._root.height - HEADER_HEIGHT - TABBAR_HEIGHT);
         this._pageViewport.set_position(PAGE_INSET, 0);
         this._pageViewport.set_size(Math.max(1, width - 2 * PAGE_INSET), pageHeight);
         this._tabBar.set_position(0, pageHeight);
@@ -587,15 +1095,22 @@ export default class PerdanaIslandExtension extends Extension {
         const clockWidth = 56;
         const clockHeight = 24;
         this._idleEyes.set_size(eyesWidth, eyesHeight);
-        this._idleEyes.set_position(
-            Math.round((width - eyesWidth) / 2),
-            Math.round((height - eyesHeight) / 2)
-        );
         this._compactClockLabel.set_size(clockWidth, clockHeight);
-        this._compactClockLabel.set_position(
-            Math.round((width - clockWidth) / 2),
-            Math.round((height - clockHeight) / 2)
-        );
+        if (this._preferences?.restingStyle === 'eyes-clock') {
+            const groupWidth = eyesWidth + 12 + clockWidth;
+            const left = Math.round((width - groupWidth) / 2);
+            this._idleEyes.set_position(left, Math.round((height - eyesHeight) / 2));
+            this._compactClockLabel.set_position(left + eyesWidth + 12, Math.round((height - clockHeight) / 2));
+        } else {
+            this._idleEyes.set_position(
+                Math.round((width - eyesWidth) / 2),
+                Math.round((height - eyesHeight) / 2)
+            );
+            this._compactClockLabel.set_position(
+                Math.round((width - clockWidth) / 2),
+                Math.round((height - clockHeight) / 2)
+            );
+        }
     }
 
     _makeEqualizer() {
@@ -672,6 +1187,36 @@ export default class PerdanaIslandExtension extends Extension {
         });
     }
 
+    _islandRadius(width, height) {
+        return Math.min(
+            34,
+            Math.max(1, 19 + (height - COLLAPSED_HEIGHT) * 15 / (OPEN_HEIGHT - COLLAPSED_HEIGHT)),
+            height / 2,
+            width / 2
+        );
+    }
+
+    _layoutGlassBlur(width = this._root?.width, height = this._root?.height) {
+        if (!this._glassBlurRegions?.length || !width || !height || this._glassBlurFrozen)
+            return;
+        width = Math.max(1, Math.round(width));
+        height = Math.max(1, Math.round(height));
+        const radius = Math.max(1, Math.round(this._islandRadius(width, height)));
+        const [top, bottom] = this._glassBlurRegions;
+        if (top.x !== 0 || top.y !== 0)
+            top.set_position(0, 0);
+        const topHeight = Math.max(1, height - radius);
+        if (Math.round(top.width) !== width || Math.round(top.height) !== topHeight)
+            top.set_size(width, topHeight);
+        const bottomX = radius;
+        const bottomY = height - radius;
+        const bottomWidth = Math.max(1, width - 2 * radius);
+        if (Math.round(bottom.x) !== bottomX || Math.round(bottom.y) !== bottomY)
+            bottom.set_position(bottomX, bottomY);
+        if (Math.round(bottom.width) !== bottomWidth || Math.round(bottom.height) !== radius)
+            bottom.set_size(bottomWidth, radius);
+    }
+
     _paintIslandShape(area) {
         const [surfaceWidth, surfaceHeight] = area.get_surface_size();
         if (surfaceWidth <= 0 || surfaceHeight <= 0 || area.width <= 0 || area.height <= 0)
@@ -680,12 +1225,7 @@ export default class PerdanaIslandExtension extends Extension {
         cr.scale(surfaceWidth / area.width, surfaceHeight / area.height);
         const width = area.width;
         const height = area.height;
-        const radius = Math.min(
-            34,
-            Math.max(1, 19 + (height - COLLAPSED_HEIGHT) * 15 / (OPEN_HEIGHT - COLLAPSED_HEIGHT)),
-            height / 2,
-            width / 2
-        );
+        const radius = this._islandRadius(width, height);
         cr.newPath();
         cr.moveTo(0, 0);
         cr.lineTo(width, 0);
@@ -695,7 +1235,14 @@ export default class PerdanaIslandExtension extends Extension {
         cr.arc(radius, height - radius, radius, Math.PI / 2, Math.PI);
         cr.lineTo(0, 0);
         cr.closePath();
-        cr.setSourceRGBA(0, 0, 0, 1);
+        if (this._preferences?.glass) {
+            const gradient = new Cairo.LinearGradient(0, 0, 0, height);
+            gradient.addColorStopRGBA(0, 0.08, 0.09, 0.11, 0.48);
+            gradient.addColorStopRGBA(1, 0.01, 0.01, 0.02, 0.78);
+            cr.setSource(gradient);
+        } else {
+            cr.setSourceRGBA(0, 0, 0, 1);
+        }
         cr.fill();
         cr.$dispose();
     }
@@ -735,11 +1282,13 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _expandedWidth() {
-        return CONTENT_WIDTH;
+        const preferred = PAGE_WIDTHS[this._activePage] || CONTENT_WIDTH;
+        const monitorWidth = Main.layoutManager.primaryMonitor?.width;
+        return monitorWidth ? Math.max(1, Math.min(preferred, monitorWidth - 32)) : preferred;
     }
 
     _expandedHeight() {
-        return OPEN_HEIGHT;
+        return PAGE_HEIGHTS[this._activePage] || OPEN_HEIGHT;
     }
 
     _pageWidth() {
@@ -804,6 +1353,9 @@ export default class PerdanaIslandExtension extends Extension {
             this._panel.show();
             this._renderPanel();
             this._panel.opacity = 0;
+            this._glassBlurFrozen = false;
+            this._layoutGlassBlur(this._expandedWidth(), this._expandedHeight());
+            this._glassBlurFrozen = Boolean(this._preferences?.glass);
             this._root.set_size(this._collapsedWidth(), COLLAPSED_HEIGHT);
             this._layoutIsland();
             this._positionIsland();
@@ -812,7 +1364,10 @@ export default class PerdanaIslandExtension extends Extension {
                 height: this._expandedHeight(),
                 duration: this._motionDuration(500),
                 mode: this._reducedMotion ? Clutter.AnimationMode.LINEAR : Clutter.AnimationMode.EASE_OUT_CUBIC,
-                onComplete: () => this._layoutIsland(),
+                onComplete: () => {
+                    this._glassBlurFrozen = false;
+                    this._layoutIsland();
+                },
             });
             this._compactButton.ease({
                 opacity: 0,
@@ -841,6 +1396,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._startClipboardTicker();
             this._clearTimeout('_blinkSource');
         } else {
+            this._glassBlurFrozen = Boolean(this._preferences?.glass);
             this._stopTodayTicker();
             this._stopClipboardTicker();
             this._setEqualizerPlaying(this._mediaEqualizer, false);
@@ -879,8 +1435,11 @@ export default class PerdanaIslandExtension extends Extension {
                     this._root.remove_style_class_name('perdana-island--expanded');
                     this._closing = false;
                     this._root.set_size(this._collapsedWidth(), COLLAPSED_HEIGHT);
+                    this._glassBlurFrozen = false;
                     this._layoutIsland();
                     this._positionIsland();
+                    this._compactVisualState = null;
+                    this._updateHeaderClock();
                     this._updateCollapsedLabel();
                     if (!this._isPlaying() && !this._focusSource)
                         this._scheduleBlink();
@@ -916,13 +1475,16 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _selectPage(key) {
+        if (!this._visiblePages().some(page => page.key === key))
+            return;
         if (this._activePage === key)
             return;
-        const previousIndex = PAGES.findIndex(page => page.key === this._activePage);
-        const nextIndex = PAGES.findIndex(page => page.key === key);
+        const pages = this._visiblePages();
+        const previousIndex = pages.findIndex(page => page.key === this._activePage);
+        const nextIndex = pages.findIndex(page => page.key === key);
         this._previousPageIndex = previousIndex;
-        const forward = (nextIndex - previousIndex + PAGES.length) % PAGES.length;
-        const backward = (previousIndex - nextIndex + PAGES.length) % PAGES.length;
+        const forward = (nextIndex - previousIndex + pages.length) % pages.length;
+        const backward = (previousIndex - nextIndex + pages.length) % pages.length;
         const direction = forward <= backward ? 1 : -1;
         this._activePage = key;
         this._tabSwitching = true;
@@ -952,7 +1514,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _pageHeight() {
-        return PAGE_HEIGHT;
+        return this._expandedHeight() - HEADER_HEIGHT - TABBAR_HEIGHT;
     }
 
     _bodyHeight() {
@@ -960,9 +1522,10 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _stepPage(delta) {
-        const index = PAGES.findIndex(page => page.key === this._activePage);
-        const nextIndex = (index + delta + PAGES.length) % PAGES.length;
-        this._selectPage(PAGES[nextIndex].key);
+        const pages = this._visiblePages();
+        const index = pages.findIndex(page => page.key === this._activePage);
+        const nextIndex = (index + delta + pages.length) % pages.length;
+        this._selectPage(pages[nextIndex].key);
     }
 
     _isPlaying() {
@@ -1047,11 +1610,15 @@ export default class PerdanaIslandExtension extends Extension {
 
     _buildTabs() {
         for (const page of PAGES) {
-            const contents = new St.BoxLayout({style_class: 'perdana-island__tab-content'});
+            const contents = new St.BoxLayout({
+                style_class: 'perdana-island__tab-content',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
             const icon = new St.Icon({
                 icon_name: page.icon,
                 style_class: 'perdana-island__tab-icon',
             });
+            icon.set_size(18, 18);
             const label = makeLabel(page.label, 'perdana-island__tab-label');
             label.visible = false;
             contents.add_child(icon);
@@ -1065,6 +1632,8 @@ export default class PerdanaIslandExtension extends Extension {
                 accessible_name: `${page.label} page`,
             });
             button.connect('clicked', () => this._selectPage(page.key));
+            button.visible = page.key === 'settings'
+                || this._preferences.visiblePages[page.key] !== false;
             this._tabBar.add_child(button);
             this._pageButtons.set(page.key, {button, icon, label, selected: undefined});
         }
@@ -1074,11 +1643,12 @@ export default class PerdanaIslandExtension extends Extension {
     _layoutTabs(width) {
         if (!this._pageButtons)
             return;
-        const inactiveWidth = 32;
+        const pages = this._visiblePages();
+        const inactiveWidth = 34;
         const buttonHeight = 30;
         const inset = 8;
         const gap = 4;
-        const widths = PAGES.map(page => {
+        const widths = pages.map(page => {
             const entry = this._pageButtons.get(page.key);
             if (page.key !== this._activePage || !entry)
                 return inactiveWidth;
@@ -1086,33 +1656,43 @@ export default class PerdanaIslandExtension extends Extension {
             const labelWidth = Math.ceil(Math.max(naturalWidth, page.label.length * 7));
             return labelWidth + 18 + 6 + inset * 2;
         });
-        const totalWidth = widths.reduce((total, item) => total + item, 0) + gap * (PAGES.length - 1);
+        const totalWidth = widths.reduce((total, item) => total + item, 0) + gap * (pages.length - 1);
         let x = Math.round((width - totalWidth) / 2);
-        for (const [index, page] of PAGES.entries()) {
+        for (const page of PAGES) {
             const entry = this._pageButtons.get(page.key);
             if (!entry)
                 continue;
+            const visibleIndex = pages.findIndex(visiblePage => visiblePage.key === page.key);
+            const shown = visibleIndex >= 0;
+            entry.button.visible = shown;
+            if (!shown)
+                continue;
             const active = page.key === this._activePage;
-            const buttonWidth = widths[index];
+            const buttonWidth = widths[visibleIndex];
             entry.button.set_position(x, Math.round((TABBAR_HEIGHT - buttonHeight) / 2));
             entry.button.set_size(buttonWidth, buttonHeight);
             entry.button.accessible_name = active ? `${page.label}, selected` : page.label;
             if (entry.selected !== active) {
                 entry.selected = active;
-                if (active)
+                if (active) {
                     entry.button.add_style_class_name('perdana-button--nav-active');
-                else
+                } else {
                     entry.button.remove_style_class_name('perdana-button--nav-active');
+                    entry.button.set_style('');
+                }
                 entry.label.visible = active;
             }
             entry.label.set_opacity(active ? 255 : 0);
             x += buttonWidth + gap;
         }
+        this._applyAccentStyles();
     }
 
     _renderPanel(animate = false, direction = 1) {
         if (!this._pageViewport)
             return;
+
+        this._clearTimeout('_taskFocusSource');
 
         for (const outgoing of this._outgoingPageBodies) {
             outgoing.remove_all_transitions();
@@ -1141,6 +1721,19 @@ export default class PerdanaIslandExtension extends Extension {
         this._progressLine = null;
         this._progressFill = null;
         this._mediaEqualizer = null;
+        this._progressSeeking = false;
+        this._progressCanSeek = false;
+        this._lyricsStatusLabel = null;
+        this._lyricsViewport = null;
+        this._lyricsRail = null;
+        this._lyricsWaitLabel = null;
+        this._lyricsRenderedLines = null;
+        this._lyricsLineLabels = [];
+        this._lyricsLayoutWidth = 0;
+        this._lyricsLayoutHeight = 0;
+        this._lyricsPlaybackButton = null;
+        this._lyricsDisplayedIndex = -1;
+        this._lyricsDisplayGap = false;
         const previous = this._pageBody;
         const body = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
@@ -1150,6 +1743,8 @@ export default class PerdanaIslandExtension extends Extension {
         body.set_size(this._pageWidth(), this._bodyHeight());
         if (this._activePage === 'media')
             this._renderMediaPage(body);
+        else if (this._activePage === 'lyrics')
+            this._renderLyricsPage(body);
         else if (this._activePage === 'focus')
             this._renderFocusPage(body);
         else if (this._activePage === 'tasks')
@@ -1167,7 +1762,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._layoutPanel(this._content?.width || CONTENT_WIDTH);
         this._setEqualizerPlaying(
             this._mediaEqualizer,
-            Boolean(this._expanded && this._activePage === 'media' && this._isPlaying())
+            Boolean(this._expanded && ['media', 'lyrics'].includes(this._activePage) && this._isPlaying())
         );
         if (previous && previous !== body) {
             previous.remove_all_transitions();
@@ -1200,6 +1795,7 @@ export default class PerdanaIslandExtension extends Extension {
         }
         this._positionIsland();
         this._updateMediaProgress();
+        this._applyAccentStyles();
     }
 
 
@@ -1213,6 +1809,7 @@ export default class PerdanaIslandExtension extends Extension {
         const metadata = this._getMetadata(player.proxy);
         const artwork = new St.Widget({
             layout_manager: new Clutter.BinLayout(),
+            clip_to_allocation: true,
             style_class: 'perdana-island__album-art',
         });
         const artworkIcon = new St.Icon({
@@ -1244,55 +1841,8 @@ export default class PerdanaIslandExtension extends Extension {
         place(body, this._mediaPositionLabel, 0, 84, 38, 18);
         place(body, this._mediaDurationLabel, this._pageWidth() - 38, 84, 38, 18);
 
-        this._progressTrack = new St.Widget({
-            layout_manager: new Clutter.FixedLayout(),
-            reactive: true,
-            track_hover: true,
-            style_class: 'perdana-island__progress-hitarea',
-        });
-        this._progressLine = new St.Widget({
-            layout_manager: new Clutter.FixedLayout(),
-            style_class: 'perdana-island__progress-track',
-        });
-        this._progressFill = new St.Widget({style_class: 'perdana-island__progress-fill'});
-        this._progressLine.add_child(this._progressFill);
-        this._progressFill.set_position(0, 0);
-        this._progressFill.set_size(1, 4);
-        this._progressTrack.add_child(this._progressLine);
-        this._progressLine.set_position(0, 5);
         const progressWidth = this._pageWidth() - 96;
-        this._progressLine.set_size(progressWidth, 4);
-        this._progressTrack.connect('notify::allocation', () => {
-            this._progressLine.set_size(this._progressTrack.width, 4);
-            this._updateMediaProgress();
-        });
-        this._progressTrack.connect('button-press-event', (_actor, event) => {
-            const [pointerX] = event.get_coords();
-            const [trackX] = this._progressTrack.get_transformed_position();
-            const ratio = Math.max(0, Math.min(1, (pointerX - trackX) / Math.max(1, this._progressTrack.width)));
-            const current = this._getSelectedPlayer();
-            if (current) {
-                const currentMetadata = this._getMetadata(current.proxy);
-                if (currentMetadata.trackId && currentMetadata.length > 0) {
-                    current.proxy.call(
-                        'SetPosition',
-                        new GLib.Variant('(ox)', [currentMetadata.trackId, Math.round(currentMetadata.length * ratio)]),
-                        Gio.DBusCallFlags.NONE,
-                        3000,
-                        null,
-                        (_proxy, result) => {
-                            try {
-                                current.proxy.call_finish(result);
-                            } catch (_error) {
-                                this._updateMediaProgress();
-                            }
-                        }
-                    );
-                }
-            }
-            return Clutter.EVENT_STOP;
-        });
-        place(body, this._progressTrack, 48, 91, progressWidth, 14);
+        this._createProgressControl(body, 48, 91, progressWidth);
 
         const playback = this._getProperty(player.proxy, 'PlaybackStatus') || 'Paused';
         const isPlaying = playback === 'Playing';
@@ -1320,6 +1870,638 @@ export default class PerdanaIslandExtension extends Extension {
             'Next',
             this._canControl(player.proxy, 'CanGoNext')
         ), center + 18, 116, 32, 32);
+    }
+
+    _renderLyricsPage(body) {
+        const player = this._getSelectedPlayer();
+        const width = this._pageWidth();
+        const bodyHeight = this._bodyHeight();
+        if (!player) {
+            place(body, makeLabel('Start playback to find lyrics', 'perdana-island__empty-media'),
+                0, Math.round((bodyHeight - 24) / 2), width, 24);
+            return;
+        }
+
+        const metadata = this._getMetadata(player.proxy);
+        const leftWidth = Math.min(250, Math.max(210, Math.floor(width * 0.33)));
+        const lyricsX = leftWidth + 34;
+        const lyricsWidth = width - lyricsX;
+        const artwork = new St.Widget({
+            layout_manager: new Clutter.BinLayout(),
+            clip_to_allocation: true,
+            style_class: 'perdana-island__album-art perdana-island__lyrics-art',
+        });
+        const artworkIcon = new St.Icon({
+            icon_name: 'audio-x-generic-symbolic',
+            icon_size: 80,
+            style_class: 'perdana-island__album-art-icon',
+        });
+        const art = this._localArtIcon(metadata.artUrl);
+        if (art)
+            artworkIcon.gicon = art;
+        artwork.add_child(artworkIcon);
+        place(body, artwork, 0, 16, 80, 80);
+
+        const title = makeLabel(metadata.title || player.name.replace(MPRIS_PREFIX, ''), 'perdana-island__track-title');
+        title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        place(body, title, 96, 30, leftWidth - 100, 25);
+        const artist = makeLabel(metadata.artist || '', 'perdana-island__artist');
+        artist.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        place(body, artist, 96, 57, leftWidth - 100, 20);
+
+        const playback = this._getProperty(player.proxy, 'PlaybackStatus') || 'Paused';
+        const isPlaying = playback === 'Playing';
+        const center = Math.round(leftWidth / 2);
+        place(body, this._mediaButton('media-skip-backward-symbolic', 'Previous track',
+            player.proxy, 'Previous', this._canControl(player.proxy, 'CanGoPrevious')),
+            center - 71, 112, 32, 32);
+        this._lyricsPlaybackButton = this._mediaButton(
+            isPlaying ? 'media-playback-pause-symbolic' : 'media-playback-start-symbolic',
+            isPlaying ? 'Pause' : 'Play', player.proxy, isPlaying ? 'Pause' : 'Play',
+            this._canControl(player.proxy, isPlaying ? 'CanPause' : 'CanPlay'), true);
+        place(body, this._lyricsPlaybackButton, center - 34, 110, 36, 36);
+        place(body, this._mediaButton('media-skip-forward-symbolic', 'Next track',
+            player.proxy, 'Next', this._canControl(player.proxy, 'CanGoNext')),
+            center + 7, 112, 32, 32);
+
+        this._mediaPositionLabel = makeLabel('0:00', 'perdana-island__track-time');
+        this._mediaDurationLabel = makeLabel('0:00', 'perdana-island__track-time');
+        const progressY = bodyHeight - 32;
+        place(body, this._mediaPositionLabel, 0, progressY, 38, 18);
+        place(body, this._mediaDurationLabel, width - 38, progressY, 38, 18);
+        this._createProgressControl(body, 48, progressY + 4, width - 96);
+
+        const viewportHeight = bodyHeight - 58;
+        this._lyricsViewport = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            clip_to_allocation: true,
+            style_class: 'perdana-island__lyrics-viewport',
+        });
+        place(body, this._lyricsViewport, lyricsX, 8, lyricsWidth, viewportHeight);
+        this._lyricsRail = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            style_class: 'perdana-island__lyrics-rail',
+        });
+        this._lyricsViewport.add_child(this._lyricsRail);
+        this._lyricsWaitLabel = makeLabel('···', 'perdana-island__lyrics-wait');
+        place(this._lyricsViewport, this._lyricsWaitLabel,
+            0, Math.max(0, (viewportHeight - 22) / 2), lyricsWidth, 22);
+        this._lyricsStatusLabel = makeLabel('', 'perdana-island__lyrics-empty');
+        place(this._lyricsViewport, this._lyricsStatusLabel, 0, 0, lyricsWidth, viewportHeight);
+
+        this._ensureLyrics(metadata, player.name);
+        this._updateLyricsLines(this._positionForPlayer(player));
+    }
+
+    _updateLyricsPlaybackButton() {
+        const player = this._getSelectedPlayer();
+        if (!player || !this._lyricsPlaybackButton)
+            return;
+        const isPlaying = this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing';
+        this._lyricsPlaybackButton.set_child(new St.Icon({
+            icon_name: isPlaying ? 'media-playback-pause-symbolic' : 'media-playback-start-symbolic',
+            style_class: 'perdana-island__icon',
+        }));
+        this._lyricsPlaybackButton.accessible_name = isPlaying ? 'Pause' : 'Play';
+        this._lyricsPlaybackButton.reactive = this._canControl(player.proxy, isPlaying ? 'CanPause' : 'CanPlay');
+        this._lyricsPlaybackButton.can_focus = this._lyricsPlaybackButton.reactive;
+    }
+
+    _cleanLyricsMetadata(metadata, playerName) {
+        const rawTitle = (metadata.title || '').trim();
+        let title = rawTitle;
+        let artist = (metadata.artist || '').trim();
+        const isYouTube = /youtube/i.test(playerName || '') || /\byoutube(?: music)?\s*$/i.test(rawTitle);
+
+        title = title
+            .replace(/\s*[|–—-]\s*(?:youtube(?: music)?|official (?:music )?(?:audio|video)|lyrics? video)\s*$/i, '')
+            .replace(/\s*\[(?:official (?:music )?(?:audio|video)|lyrics?|subtitles?|4k|hd|visuali[sz]er)[^\]]*\]\s*/gi, ' ')
+            .replace(/\s*\((?:official (?:music )?(?:audio|video)|lyrics?|subtitles?|4k|hd|visuali[sz]er)[^)]*\)\s*/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        const artistTitlePrefix = title.match(/^(.+?)\s+[–—-]\s+/);
+        if (artist && artistTitlePrefix?.[1].toLowerCase() === artist.toLowerCase())
+            title = title.slice(artistTitlePrefix[0].length).trim();
+
+        if (isYouTube && !artist) {
+            const parts = title.split(/\s+[–—-]\s+/);
+            if (parts.length > 1) {
+                artist = parts.pop().trim();
+                title = parts.join(' - ').trim();
+            }
+        }
+
+        return {title, artist};
+    }
+
+    _parseLyricsText(text, source) {
+        const lines = [];
+        let synced = false;
+        for (const rawLine of String(text || '').split(/\r?\n/)) {
+            const stamps = [...rawLine.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
+            const lyricText = rawLine.replace(/\[[^\]]+\]/g, '').trim();
+            if (stamps.length) {
+                synced = true;
+                for (const stamp of stamps) {
+                    const fraction = stamp[3] || '';
+                    const seconds = Number(stamp[1]) * 60 + Number(stamp[2])
+                        + (fraction ? Number(`0.${fraction}`) : 0);
+                    if (lyricText)
+                        lines.push({time: seconds, text: lyricText});
+                }
+            } else if (lyricText) {
+                lines.push({time: null, text: lyricText});
+            }
+        }
+        if (synced) {
+            const timedLines = lines.filter(line => line.time !== null);
+            timedLines.sort((a, b) => a.time - b.time);
+            return {lines: timedLines, synced: timedLines.length > 0, source};
+        }
+        return {lines, synced: false, source};
+    }
+
+    _ensureLyrics(metadata, playerName) {
+        const track = this._cleanLyricsMetadata(metadata, playerName);
+        if (!track.title) {
+            this._lyricsCurrentTrackKey = null;
+            this._lyricsRequestKey = null;
+            this._lyricsData = null;
+            this._lyricsStatus = 'Track information is unavailable';
+            return;
+        }
+
+        const key = [playerName, track.title, track.artist, metadata.album || '', metadata.length || 0]
+            .join('\u0000').toLowerCase();
+        if (key === this._lyricsCurrentTrackKey) {
+            if (!this._lyricsRetryAt || Date.now() < this._lyricsRetryAt)
+                return;
+            this._lyricsRetryAt = 0;
+        }
+
+        this._lyricsCancellable?.cancel();
+        this._lyricsCancellable = null;
+        this._clearTimeout('_lyricsFallbackSource');
+        this._lyricsCurrentTrackKey = key;
+        this._lyricsRequestKey = null;
+        this._lyricsData = null;
+        this._lyricsDisplayedIndex = -1;
+        this._lyricsRetryAt = 0;
+
+        if (metadata.lyrics?.trim()) {
+            const playerLyrics = this._parseLyricsText(metadata.lyrics, 'Player');
+            if (playerLyrics.synced && playerLyrics.lines.length) {
+                this._lyricsData = playerLyrics;
+                this._lyricsStatus = '';
+                return;
+            }
+        }
+
+        if (this._lyricsCache.has(key)) {
+            this._lyricsData = this._lyricsCache.get(key);
+            this._lyricsStatus = this._lyricsData?.lines?.length
+                ? ''
+                : (this._lyricsData?.instrumental ? 'Instrumental track' : 'No lyrics found');
+            return;
+        }
+
+        if (Date.now() < this._lyricsRetryAt) {
+            this._lyricsStatus = 'Lyrics service is busy; try again shortly';
+            return;
+        }
+
+        this._lyricsStatus = 'Finding lyrics…';
+        this._lyricsRequestKey = key;
+        this._lookupLyrics(track, metadata, key);
+    }
+
+    _lookupLyrics(track, metadata, key) {
+        if (!this._lyricsSession)
+            this._lyricsSession = new Soup.Session();
+        this._lyricsSession.set_user_agent('Perdana Island/45 (https://github.com/txtperdana/perdana.island)');
+        this._lyricsCancellable = new Gio.Cancellable();
+
+        const params = {track_name: track.title};
+        if (track.artist)
+            params.artist_name = track.artist;
+        if (metadata.album)
+            params.album_name = metadata.album;
+        const duration = Math.round((metadata.length || 0) / MICROSECONDS_PER_SECOND);
+        if (duration > 0 && duration <= 3600)
+            params.duration = String(duration);
+        const encodeQuery = values => Object.entries(values)
+            .map(([name, value]) => `${encodeURIComponent(name)}=${encodeURIComponent(value)}`)
+            .join('&');
+        const directUrl = `https://lrclib.net/api/get?${encodeQuery(params)}`;
+
+        let plainFallback = null;
+        const current = () => this._enabled && this._lyricsRequestKey === key;
+        const complete = data => {
+            if (!current())
+                return;
+            this._lyricsData = data;
+            this._lyricsStatus = data?.lines?.length
+                ? ''
+                : (data?.instrumental ? 'Instrumental track' : 'No lyrics found');
+            this._lyricsCache.set(key, data);
+            if (this._lyricsCache.size > 30)
+                this._lyricsCache.delete(this._lyricsCache.keys().next().value);
+            this._lyricsCancellable = null;
+            this._lyricsRequestKey = key;
+            if (this._expanded && this._activePage === 'lyrics')
+                this._renderPanel();
+        };
+        const failed = (message, status) => {
+            if (!current())
+                return;
+            if (status === Soup.Status.TOO_MANY_REQUESTS) {
+                const retryHeader = message?.get_response_headers()?.get_one('Retry-After');
+                const retrySeconds = Number(retryHeader);
+                const retryDate = retryHeader ? Date.parse(retryHeader) : NaN;
+                const retryAfter = Number.isFinite(retrySeconds)
+                    ? retrySeconds
+                    : (Number.isFinite(retryDate) ? Math.ceil((retryDate - Date.now()) / 1000) : 10);
+                this._lyricsBackoffUntil = Date.now() + Math.max(1, retryAfter) * 1000;
+                this._lyricsRetryAt = this._lyricsBackoffUntil;
+                this._lyricsStatus = 'Lyrics service is busy; try again shortly';
+            } else {
+                this._lyricsRetryAt = Date.now() + 30000;
+                this._lyricsStatus = 'Could not load lyrics';
+            }
+            this._lyricsCancellable = null;
+            this._lyricsRequestKey = null;
+            const selected = this._getSelectedPlayer();
+            if (this._expanded && this._activePage === 'lyrics')
+                this._updateLyricsLines(selected ? this._positionForPlayer(selected) : 0);
+        };
+        const parseResult = json => {
+            if (!json || typeof json !== 'object')
+                return null;
+            const synced = this._parseLyricsText(json.syncedLyrics || '', 'LRCLIB');
+            if (synced.lines.length)
+                return synced;
+            const plain = this._parseLyricsText(json.plainLyrics || '', 'LRCLIB');
+            if (plain.lines.length)
+                return plain;
+            return json.instrumental ? {lines: [], synced: false, source: 'LRCLIB', instrumental: true} : null;
+        };
+        const searchFallback = () => {
+            if (!current())
+                return;
+            this._clearTimeout('_lyricsFallbackSource');
+            this._lyricsFallbackSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 350, () => {
+                this._lyricsFallbackSource = 0;
+                if (!current())
+                    return GLib.SOURCE_REMOVE;
+                const search = {track_name: track.title};
+                if (track.artist)
+                    search.artist_name = track.artist;
+                this._sendLyricsRequest(`https://lrclib.net/api/search?${encodeQuery(search)}`, key, (error, status, body, message) => {
+                    if (!current())
+                        return;
+                    if (error || status < 200 || status >= 300) {
+                        failed(message, status);
+                        return;
+                    }
+                    let records;
+                    try {
+                        records = JSON.parse(body);
+                    } catch (_error) {
+                        failed(message, status);
+                        return;
+                    }
+                    const normalizedTitle = track.title.toLowerCase();
+                    const normalizedArtist = track.artist.toLowerCase();
+                    const ranked = (Array.isArray(records) ? records : [])
+                        .map(record => {
+                            let score = 0;
+                            const resultTitle = String(record.trackName || '').toLowerCase();
+                            const resultArtist = String(record.artistName || '').toLowerCase();
+                            if (resultTitle === normalizedTitle) score += 4;
+                            else if (resultTitle.includes(normalizedTitle) || normalizedTitle.includes(resultTitle)) score += 2;
+                            if (normalizedArtist && resultArtist === normalizedArtist) score += 4;
+                            else if (normalizedArtist && resultArtist.includes(normalizedArtist)) score += 2;
+                            if (metadata.album && String(record.albumName || '').toLowerCase() === metadata.album.toLowerCase()) score += 1;
+                            return {record, score};
+                        })
+                        .sort((a, b) => b.score - a.score);
+                    const matching = ranked.filter(item => item.score >= 2);
+                    const candidates = matching.map(item => parseResult(item.record));
+                    const result = candidates.find(candidate => candidate?.synced)
+                        || candidates.find(Boolean);
+                    complete(result || plainFallback || {lines: [], synced: false, source: 'LRCLIB'});
+                });
+                return GLib.SOURCE_REMOVE;
+            });
+        };
+
+        if (!track.artist) {
+            searchFallback();
+            return;
+        }
+        this._sendLyricsRequest(directUrl, key, (error, status, body, message) => {
+            if (!current())
+                return;
+            if (!error && status >= 200 && status < 300) {
+                try {
+                    const result = parseResult(JSON.parse(body));
+                    if (result?.synced || result?.instrumental) {
+                        complete(result);
+                        return;
+                    }
+                    plainFallback = result;
+                } catch (_error) {
+                    // Try search below if the direct response is missing or malformed.
+                }
+            } else if (status === Soup.Status.TOO_MANY_REQUESTS) {
+                failed(message, status);
+                return;
+            }
+            searchFallback();
+        });
+    }
+
+    _sendLyricsRequest(uri, key, callback) {
+        if (!this._lyricsSession || !this._lyricsCancellable || this._lyricsRequestKey !== key)
+            return;
+        const now = Date.now();
+        const spacingDelay = Math.max(0, 350 - (now - this._lyricsLastRequestAt));
+        const backoffDelay = Math.max(0, this._lyricsBackoffUntil - now);
+        const delay = Math.max(spacingDelay, backoffDelay);
+        if (delay > 0) {
+            this._lyricsFallbackSource && GLib.source_remove(this._lyricsFallbackSource);
+            this._lyricsFallbackSource = 0;
+            this._lyricsFallbackSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
+                this._lyricsFallbackSource = 0;
+                this._sendLyricsRequest(uri, key, callback);
+                return GLib.SOURCE_REMOVE;
+            });
+            return;
+        }
+        const message = Soup.Message.new('GET', uri);
+        if (!message) {
+            callback(new Error('Invalid LRCLIB request'), 0, '', null);
+            return;
+        }
+        this._lyricsLastRequestAt = now;
+        this._lyricsSession.send_and_read_async(
+            message,
+            GLib.PRIORITY_DEFAULT,
+            this._lyricsCancellable,
+            (session, result) => {
+                try {
+                    const bytes = session.send_and_read_finish(result);
+                    const body = new TextDecoder().decode(bytes.get_data());
+                    callback(null, message.get_status(), body, message);
+                } catch (error) {
+                    callback(error, message.get_status(), '', message);
+                }
+            }
+        );
+    }
+
+    _updateLyricsLines(position) {
+        if (!this._lyricsStatusLabel || !this._lyricsRail || !this._lyricsViewport)
+            return;
+        const data = this._lyricsData;
+        const lines = data?.lines || [];
+        if (lines.length && !data.synced) {
+            this._lyricsStatusLabel.text = 'Timed lyrics unavailable for this track';
+            this._lyricsStatusLabel.visible = true;
+            this._lyricsRail.visible = false;
+            this._lyricsWaitLabel.visible = false;
+            return;
+        }
+        if (!lines.length) {
+            this._lyricsStatusLabel.text = this._lyricsStatus || 'No lyrics found';
+            this._lyricsStatusLabel.visible = true;
+            this._lyricsRail.visible = false;
+            this._lyricsWaitLabel.visible = false;
+            return;
+        }
+
+        this._lyricsStatusLabel.visible = false;
+        const width = this._lyricsViewport.width;
+        const viewportHeight = this._lyricsViewport.height || this._bodyHeight() - 16;
+        const linesChanged = this._lyricsRenderedLines !== lines;
+
+        if (linesChanged) {
+            this._lyricsRail.remove_all_children();
+            this._lyricsLineLabels = lines.map(line => {
+                const label = makeLabel(line.text, 'perdana-island__lyrics-line perdana-island__lyrics-line--far');
+                label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+                label.clutter_text.line_wrap = true;
+                label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+                label.opacity = 0;
+                label.set_position(0, 0);
+                label.set_size(width, 24);
+                this._lyricsRail.add_child(label);
+                return label;
+            });
+            this._lyricsRail.set_size(width, 0);
+            this._lyricsRenderedLines = lines;
+        }
+
+        let activeIndex = 0;
+        let displayGap = false;
+        if (data.synced) {
+            activeIndex = -1;
+            for (let index = 0; index < lines.length; index++) {
+                if (lines[index].time <= position)
+                    activeIndex = index;
+                else
+                    break;
+            }
+            // LRC timestamps mark lyric starts, not when the current line ends.
+            if (activeIndex < 0)
+                displayGap = true;
+        }
+        const layoutChanged = linesChanged
+            || width !== this._lyricsLayoutWidth
+            || viewportHeight !== this._lyricsLayoutHeight;
+        const changed = activeIndex !== this._lyricsDisplayedIndex
+            || displayGap !== this._lyricsDisplayGap
+            || layoutChanged;
+        this._lyricsDisplayedIndex = activeIndex;
+        this._lyricsDisplayGap = displayGap;
+        if (!changed)
+            return;
+
+        this._lyricsRail.visible = activeIndex >= 0;
+        this._lyricsWaitLabel.visible = displayGap;
+        this._lyricsLayoutWidth = width;
+        this._lyricsLayoutHeight = viewportHeight;
+        const offsets = [];
+        const heights = [];
+        let railHeight = 0;
+        for (let index = 0; index < this._lyricsLineLabels.length; index++) {
+            const label = this._lyricsLineLabels[index];
+            const distance = activeIndex < 0 ? Infinity : Math.abs(index - activeIndex);
+            const style = distance === 0
+                ? 'perdana-island__lyrics-line--current'
+                : (distance === 1 ? 'perdana-island__lyrics-line--near' : 'perdana-island__lyrics-line--far');
+            for (const candidate of [
+                'perdana-island__lyrics-line--current',
+                'perdana-island__lyrics-line--near',
+                'perdana-island__lyrics-line--far',
+            ]) {
+                if (candidate !== style)
+                    label.remove_style_class_name(candidate);
+            }
+            label.add_style_class_name(style);
+            label.set_width(width);
+            const [, naturalHeight] = label.get_preferred_height(width);
+            const height = Math.max(24, Math.ceil(naturalHeight));
+            offsets[index] = railHeight;
+            heights[index] = height;
+            label.set_position(0, railHeight);
+            label.set_size(width, height);
+            railHeight += height + 5;
+        }
+        if (this._lyricsLineLabels.length)
+            railHeight -= 5;
+        this._lyricsRail.set_size(width, railHeight);
+        const targetY = activeIndex < 0
+            ? (viewportHeight - 24) / 2
+            : viewportHeight / 2 - offsets[activeIndex] - heights[activeIndex] / 2;
+        const duration = this._reducedMotion ? 160 : 560;
+        if (this._reducedMotion) {
+            const rail = this._lyricsRail;
+            rail.remove_all_transitions();
+            rail.ease({
+                opacity: 0,
+                duration: 80,
+                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                onComplete: () => {
+                    if (this._lyricsRail !== rail)
+                        return;
+                    rail.translation_y = targetY;
+                    rail.ease({
+                        opacity: displayGap ? 112 : 255,
+                        duration: 100,
+                        mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                    });
+                },
+            });
+        } else {
+            this._lyricsRail.ease({
+                translation_y: targetY,
+                opacity: displayGap ? 112 : 255,
+                duration,
+                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+            });
+        }
+        this._lyricsWaitLabel.ease({
+            opacity: displayGap ? 220 : 0,
+            duration: this._reducedMotion ? 160 : 260,
+            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+        });
+        for (let index = 0; index < this._lyricsLineLabels.length; index++) {
+            const label = this._lyricsLineLabels[index];
+            const distance = activeIndex < 0 ? Infinity : Math.abs(index - activeIndex);
+            label.ease({
+                opacity: distance === 0 ? 255 : (distance === 1 ? 176 : 74),
+                duration: this._reducedMotion ? 160 : 320,
+                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+            });
+        }
+    }
+
+    _createProgressControl(body, x, y, width) {
+        this._progressTrack = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            reactive: true,
+            track_hover: true,
+            can_focus: true,
+            style_class: 'perdana-island__progress-hitarea',
+            accessible_name: 'Seek through track',
+        });
+        this._progressLine = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            style_class: 'perdana-island__progress-track',
+        });
+        this._progressFill = new St.Widget({style_class: 'perdana-island__progress-fill'});
+        this._progressLine.add_child(this._progressFill);
+        this._progressFill.set_position(0, 0);
+        this._progressFill.set_size(1, 4);
+        this._progressTrack.add_child(this._progressLine);
+        this._progressLine.set_position(0, 5);
+        this._progressLine.set_size(width, 4);
+        this._progressTrack.connect('notify::allocation', () => {
+            this._progressLine.set_size(this._progressTrack.width, 4);
+            this._updateMediaProgress();
+        });
+        this._progressTrack.connect('button-press-event', (_actor, event) => {
+            if (!this._progressCanSeek)
+                return Clutter.EVENT_PROPAGATE;
+            this._progressSeeking = true;
+            this._progressSeekRatio = this._progressRatioFromEvent(event);
+            this._updateMediaProgress();
+            return Clutter.EVENT_STOP;
+        });
+        this._progressTrack.connect('motion-event', (_actor, event) => {
+            if (!this._progressSeeking)
+                return Clutter.EVENT_PROPAGATE;
+            this._progressSeekRatio = this._progressRatioFromEvent(event);
+            this._updateMediaProgress();
+            return Clutter.EVENT_STOP;
+        });
+        this._progressTrack.connect('button-release-event', (_actor, event) => {
+            if (!this._progressSeeking)
+                return Clutter.EVENT_PROPAGATE;
+            this._progressSeekRatio = this._progressRatioFromEvent(event);
+            this._commitProgressSeek();
+            return Clutter.EVENT_STOP;
+        });
+        place(body, this._progressTrack, x, y, width, 14);
+    }
+
+    _progressRatioFromEvent(event) {
+        const [pointerX] = event.get_coords();
+        const [trackX] = this._progressTrack.get_transformed_position();
+        return Math.max(0, Math.min(1,
+            (pointerX - trackX) / Math.max(1, this._progressTrack.width)));
+    }
+
+    _commitProgressSeek() {
+        const ratio = this._progressSeekRatio;
+        this._progressSeeking = false;
+        const player = this._getSelectedPlayer();
+        if (!player) {
+            this._updateMediaProgress();
+            return;
+        }
+        const metadata = this._getMetadata(player.proxy);
+        if (!metadata.trackId || metadata.length <= 0) {
+            this._updateMediaProgress();
+            return;
+        }
+        const position = Math.round(metadata.length * ratio);
+        const entry = this._players.get(player.name);
+        if (entry) {
+            entry.positionBase = position;
+            entry.positionStamp = GLib.get_monotonic_time();
+        }
+        this._updateMediaProgress();
+        player.proxy.call(
+            'SetPosition',
+            new GLib.Variant('(ox)', [metadata.trackId, position]),
+            Gio.DBusCallFlags.NONE,
+            3000,
+            null,
+            (proxy, result) => {
+                try {
+                    proxy.call_finish(result);
+                } catch (_error) {
+                    if (entry) {
+                        entry.positionBase = Number(this._getProperty(player.proxy, 'Position')) || 0;
+                        entry.positionStamp = GLib.get_monotonic_time();
+                    }
+                    this._updateMediaProgress();
+                }
+            }
+        );
     }
 
     _renderEmptyMedia(body) {
@@ -1357,13 +2539,15 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _renderFocusPage(body) {
+        const controlsX = 184;
+        const controlsWidth = this._pageWidth() - controlsX - 8;
         const dial = new St.Widget({
             layout_manager: new Clutter.BinLayout(),
             style_class: 'perdana-island__focus-dial',
         });
         this._focusRing = new St.DrawingArea({style_class: 'perdana-island__focus-ring'});
         this._focusRing.connect('repaint', area => this._paintFocusRing(area));
-        this._focusRing.set_size(96, 96);
+        this._focusRing.set_size(124, 124);
         dial.add_child(this._focusRing);
 
         const remaining = this._focusSource
@@ -1383,25 +2567,26 @@ export default class PerdanaIslandExtension extends Extension {
         timer.add_child(this._focusLabel);
         timer.add_child(this._focusStatusLabel);
         dial.add_child(timer);
-        place(body, dial, 0, 35, 96, 96);
+        place(body, dial, 22, 39, 124, 124);
 
-        const modes = new St.BoxLayout({style_class: 'perdana-island__focus-segments'});
         const modeOptions = [
             {label: 'Focus', duration: DEFAULT_FOCUS_SECONDS, mode: 'focus'},
             {label: 'Short', duration: DEFAULT_BREAK_SECONDS, mode: 'short'},
             {label: 'Long', duration: 15 * 60, mode: 'long'},
             {label: 'Custom', duration: this._focusCustomDuration, mode: 'custom'},
         ];
-        for (const option of modeOptions) {
+        const modeGap = 8;
+        const modeWidth = (controlsWidth - modeGap * 3) / 4;
+        modeOptions.forEach((option, index) => {
             const active = this._focusMode === option.mode;
-            modes.add_child(makeTextButton(
+            const button = makeTextButton(
                 option.label,
                 option.label + ' timer',
                 () => this._setFocusDuration(option.duration, option.mode),
                 'perdana-button--segment' + (active ? ' perdana-button--segment-active' : '')
-            ));
-        }
-        place(body, modes, 120, 28, 278, 30);
+            );
+            place(body, button, controlsX + index * (modeWidth + modeGap), 18, modeWidth, 34);
+        });
 
         this._focusCustomEntry = new St.Entry({
             hint_text: '30',
@@ -1419,7 +2604,10 @@ export default class PerdanaIslandExtension extends Extension {
             this._focusCustomEditing = false;
         });
         this._focusCustomEntry.clutter_text.connect('activate', () => this._applyCustomFocusDuration());
-        place(body, this._focusCustomEntry, 120, 65, 68, 30);
+        const entryWidth = Math.round(controlsWidth * 0.25);
+        const unitWidth = Math.round(controlsWidth * 0.37);
+        const applyWidth = controlsWidth - entryWidth - unitWidth - 20;
+        place(body, this._focusCustomEntry, controlsX, 64, entryWidth, 34);
         const unitContents = new St.BoxLayout({style_class: 'perdana-island__focus-unit-content'});
         this._focusCustomUnitLabel = makeLabel(
             this._focusCustomUnit,
@@ -1443,15 +2631,14 @@ export default class PerdanaIslandExtension extends Extension {
             this._focusCustomUnit = this._focusCustomUnit === 'seconds' ? 'minutes' : 'seconds';
             this._focusCustomUnitLabel.text = this._focusCustomUnit;
         });
-        place(body, this._focusCustomUnitButton, 195, 65, 90, 30);
+        place(body, this._focusCustomUnitButton, controlsX + entryWidth + 10, 64, unitWidth, 34);
         place(body, makeTextButton(
             'Apply',
             'Apply custom focus duration',
             () => this._applyCustomFocusDuration(),
             'perdana-button--focus-apply'
-        ), 292, 65, 58, 30);
+        ), controlsX + entryWidth + unitWidth + 20, 64, applyWidth, 34);
 
-        const controls = new St.BoxLayout({style_class: 'perdana-island__focus-controls'});
         this._focusToggleButton = makeActionButton(
             this._focusSource ? 'media-playback-pause-symbolic' : 'media-playback-start-symbolic',
             this._focusSource ? 'Pause' : this._focusWasStarted ? 'Resume' : 'Start',
@@ -1459,15 +2646,17 @@ export default class PerdanaIslandExtension extends Extension {
             () => this._toggleFocus(),
             'perdana-action--primary'
         );
-        controls.add_child(this._focusToggleButton);
-        controls.add_child(makeActionButton(
+        const actionGap = 10;
+        const actionWidth = (controlsWidth - 2 * actionGap) / 3;
+        place(body, this._focusToggleButton, controlsX, 112, actionWidth, 36);
+        place(body, makeActionButton(
             'view-refresh-symbolic',
             'Reset',
             'Reset timer',
             () => this._resetFocus(),
             'perdana-action--neutral'
-        ));
-        controls.add_child(makeActionButton(
+        ), controlsX + actionWidth + actionGap, 112, actionWidth, 36);
+        place(body, makeActionButton(
             'media-skip-forward-symbolic',
             'Skip',
             'Skip to the next timer phase',
@@ -1478,13 +2667,12 @@ export default class PerdanaIslandExtension extends Extension {
                 this._focusMode === 'focus' || this._focusMode === 'custom' ? 'short' : 'focus'
             ),
             'perdana-action--neutral'
-        ));
-        place(body, controls, 120, 103, 278, 34);
+        ), controlsX + 2 * (actionWidth + actionGap), 112, actionWidth, 36);
         this._focusSessionsLabel = makeLabel(
             this._focusSessionsToday + ' focus sessions today',
             'perdana-island__focus-stats-label'
         );
-        place(body, this._focusSessionsLabel, 120, 144, 278, 20);
+        place(body, this._focusSessionsLabel, controlsX, 166, controlsWidth, 20);
         this._focusRing.queue_repaint();
     }
 
@@ -1514,7 +2702,8 @@ export default class PerdanaIslandExtension extends Extension {
                     this._renderPanel();
             });
             place(body, entry, 0, 116, 178, 30);
-            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._taskFocusSource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._taskFocusSource = 0;
                 if (entry.get_stage())
                     entry.grab_key_focus();
                 return GLib.SOURCE_REMOVE;
@@ -1585,6 +2774,10 @@ export default class PerdanaIslandExtension extends Extension {
             this._renderClipboardPage(body);
         else if (key === 'today')
             this._renderTodayPage(body);
+        else if (key === 'notifications')
+            this._renderNotificationsPage(body);
+        else if (key === 'settings')
+            this._renderSettingsPage(body);
     }
 
     _makeProgressRing(size, progress, color) {
@@ -1620,46 +2813,212 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _renderShelfPage(body) {
-        const drop = new St.Widget({
+        const cardWidth = this._pageWidth();
+        const cardHeight = this._bodyHeight() - 8;
+        const card = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
             style_class: 'perdana-island__shelf-card',
         });
-        const dropTitle = makeLabel(
-            this._shelfItems.length ? this._shelfItems.length + ' files' : 'Shelf',
+        const view = this._preferences.shelfView;
+        const titleText = this._shelfItems.length > MAX_SHELF_ITEMS
+            ? `${MAX_SHELF_ITEMS} of ${this._shelfItems.length} files`
+            : `${this._shelfItems.length} ${this._shelfItems.length === 1 ? 'file' : 'files'}`;
+        const shelfTitle = makeLabel(
+            this._shelfNotice || (this._shelfItems.length ? titleText : 'Shelf'),
             'perdana-island__shelf-title'
         );
-        place(drop, dropTitle, 12, 12, 230, 22);
-        const addButton = makeTextButton('Add files', 'Add files to Shelf', () => this._chooseShelfFiles(), 'perdana-button--segment');
-        place(drop, addButton, 286, 8, 102, 30);
-        const folderButton = makeIconButton('folder-open-symbolic', 'Open Shelf folder', () => this._openShelfDirectory(), 'perdana-button--shelf-folder');
-        place(drop, folderButton, 252, 8, 30, 30);
-        const visibleFiles = this._shelfItems.slice(0, 3);
-        visibleFiles.forEach((file, index) => {
-            const chip = makeTextButton(
-                file.name,
-                'Open ' + file.name,
-                () => this._openShelfFile(file),
-                'perdana-button--file'
-            );
-            place(drop, chip, 10, 48 + index * 27, 384, 24);
+        place(card, shelfTitle, 12, 12, 130, 22);
+
+        const addWidth = 86;
+        const folderWidth = 30;
+        const viewWidth = 104;
+        const buttonGap = 6;
+        const addX = cardWidth - 10 - addWidth;
+        const folderX = addX - buttonGap - folderWidth;
+        const viewX = folderX - buttonGap - viewWidth;
+        const viewGroup = new St.BoxLayout({
+            style_class: 'perdana-island__shelf-view-toggle',
+            y_align: Clutter.ActorAlign.CENTER,
         });
-        if (!visibleFiles.length)
-            place(drop, makeLabel('Open the Shelf folder, then drop files there', 'perdana-island__muted'), 12, 52, 370, 24);
-        place(body, drop, 0, 14, this._pageWidth(), 134);
+        for (const [key, label, iconName, width] of [
+            ['grid', 'Grid', 'view-grid-symbolic', 52],
+            ['list', 'List', 'view-list-symbolic', 48],
+        ]) {
+            const contents = new St.BoxLayout({
+                style_class: 'perdana-island__shelf-view-content',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            contents.add_child(new St.Icon({
+                icon_name: iconName,
+                style_class: 'perdana-island__shelf-view-icon',
+            }));
+            contents.add_child(makeLabel(label, 'perdana-island__shelf-view-label'));
+            const selected = view === key;
+            const button = new St.Button({
+                child: contents,
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: `perdana-button perdana-button--segment${selected ? ' perdana-button--segment-active' : ''}`,
+                accessible_name: `${label} view${selected ? ', selected' : ''}`,
+            });
+            button.set_size(width, 28);
+            button.connect('clicked', () => this._setPreference('shelfView', key));
+            viewGroup.add_child(button);
+        }
+        place(card, viewGroup, viewX, 8, viewWidth, 30);
+
+        const folderButton = makeIconButton(
+            'folder-open-symbolic',
+            'Open Shelf folder',
+            () => this._openShelfDirectory(),
+            'perdana-button--shelf-folder'
+        );
+        place(card, folderButton, folderX, 8, folderWidth, 30);
+
+        const atLimit = this._shelfItems.length >= MAX_SHELF_ITEMS;
+        const addButton = makeTextButton(
+            'Add files',
+            atLimit ? 'Shelf limit reached, 10 files maximum' : 'Add files to Shelf',
+            () => this._chooseShelfFiles(),
+            'perdana-button--segment'
+        );
+        addButton.reactive = !atLimit;
+        addButton.can_focus = !atLimit;
+        addButton.opacity = atLimit ? 150 : 255;
+        place(card, addButton, addX, 8, addWidth, 30);
+
+        const visibleFiles = this._shelfItems.slice(0, MAX_SHELF_ITEMS);
+        if (!visibleFiles.length) {
+            place(card, makeLabel(
+                'Open the Shelf folder, then add files here',
+                'perdana-island__muted'
+            ), 12, 56, cardWidth - 24, 24);
+        } else {
+            const scroll = new St.ScrollView({
+                overlay_scrollbars: true,
+                style_class: 'perdana-island__shelf-scroll',
+            });
+            scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+            const content = new St.BoxLayout({
+                vertical: true,
+                style_class: `perdana-island__shelf-content--${view}`,
+            });
+            const itemHeight = view === 'grid' ? 96 : 34;
+            const innerWidth = cardWidth - 34;
+            if (view === 'grid') {
+                const columns = 3;
+                const columnGap = 8;
+                const cellWidth = Math.floor((innerWidth - columnGap * (columns - 1)) / columns);
+                for (let start = 0; start < visibleFiles.length; start += columns) {
+                    const row = new St.BoxLayout({
+                        style_class: 'perdana-island__shelf-grid-row',
+                    });
+                    row.set_size(innerWidth, itemHeight);
+                    visibleFiles.slice(start, start + columns).forEach(file => {
+                        row.add_child(this._createShelfFileButton(file, view, cellWidth, itemHeight));
+                    });
+                    content.add_child(row);
+                }
+                content.set_size(innerWidth,
+                    Math.ceil(visibleFiles.length / columns) * itemHeight
+                    + (Math.ceil(visibleFiles.length / columns) - 1) * 8);
+            } else {
+                visibleFiles.forEach(file => {
+                    content.add_child(this._createShelfFileButton(file, view, innerWidth, itemHeight));
+                });
+                content.set_size(innerWidth, visibleFiles.length * itemHeight + (visibleFiles.length - 1) * 4);
+            }
+            scroll.add_child(content);
+            place(card, scroll, 8, 46, cardWidth - 16, cardHeight - 54);
+        }
+        place(body, card, 0, 4, cardWidth, cardHeight);
+    }
+
+    _createShelfFileButton(item, view, width, height) {
+        const contentType = item.contentType || 'application/octet-stream';
+        const fileIcon = new St.Icon({
+            gicon: Gio.content_type_get_icon(contentType),
+            icon_size: 18,
+            style_class: 'perdana-island__shelf-file-icon',
+        });
+        const button = new St.Button({
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+            style_class: `perdana-button perdana-island__shelf-file perdana-island__shelf-file--${view}`,
+            accessible_name: `Open ${item.name}`,
+        });
+        button.set_size(width, height);
+        if (view === 'grid') {
+            const tile = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                style_class: 'perdana-island__shelf-grid-tile',
+            });
+            const preview = new St.Widget({
+                layout_manager: new Clutter.BinLayout(),
+                clip_to_allocation: true,
+                style_class: 'perdana-island__shelf-thumbnail',
+            });
+            preview.add_child(fileIcon);
+            if (contentType.startsWith('image/')) {
+                try {
+                    const themeContext = St.ThemeContext.get_for_stage(global.stage);
+                    const previewWidth = width - 16;
+                    const previewHeight = 62;
+                    const texture = St.TextureCache.get_default().load_file_async(
+                        Gio.File.new_for_path(item.path),
+                        Math.max(1, Math.round(previewWidth * themeContext.scale_factor)),
+                        Math.max(1, Math.round(previewHeight * themeContext.scale_factor)),
+                        themeContext.scale_factor,
+                        preview.get_resource_scale()
+                    );
+                    texture.content_gravity = Clutter.ContentGravity.RESIZE_ASPECT_FILL;
+                    texture.set_size(previewWidth, previewHeight);
+                    preview.add_child(texture);
+                } catch (error) {
+                    logError(error, `Perdana Island could not preview ${item.name}`);
+                }
+            }
+            const label = makeLabel(item.name, 'perdana-island__shelf-file-name');
+            label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            place(tile, preview, 7, 6, width - 14, 62);
+            place(tile, label, 7, 72, width - 14, 18);
+            button.set_child(tile);
+        } else {
+            const row = new St.BoxLayout({
+                style_class: 'perdana-island__shelf-list-row',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            row.add_child(fileIcon);
+            const label = makeLabel(item.name, 'perdana-island__shelf-file-name');
+            label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            label.x_expand = true;
+            row.add_child(label);
+            button.set_child(row);
+        }
+        button.connect('clicked', () => this._openShelfFile(item));
+        return button;
     }
 
     _renderClipboardPage(body) {
         place(body, makeLabel('Clipboard', 'perdana-island__todo-heading'), 0, 5, 240, 22);
-        place(body, makeLabel('Recent copies', 'perdana-island__muted'), 290, 7, 114, 20);
+        const hint = this._clipboardNotice || 'Email/link masked';
+        const hintStyle = this._clipboardNotice
+            ? 'perdana-island__clipboard-notice'
+            : 'perdana-island__muted';
+        place(body, makeLabel(hint, hintStyle), 244, 7, this._pageWidth() - 244, 20);
         if (!this._clipboardItems.length) {
             place(body, makeLabel('Copy text while this page is open', 'perdana-island__empty-media'), 0, 66, this._pageWidth(), 24);
             return;
         }
         this._clipboardItems.slice(0, 3).forEach((item, index) => {
+            const preview = maskClipboardPreview(item);
+            const hasMaskedValue = preview !== item;
             const row = new St.BoxLayout({style_class: 'perdana-island__clip-row'});
             const contents = new St.BoxLayout({style_class: 'perdana-island__clip-contents'});
             contents.add_child(new St.Icon({icon_name: 'edit-copy-symbolic', style_class: 'perdana-island__icon'}));
-            const label = makeLabel(item, 'perdana-island__clip-text');
+            const label = makeLabel(preview, 'perdana-island__clip-text');
             label.clutter_text.max_width = Math.max(0, this._pageWidth() - 90);
             label.x_expand = true;
             contents.add_child(label);
@@ -1670,7 +3029,9 @@ export default class PerdanaIslandExtension extends Extension {
                 reactive: true,
                 track_hover: true,
                 style_class: 'perdana-button perdana-island__clip-item',
-                accessible_name: 'Copy text again',
+                accessible_name: hasMaskedValue
+                    ? 'Copy masked email or link again'
+                    : 'Copy text again',
             });
             button.x_expand = true;
             button.connect('clicked', () => {
@@ -1689,15 +3050,54 @@ export default class PerdanaIslandExtension extends Extension {
 
     _renderTodayPage(body) {
         const now = new Date();
-        const weekday = new Intl.DateTimeFormat('en-US', {weekday: 'long'}).format(now);
-        const monthName = new Intl.DateTimeFormat('en-US', {month: 'short', year: 'numeric'}).format(now);
-        place(body, makeLabel(weekday, 'perdana-island__today-weekday'), 0, 22, 116, 18);
-        place(body, makeLabel(String(now.getDate()), 'perdana-island__today-day'), 0, 40, 116, 58);
-        place(body, makeLabel(monthName, 'perdana-island__today-month'), 0, 100, 116, 20);
+        const month = new Date(now.getFullYear(), now.getMonth() + this._calendarMonthOffset, 1);
+        this._calendarDateKey = now.toDateString();
+        const pageWidth = this._pageWidth();
+        const scale = Math.min(1, pageWidth / 884);
+        const dateWidth = Math.round(130 * scale);
+        const calendarX = Math.round(146 * scale);
+        const calendarWidth = Math.round(220 * scale);
+        const tileX = Math.round(382 * scale);
+        const monthName = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'}).format(month);
+        const todayMonth = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'}).format(now);
+        const weekday = new Intl.DateTimeFormat('en-US', {weekday: 'long'}).format(now).toUpperCase();
+        place(body, makeLabel(weekday, 'perdana-island__today-weekday'), 0, 14, dateWidth, 18);
+        place(body, makeLabel(String(now.getDate()), 'perdana-island__today-day'), 0, 35, dateWidth, 70);
+        place(body, makeLabel(todayMonth, 'perdana-island__today-month'), 0, 111, dateWidth, 23);
+        place(body, makeLabel(`Week ${isoWeekNumber(now)}`, 'perdana-island__today-week'), 0, 137, dateWidth, 18);
+        const monthLabel = makeLabel(monthName, 'perdana-island__calendar-month');
+        place(body, monthLabel, calendarX, 2, calendarWidth - 55, 22);
+        place(body, makeIconButton('go-previous-symbolic', 'Previous month', () => {
+            this._calendarMonthOffset--;
+            this._renderPanel();
+        }, 'perdana-island__calendar-arrow'), calendarX + calendarWidth - 48, 1, 22, 22);
+        place(body, makeIconButton('go-next-symbolic', 'Next month', () => {
+            this._calendarMonthOffset++;
+            this._renderPanel();
+        }, 'perdana-island__calendar-arrow'), calendarX + calendarWidth - 23, 1, 22, 22);
 
-        const tileX = 126;
-        const gap = 8;
-        const tileWidth = (this._pageWidth() - tileX - gap) / 2;
+        const dayWidth = calendarWidth / 7;
+        const weekdayNames = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+        weekdayNames.forEach((weekday, index) =>
+            place(body, makeLabel(weekday, 'perdana-island__calendar-weekday'), calendarX + index * dayWidth, 29, dayWidth, 14));
+        const firstDay = (month.getDay() + 6) % 7;
+        const dayCount = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+        for (let day = 1; day <= dayCount; day++) {
+            const cell = firstDay + day - 1;
+            const column = cell % 7;
+            const row = Math.floor(cell / 7);
+            const isToday = this._calendarMonthOffset === 0 && day === now.getDate();
+            const dayLabel = makeLabel(
+                String(day),
+                isToday ? 'perdana-island__calendar-day perdana-island__calendar-day--today'
+                    : 'perdana-island__calendar-day'
+            );
+            dayLabel.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+            place(body, dayLabel, calendarX + column * dayWidth, 46 + row * 17, dayWidth, 17);
+        }
+
+        const gap = 7;
+        const tileWidth = (pageWidth - tileX - gap) / 2;
         const tileHeight = 70;
         this._todayTiles = [];
         const metrics = [
@@ -1710,7 +3110,7 @@ export default class PerdanaIslandExtension extends Extension {
             const column = index % 2;
             const row = Math.floor(index / 2);
             const x = tileX + column * (tileWidth + gap);
-            const y = 7 + row * (tileHeight + gap);
+            const y = 7 + row * (tileHeight + 6);
             const tile = new St.Widget({
                 layout_manager: new Clutter.FixedLayout(),
                 style_class: 'perdana-island__today-tile',
@@ -1719,14 +3119,206 @@ export default class PerdanaIslandExtension extends Extension {
             const value = makeLabel('—', 'perdana-island__today-value');
             const title = makeLabel(metric.title, 'perdana-island__today-title');
             const detail = makeLabel('', 'perdana-island__today-detail');
-            place(tile, ring, 10, 17, 34, 34);
-            place(tile, title, 52, 9, tileWidth - 58, 16);
-            place(tile, value, 52, 25, tileWidth - 58, 22);
-            place(tile, detail, 52, 48, tileWidth - 58, 16);
+            place(tile, ring, 8, 17, 34, 34);
+            place(tile, title, 47, 9, tileWidth - 51, 16);
+            place(tile, value, 47, 25, tileWidth - 51, 22);
+            place(tile, detail, 47, 48, tileWidth - 51, 16);
             this._todayTiles.push({key: metric.key, ring, value, detail});
             place(body, tile, x, y, tileWidth, tileHeight);
         });
         this._updateTodayMetrics();
+    }
+
+    _renderNotificationsPage(body) {
+        const contentWidth = this._pageWidth();
+        const cardWidth = contentWidth - 18;
+        place(body, makeLabel('Notifications', 'perdana-island__todo-heading'), 0, 3, 220, 22);
+        const clearButton = makeTextButton('Clear', 'Clear notifications', () => this._clearNotifications(),
+            'perdana-island__notification-clear');
+        clearButton.reactive = this._notificationItems.length > 0;
+        clearButton.opacity = this._notificationItems.length > 0 ? 255 : 110;
+        place(body, clearButton, contentWidth - 58, 0, 58, 26);
+
+        if (!this._notificationItems.length) {
+            place(body, makeLabel('No notifications yet', 'perdana-island__empty-media'), 0, 66, contentWidth, 24);
+            return;
+        }
+        const list = new St.BoxLayout({
+            vertical: true,
+            style_class: 'perdana-island__notification-list',
+        });
+        list.set_size(cardWidth, this._notificationItems.length * 41 - 3);
+        this._notificationItems.forEach(item => {
+            const card = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                style_class: 'perdana-island__notification-card',
+            });
+            const title = makeLabel(item.title, 'perdana-island__notification-title');
+            const app = makeLabel(item.app, 'perdana-island__notification-app');
+            app.clutter_text.x_align = Clutter.ActorAlign.END;
+            const bodyText = makeLabel(item.body || item.title, 'perdana-island__notification-body');
+            place(card, title, 10, 3, cardWidth - 126, 15);
+            place(card, app, cardWidth - 110, 3, 100, 15);
+            place(card, bodyText, 10, 18, cardWidth - 20, 15);
+            const button = new St.Button({
+                child: card,
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: 'perdana-button perdana-island__notification-button',
+                accessible_name: `Open ${item.app}: ${item.title}`,
+            });
+            button.connect('clicked', () => {
+                try {
+                    item.notification.activate();
+                } catch (error) {
+                    logError(error, 'Perdana Island could not activate a notification');
+                    try {
+                        item.source.open();
+                    } catch (_error) {
+                        // The source may have disappeared after its notification was listed.
+                    }
+                }
+                this._pinned = false;
+                this._setExpanded(false);
+            });
+            button.set_size(cardWidth, 38);
+            list.add_child(button);
+        });
+        const scroll = new St.ScrollView({
+            overlay_scrollbars: true,
+            style_class: 'perdana-island__notification-scroll',
+        });
+        scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        scroll.add_child(list);
+        place(body, scroll, 0, 31, contentWidth, this._bodyHeight() - 31);
+    }
+
+    _renderSettingsPage(body) {
+        const columnGap = 12;
+        const halfWidth = (this._pageWidth() - columnGap) / 2;
+        const heading = (label, iconName, y) => {
+            const contents = new St.BoxLayout({
+                style_class: 'perdana-island__settings-heading-content',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            contents.add_child(new St.Icon({
+                icon_name: iconName,
+                style_class: 'perdana-island__settings-heading-icon',
+            }));
+            contents.add_child(makeLabel(label, 'perdana-island__settings-heading-label'));
+            place(body, contents, 0, y, this._pageWidth(), 18);
+        };
+        const settingButton = (label, selected, x, y, width, callback, iconName) => {
+            const contents = new St.BoxLayout({
+                style_class: 'perdana-island__setting-option-content',
+                y_align: Clutter.ActorAlign.CENTER,
+                x_expand: true,
+                x_align: Clutter.ActorAlign.FILL,
+            });
+            contents.add_child(new St.Icon({
+                icon_name: iconName,
+                style_class: 'perdana-island__setting-option-icon',
+            }));
+            const text = makeLabel(label, 'perdana-island__setting-option-label');
+            text.x_expand = true;
+            text.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            contents.add_child(text);
+            const button = new St.Button({
+                child: contents,
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: `perdana-button ${selected
+                    ? 'perdana-island__setting-option perdana-island__setting-option--active'
+                    : 'perdana-island__setting-option'}`,
+                accessible_name: label,
+            });
+            button.connect('clicked', callback);
+            place(body, button, x, y, width, 30);
+        };
+
+        const title = new St.BoxLayout({
+            style_class: 'perdana-island__settings-title',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        const titleIcon = new St.Icon({
+            icon_name: 'preferences-system-symbolic',
+            style_class: 'perdana-island__settings-title-icon',
+        });
+        titleIcon.set_size(18, 18);
+        title.add_child(titleIcon);
+        title.add_child(makeLabel('Settings', 'perdana-island__settings-title-label'));
+        place(body, title, 0, 3, this._pageWidth(), 22);
+
+        heading('Resting island', 'preferences-system-time-symbolic', 33);
+        settingButton('Clock on hover', this._preferences.restingStyle === 'hover-clock', 0, 55, halfWidth,
+            () => this._setPreference('restingStyle', 'hover-clock'), 'alarm-symbolic');
+        settingButton('Eyes + clock', this._preferences.restingStyle === 'eyes-clock', halfWidth + columnGap, 55, halfWidth,
+            () => this._setPreference('restingStyle', 'eyes-clock'), 'preferences-system-symbolic');
+
+        heading('Appearance & notices', 'preferences-desktop-appearance-symbolic', 96);
+        settingButton(this._preferences.glass ? 'Glass on' : 'Glass off', this._preferences.glass, 0, 118, halfWidth,
+            () => this._setPreference('glass', !this._preferences.glass), 'preferences-desktop-appearance-symbolic');
+        settingButton(this._preferences.systemNotices ? 'Notices on' : 'Notices off', this._preferences.systemNotices, halfWidth + columnGap, 118, halfWidth,
+            () => this._setPreference('systemNotices', !this._preferences.systemNotices), 'preferences-system-notifications-symbolic');
+
+        heading('Accent color', 'applications-graphics-symbolic', 159);
+        const palette = [
+            ['Navy', '#5577B8'], ['Ocean', '#35A7C8'], ['Blue', '#4C83E2'],
+            ['Plum', '#A579D4'], ['Forest', '#43A778'], ['Bronze', '#D89651'], ['Slate', '#98A6B8'],
+        ];
+        palette.forEach(([name, color], index) => {
+            const selected = this._preferences.accentColor === color;
+            const swatch = new St.Button({
+                child: selected ? new St.Icon({icon_name: 'object-select-symbolic'}) : null,
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: 'perdana-button perdana-island__color-swatch',
+                accessible_name: `${name} ${color}`,
+            });
+            swatch.set_style(`background-color: ${color}; border: 2px solid ${selected ? '#ffffff' : 'rgba(255,255,255,0.18)'}; border-radius: 10px; padding: 0;`);
+            swatch.connect('clicked', () => this._setPreference('accentColor', color));
+            place(body, swatch, index * 42, 181, 34, 32);
+        });
+
+        const colorEntry = new St.Entry({
+            hint_text: DEFAULT_ACCENT_COLOR,
+            can_focus: true,
+            style_class: 'perdana-island__color-entry',
+        });
+        colorEntry.set_text(this._preferences.accentColor);
+        colorEntry.clutter_text.connect('text-changed', () =>
+            colorEntry.remove_style_class_name('perdana-island__color-entry--invalid'));
+        colorEntry.clutter_text.connect('activate', () => {
+            const color = normalizeHexColor(colorEntry.get_text());
+            if (color)
+                this._setPreference('accentColor', color);
+            else
+                colorEntry.add_style_class_name('perdana-island__color-entry--invalid');
+        });
+        place(body, colorEntry, 0, 222, 132, 32);
+        place(body, makeTextButton('Apply', 'Apply accent color', () => {
+            const color = normalizeHexColor(colorEntry.get_text());
+            if (color)
+                this._setPreference('accentColor', color);
+            else
+                colorEntry.add_style_class_name('perdana-island__color-entry--invalid');
+        }, 'perdana-island__color-apply'), 142, 222, 82, 32);
+
+        heading('Visible tabs', 'view-grid-symbolic', 266);
+        const pages = PAGES.filter(page => page.key !== 'settings');
+        const gap = 8;
+        const itemWidth = (this._pageWidth() - gap * 3) / 4;
+        pages.forEach((page, index) => {
+            const row = Math.floor(index / 4);
+            const column = index % 4;
+            const label = page.key === 'notifications' ? 'Alerts' : page.label;
+            settingButton(label, this._preferences.visiblePages[page.key] !== false,
+                column * (itemWidth + gap), 288 + row * 38, itemWidth, () =>
+                    this._setPageVisible(page.key, this._preferences.visiblePages[page.key] === false), page.icon);
+        });
     }
 
     _paintFocusRing(area) {
@@ -1740,9 +3332,7 @@ export default class PerdanaIslandExtension extends Extension {
             : this._focusRemaining;
         const duration = Math.max(1, this._focusDuration || DEFAULT_FOCUS_SECONDS);
         const progress = Math.max(0, Math.min(1, 1 - remaining / duration));
-        const color = this._focusMode === 'short' || this._focusMode === 'long'
-            ? [0.188, 0.82, 0.345]
-            : [1, 0.624, 0.039];
+        const color = hexColorToRgb(this._preferences?.accentColor);
         cr.setLineWidth(7);
         cr.setLineCap(1);
         cr.setSourceRGBA(1, 1, 1, 0.14);
@@ -1872,7 +3462,7 @@ export default class PerdanaIslandExtension extends Extension {
                 } catch (_error) {
                     this._playersLoaded = true;
                     this._playersError = true;
-                    if (this._expanded && this._activePage === 'media')
+                    if (this._expanded && ['media', 'lyrics'].includes(this._activePage))
                         this._renderPanel();
                 }
             }
@@ -1957,10 +3547,12 @@ export default class PerdanaIslandExtension extends Extension {
                         this._updateMediaTicker();
                     }
                     this._updateCollapsedLabel();
-                    if (this._expanded && this._activePage === 'media'
-                        && (metadataChanged || playbackChanged))
+                    if (this._expanded && this._activePage === 'lyrics' && playbackChanged && !metadataChanged)
+                        this._updateLyricsPlaybackButton();
+                    if (this._expanded && ['media', 'lyrics'].includes(this._activePage)
+                        && (metadataChanged || (playbackChanged && this._activePage === 'media')))
                         this._renderPanel();
-                    else if (this._expanded && this._activePage === 'media')
+                    else if (this._expanded && ['media', 'lyrics'].includes(this._activePage))
                         this._updateMediaProgress();
                 });
                 entry.seekedSignalId = proxy.connect('g-signal', (_proxy, _sender, signalName, parameters) => {
@@ -1968,7 +3560,7 @@ export default class PerdanaIslandExtension extends Extension {
                         return;
                     entry.positionBase = Number(parameters.deep_unpack()[0]) || 0;
                     entry.positionStamp = GLib.get_monotonic_time();
-                    if (this._expanded && this._activePage === 'media')
+                    if (this._expanded && ['media', 'lyrics'].includes(this._activePage))
                         this._updateMediaProgress();
                 });
                 this._players.set(name, entry);
@@ -1979,7 +3571,7 @@ export default class PerdanaIslandExtension extends Extension {
 
         this._updateMediaTicker();
         this._updateCollapsedLabel();
-        if (this._expanded && this._activePage === 'media')
+        if (this._expanded && ['media', 'lyrics'].includes(this._activePage))
             this._renderPanel();
     }
 
@@ -2023,10 +3615,14 @@ export default class PerdanaIslandExtension extends Extension {
         const metadata = unpack(proxy.get_cached_property('Metadata')) || {};
         const title = unpack(metadata['xesam:title']);
         const rawArtist = unpack(metadata['xesam:artist']);
+        const album = unpack(metadata['xesam:album']);
+        const lyrics = unpack(metadata['xesam:asText']);
         const artist = Array.isArray(rawArtist) ? rawArtist.join(', ') : rawArtist;
         return {
             title: typeof title === 'string' ? title : '',
             artist: typeof artist === 'string' ? artist : '',
+            album: typeof album === 'string' ? album : '',
+            lyrics: typeof lyrics === 'string' ? lyrics : '',
             artUrl: unpack(metadata['mpris:artUrl']),
             trackId: unpack(metadata['mpris:trackid']),
             length: Number(unpack(metadata['mpris:length'])) || 0,
@@ -2052,7 +3648,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _updateMediaProgress() {
-        if (!this._expanded || this._activePage !== 'media'
+        if (!this._expanded || !['media', 'lyrics'].includes(this._activePage)
             || !this._mediaPositionLabel || !this._mediaDurationLabel || !this._progressFill
             || !this._progressLine || !this._progressTrack)
             return;
@@ -2060,12 +3656,21 @@ export default class PerdanaIslandExtension extends Extension {
         if (!player)
             return;
         const metadata = this._getMetadata(player.proxy);
+        if (this._activePage === 'lyrics' && this._lyricsRetryAt && Date.now() >= this._lyricsRetryAt)
+            this._ensureLyrics(metadata, player.name);
         const duration = metadata.length / MICROSECONDS_PER_SECOND;
-        const position = Math.min(duration || Infinity, this._positionForPlayer(player));
+        this._progressCanSeek = Boolean(metadata.trackId && metadata.length > 0
+            && this._canControl(player.proxy, 'CanSeek'));
+        this._progressTrack.reactive = this._progressCanSeek;
+        const position = this._progressSeeking
+            ? duration * this._progressSeekRatio
+            : Math.min(duration || Infinity, this._positionForPlayer(player));
         this._mediaPositionLabel.text = formatTime(position);
         this._mediaDurationLabel.text = formatTime(duration);
         const ratio = duration > 0 ? Math.min(1, position / duration) : 0;
         this._progressFill.width = Math.max(1, this._progressLine.width * ratio);
+        if (this._activePage === 'lyrics')
+            this._updateLyricsLines(position);
     }
 
     _callPlayer(proxy, method) {
@@ -2093,7 +3698,10 @@ export default class PerdanaIslandExtension extends Extension {
         const playing = player && this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing';
         const focusRunning = Boolean(this._focusSource);
         const showMedia = Boolean(playing && !focusRunning);
-        const showClock = Boolean(!playing && !focusRunning && !this._expanded && !this._closing && this._root?.hover);
+        const restingWithClock = this._preferences?.restingStyle === 'eyes-clock';
+        const showClock = Boolean(!playing && !focusRunning && !this._expanded && !this._closing
+            && (restingWithClock || this._root?.hover));
+        const hideEyesForClock = showClock && !restingWithClock;
         if (playing)
             this._root.add_style_class_name('perdana-island--playing');
         else
@@ -2113,7 +3721,8 @@ export default class PerdanaIslandExtension extends Extension {
         this._compactCenter.opacity = 255;
         this._idleEyes.visible = !showMedia && !focusRunning;
         this._compactClockLabel.visible = !showMedia && !focusRunning;
-        const compactState = focusRunning ? 'focus' : showMedia ? 'playing' : showClock ? 'hover' : 'idle';
+        const compactState = focusRunning ? 'focus' : showMedia ? 'playing'
+            : showClock ? (restingWithClock ? 'eyes-clock' : 'hover') : 'idle';
         if (compactState !== this._compactVisualState) {
             this._compactVisualState = compactState;
             this._idleEyes.remove_all_transitions();
@@ -2134,9 +3743,9 @@ export default class PerdanaIslandExtension extends Extension {
                 const duration = this._motionDuration(140);
                 const mode = Clutter.AnimationMode.EASE_OUT_QUAD;
                 this._idleEyes.ease({
-                    opacity: showClock ? 0 : 255,
-                    scale_x: showClock ? 0.72 : 1,
-                    scale_y: showClock ? 0.72 : 1,
+                    opacity: hideEyesForClock ? 0 : 255,
+                    scale_x: hideEyesForClock ? 0.72 : 1,
+                    scale_y: hideEyesForClock ? 0.72 : 1,
                     duration,
                     mode,
                 });
@@ -2224,6 +3833,10 @@ export default class PerdanaIslandExtension extends Extension {
             if (!this._enabled || !this._expanded || this._activePage !== 'today') {
                 this._todaySource = 0;
                 return GLib.SOURCE_REMOVE;
+            }
+            if (new Date().toDateString() !== this._calendarDateKey) {
+                this._renderPanel();
+                return GLib.SOURCE_CONTINUE;
             }
             this._updateTodayMetrics();
             return GLib.SOURCE_CONTINUE;
@@ -2357,21 +3970,38 @@ export default class PerdanaIslandExtension extends Extension {
         try {
             const clipboard = St.Clipboard.get_default();
             const mimeTypes = clipboard.get_mimetypes(St.ClipboardType.CLIPBOARD) || [];
-            if (mimeTypes.some(type => /password|secret|sensitive/i.test(type)))
+            if (mimeTypes.some(type => /password|secret|sensitive|credential|keepass|passphrase|token/i.test(type))) {
+                this._setClipboardNotice('Password skipped');
                 return;
+            }
             this._clipboardInFlight = true;
             clipboard.get_text(St.ClipboardType.CLIPBOARD, (_clipboard, text) => {
                 this._clipboardInFlight = false;
                 if (!this._enabled || !this._expanded || this._activePage !== 'clipboard')
                     return;
-                const value = String(text || '').trim().slice(0, 1200);
+                const rawValue = String(text || '').trim();
+                if (isPasswordLikeClipboardText(rawValue)) {
+                    this._setClipboardNotice('Password skipped');
+                    return;
+                }
+                if (!rawValue)
+                    return;
+                const value = rawValue.slice(0, 1200);
+                const noticeChanged = this._clipboardNotice !== null;
+                this._clipboardNotice = null;
                 if (this._clipboardSuppressedValue !== null) {
-                    if (value === this._clipboardSuppressedValue)
+                    if (value === this._clipboardSuppressedValue) {
+                        if (noticeChanged)
+                            this._renderPanel();
                         return;
+                    }
                     this._clipboardSuppressedValue = null;
                 }
-                if (!value || value === this._clipboardItems[0])
+                if (!value || value === this._clipboardItems[0]) {
+                    if (noticeChanged)
+                        this._renderPanel();
                     return;
+                }
                 this._clipboardItems.unshift(value);
                 this._clipboardItems = this._clipboardItems.slice(0, 4);
                 this._saveClipboardItems();
@@ -2380,6 +4010,14 @@ export default class PerdanaIslandExtension extends Extension {
         } catch (_error) {
             this._clipboardInFlight = false;
         }
+    }
+
+    _setClipboardNotice(message) {
+        if (this._clipboardNotice === message)
+            return;
+        this._clipboardNotice = message;
+        if (this._enabled && this._expanded && this._activePage === 'clipboard')
+            this._renderPanel();
     }
 
     _deleteClipboardItem(item) {
@@ -2397,19 +4035,25 @@ export default class PerdanaIslandExtension extends Extension {
             const data = JSON.parse(new TextDecoder().decode(contents));
             if (!Array.isArray(data))
                 return [];
-            return [...new Set(data
+            const normalized = [...new Set(data
                 .filter(value => typeof value === 'string')
                 .map(value => value.trim().slice(0, 1200))
-                .filter(Boolean))].slice(0, 4);
+                .filter(Boolean))];
+            const safeItems = normalized.filter(value => !isPasswordLikeClipboardText(value)).slice(0, 4);
+            if (safeItems.length !== normalized.length) {
+                this._clipboardNotice = 'Password skipped';
+                this._saveClipboardItems(safeItems);
+            }
+            return safeItems;
         } catch (_error) {
             return [];
         }
     }
 
-    _saveClipboardItems() {
+    _saveClipboardItems(items = this._clipboardItems) {
         try {
             GLib.mkdir_with_parents(this._taskDirectory, 0o700);
-            GLib.file_set_contents(this._clipboardFile, JSON.stringify(this._clipboardItems.slice(0, 4)));
+            GLib.file_set_contents(this._clipboardFile, JSON.stringify(items.slice(0, 4)));
             Gio.File.new_for_path(this._taskDirectory).set_attribute_uint32(
                 'unix::mode', 0o700, Gio.FileQueryInfoFlags.NONE, null
             );
@@ -2425,7 +4069,11 @@ export default class PerdanaIslandExtension extends Extension {
         try {
             GLib.mkdir_with_parents(this._shelfDirectory, 0o755);
             const directory = Gio.File.new_for_path(this._shelfDirectory)
-                .enumerate_children('standard::name,standard::type', Gio.FileQueryInfoFlags.NONE, null);
+                .enumerate_children(
+                    'standard::name,standard::type,standard::content-type',
+                    Gio.FileQueryInfoFlags.NONE,
+                    null
+                );
             const items = [];
             let entry;
             while ((entry = directory.next_file(null)) !== null) {
@@ -2433,6 +4081,7 @@ export default class PerdanaIslandExtension extends Extension {
                     continue;
                 items.push({
                     name: entry.get_name(),
+                    contentType: entry.get_content_type() || 'application/octet-stream',
                     path: GLib.build_filenamev([this._shelfDirectory, entry.get_name()]),
                 });
             }
@@ -2448,7 +4097,7 @@ export default class PerdanaIslandExtension extends Extension {
             GLib.mkdir_with_parents(this._shelfDirectory, 0o755);
             const directory = Gio.File.new_for_path(this._shelfDirectory);
             const monitor = directory.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
-            monitor.connect('changed', () => {
+            this._shelfMonitorSignal = monitor.connect('changed', () => {
                 this._clearTimeout('_shelfRefreshSource');
                 this._shelfRefreshSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
                     this._shelfRefreshSource = 0;
@@ -2509,8 +4158,12 @@ export default class PerdanaIslandExtension extends Extension {
                             const uris = parameters.get_child_value(1)
                                 .lookup_value('uris', new GLib.VariantType('as'))
                                 ?.deep_unpack() ?? [];
-                            for (const uri of uris)
-                                this._copyShelfFile(Gio.File.new_for_uri(uri));
+                            this._shelfItems = this._loadShelfItems();
+                            const availableSlots = Math.max(0, MAX_SHELF_ITEMS - this._shelfItems.length);
+                            uris.slice(0, availableSlots).forEach(uri =>
+                                this._copyShelfFile(Gio.File.new_for_uri(uri)));
+                            if (uris.length > availableSlots)
+                                this._showShelfLimitNotice();
                             this._shelfItems = this._loadShelfItems();
                             if (this._activePage === 'shelf')
                                 this._renderPanel();
@@ -2544,6 +4197,18 @@ export default class PerdanaIslandExtension extends Extension {
         }
     }
 
+    _showShelfLimitNotice() {
+        this._shelfNotice = `Shelf limit: ${MAX_SHELF_ITEMS} files`;
+        this._clearTimeout('_shelfNoticeSource');
+        this._shelfNoticeSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            this._shelfNoticeSource = 0;
+            this._shelfNotice = null;
+            if (this._enabled && this._expanded && this._activePage === 'shelf')
+                this._renderPanel();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     _openShelfFile(item) {
         try {
             Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(item.path).get_uri(), null);
@@ -2573,6 +4238,7 @@ export default class PerdanaIslandExtension extends Extension {
     _readBatteryState() {
         let battery = null;
         let chargerConnected = false;
+        let chargerStateKnown = false;
         try {
             const directory = Gio.File.new_for_path('/sys/class/power_supply')
                 .enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
@@ -2589,17 +4255,30 @@ export default class PerdanaIslandExtension extends Extension {
                             status: this._readText(`${base}/status`).trim(),
                         };
                     }
-                } else if (['Mains', 'USB', 'USB_C'].includes(type)) {
-                    chargerConnected ||= this._readText(`${base}/online`).trim() === '1';
+                } else if (/^(Mains|USB|USB_C|USB_PD|Wireless)$/i.test(type)) {
+                    const online = this._readText(`${base}/online`).trim();
+                    if (online !== '') {
+                        chargerStateKnown = true;
+                        chargerConnected ||= online === '1';
+                    }
                 }
             }
             directory.close(null);
         } catch (_error) {
             // Power supply details are optional on desktops and unsupported devices.
         }
-        if (battery?.status === 'Charging')
+        if (!chargerStateKnown && battery?.status === 'Charging')
             chargerConnected = true;
-        return battery ? {...battery, connected: chargerConnected} : null;
+        if (!battery)
+            return null;
+        let status = battery.status;
+        if (chargerStateKnown) {
+            if (chargerConnected && ['Discharging', 'Unknown', ''].includes(status))
+                status = 'Charging';
+            else if (!chargerConnected && status === 'Charging')
+                status = 'Discharging';
+        }
+        return {...battery, status, connected: chargerConnected};
     }
 
     _pollChargingState() {
@@ -2612,14 +4291,18 @@ export default class PerdanaIslandExtension extends Extension {
             this._showChargingNotice(next.percent);
         else if (wasConnected && !next.connected)
             this._showChargerDisconnectedNotice(next.percent);
+        if (this._expanded && this._activePage === 'today')
+            this._updateTodayMetrics();
     }
 
     _showChargingNotice(percent) {
-        this._showSystemNotice('charging', {percent});
+        if (this._preferences.systemNotices)
+            this._showSystemNotice('charging', {percent});
     }
 
     _showChargerDisconnectedNotice(percent) {
-        this._showSystemNotice('disconnected', {percent});
+        if (this._preferences.systemNotices)
+            this._showSystemNotice('disconnected', {percent});
     }
 
     _paintPowerIndicator(area, percent, charging) {
@@ -2748,7 +4431,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _showSystemNotice(type, data) {
-        if (!this._enabled || !this._root || this._expanded)
+        if (!this._enabled || !this._root || this._expanded || !this._preferences.systemNotices)
             return;
         const sameNotice = this._systemNoticeActive && this._systemNoticeType === type;
         this._clearTimeout('_noticeDismissSource');
@@ -2963,29 +4646,7 @@ export default class PerdanaIslandExtension extends Extension {
             // Some filesystems do not expose space metrics through GIO.
         }
 
-        let battery = null;
-        try {
-            const directory = Gio.File.new_for_path('/sys/class/power_supply')
-                .enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
-            let entry;
-            while ((entry = directory.next_file(null)) !== null) {
-                const name = entry.get_name();
-                if (!/^BAT/i.test(name))
-                    continue;
-                const base = `/sys/class/power_supply/${name}`;
-                const capacity = Number(this._readText(`${base}/capacity`).trim());
-                if (!Number.isFinite(capacity))
-                    continue;
-                battery = {
-                    percent: Math.max(0, Math.min(100, capacity)),
-                    status: this._readText(`${base}/status`).trim(),
-                };
-                break;
-            }
-            directory.close(null);
-        } catch (_error) {
-            // Battery details are optional on desktops and unsupported devices.
-        }
+        const battery = this._readBatteryState();
 
         const gb = bytes => (bytes / 1_073_741_824).toFixed(1);
         const values = {
@@ -2999,7 +4660,12 @@ export default class PerdanaIslandExtension extends Extension {
                 ? {value: `${gb(diskFree)} GB`, detail: `free of ${gb(diskTotal)} GB`, progress: 1 - diskFree / diskTotal}
                 : {value: '—', detail: 'Storage unavailable', progress: 0},
             battery: battery
-                ? {value: `${battery.percent}%`, detail: battery.status || 'Battery', progress: battery.percent / 100}
+                ? {
+                    value: `${battery.percent}%`,
+                    detail: battery.connected ? (battery.status === 'Full' ? 'Plugged in' : 'Charging')
+                        : battery.status || 'Discharging',
+                    progress: battery.percent / 100,
+                }
                 : {value: '—', detail: 'No battery detected', progress: 0},
         };
 

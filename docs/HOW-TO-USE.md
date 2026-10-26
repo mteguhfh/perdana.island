@@ -11,6 +11,10 @@
 
 The Music page reads active players through MPRIS. It can show the title, artist, artwork, elapsed and total time, and playback controls. Click the progress bar to seek. Previous, Play/Pause, and Next are available when the active player exposes those capabilities. Some browsers only publish media after playback has started.
 
+## Lyrics
+
+Open **Lyrics** while a player is active. The page shows album art, title, artist, playback controls, and lyrics that follow the player's position. If the player does not provide synced lyrics, Perdana Island looks them up from LRCLIB using the current track title, artist, optional album, and duration. Long lines wrap instead of truncating with an ellipsis.
+
 ## Focus
 
 1. Choose **Focus**, **Short**, **Long**, or **Custom**.
@@ -22,7 +26,7 @@ Custom durations accept 1–86,400 seconds or 1–1,440 minutes. The page counts
 
 ## Shelf
 
-Select **Add files** to copy chosen files into Shelf. Use the folder button to open the Shelf directory. Files copied into that folder appear in Shelf automatically.
+Choose **Grid** or **List**. Grid shows image thumbnails; List shows filenames in rows. Scroll the Shelf area to browse up to 10 visible files. Select **Add files** to copy chosen files into Shelf. Use the folder button to open the Shelf directory. Files copied into that folder appear in Shelf automatically.
 
 GNOME Shell does not expose the desktop's dragged file list to the island actors. Direct drag-and-drop onto the island is unsupported.
 
@@ -38,6 +42,16 @@ Open the Clipboard page to collect recent text copies. Select a row to copy it a
 
 Today shows the local date and available CPU, memory, disk, and battery readings. Plugging in or removing the charger and changing output volume can show a brief system notice. Notices close automatically.
 
+## Notifications
+
+Open **Notifications** to review recent desktop notifications. Select a row to activate it and close the island. **Clear** dismisses the listed notifications from their applications.
+
+## Settings
+
+Use **Settings** to choose the resting eyes/clock style, enable the glass surface or system notices, set the accent color with a palette or hexadecimal value, and show or hide page tabs. Settings are saved locally.
+
 ## Data location
 
 Tasks, clipboard history, and Shelf files are in `~/.local/share/perdana.island/`. Task changes are also synchronized to `~/.local/share/pulo-island/tasks.json` for compatibility with the previous extension UUID. Task data from either location is reconciled on enable; Shelf files are copied from the previous location when a matching file is not already present.
+
+Clipboard history is local, sampled only while the Clipboard page is open, and never sent to LRCLIB. Lyric lookup sends the active track's title, artist, optional album, and duration to `lrclib.net`.

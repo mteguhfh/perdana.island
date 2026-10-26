@@ -21,9 +21,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: >-
-          gh release create "$RELEASE_TAG"
-          "dist/Perdana-Island-GNOME-${RELEASE_TAG}.shell-extension.zip"
-          "dist/Perdana-Island-KDE-Plasma-${RELEASE_TAG}.zip"
-          --title "Perdana Island ${RELEASE_TAG}"
-          --generate-notes
+        run: |
+          if [[ -f "docs/releases/${RELEASE_TAG}.md" ]]; then
+            gh release create "$RELEASE_TAG" \
+              "dist/Perdana-Island-GNOME-${RELEASE_TAG}.shell-extension.zip" \
+              "dist/Perdana-Island-KDE-Plasma-${RELEASE_TAG}.zip" \
+              --title "Perdana Island ${RELEASE_TAG}" \
+              --notes-file "docs/releases/${RELEASE_TAG}.md"
+          else
+            gh release create "$RELEASE_TAG" \
+              "dist/Perdana-Island-GNOME-${RELEASE_TAG}.shell-extension.zip" \
+              "dist/Perdana-Island-KDE-Plasma-${RELEASE_TAG}.zip" \
+              --title "Perdana Island ${RELEASE_TAG}" \
+              --generate-notes
+          fi

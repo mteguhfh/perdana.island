@@ -20,7 +20,7 @@ Run these commands from the repository root:
 
 ```sh
 mkdir -p dist
-gnome-extensions pack ./extension --out-dir ./dist
+gnome-extensions pack ./extension --extra-source=./LICENSE --out-dir ./dist
 gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.zip
 gnome-extensions enable perdana.island@perdana
 ```
@@ -58,7 +58,7 @@ The extension reconciles `tasks.json` with `~/.local/share/pulo-island/tasks.jso
 gnome-extensions info perdana.island@perdana
 ```
 
-After enabling, the output should show **Perdana Island**, version 30 or later, and `State: ACTIVE`.
+After enabling, the output should show **Perdana Island**, version 45 or later, and `State: ACTIVE`.
 
 ## Remove
 
@@ -76,3 +76,16 @@ Removal leaves data in `~/.local/share/perdana.island/` and the legacy task back
 - **Rebuild appears unchanged:** GNOME Shell may have cached JavaScript; reload the Shell session as described above.
 - **Music page is empty:** start a player that exports MPRIS metadata on the current user's session bus.
 - **Files do not appear in Shelf:** use **Add files** or copy them to the Shelf folder. Direct drop onto the island is not available in GNOME Shell.
+
+## Prepare a GNOME Extensions submission
+
+The GNOME archive in a GitHub release is also the upload package for [extensions.gnome.org](https://extensions.gnome.org/upload/). It contains the extension source, metadata, stylesheet, and GPL license. The metadata declares GNOME Shell 50, links to this public repository, and describes the clipboard feature. Track title, artist, optional album, and duration are sent to LRCLIB when looking up lyrics; clipboard entries stay local.
+
+Before upload, build and inspect the GNOME archive:
+
+```sh
+gnome-extensions pack ./extension --extra-source=./LICENSE --out-dir ./dist
+unzip -l ./dist/perdana.island@perdana.shell-extension.zip
+```
+
+GNOME assigns the website submission version. The project `version-name` is only a display label. Run the [Shexli static analyzer](https://gjs.guide/extensions/review-guidelines/review-guidelines.html) on the extension folder or ZIP, review all warnings, then upload the ZIP through the developer form. GNOME will send the review result by email; passing the static checks does not guarantee approval.
