@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install packaging dependencies
+        run: sudo apt-get update && sudo apt-get install --yes zip libglib2.0-bin
+
       - name: Build GNOME and KDE packages
         run: ./scripts/package-release.sh "$GITHUB_REF_NAME"
 

@@ -24,6 +24,14 @@ if ! command -v zip >/dev/null 2>&1; then
     exit 1
 fi
 
+if [[ -f "$PROJECT_ROOT/extension/schemas/org.gnome.shell.extensions.perdana-island.gschema.xml" ]]; then
+    if ! command -v glib-compile-schemas >/dev/null 2>&1; then
+        printf 'glib-compile-schemas is required to package the GNOME settings schema.\n' >&2
+        exit 1
+    fi
+    glib-compile-schemas --strict "$PROJECT_ROOT/extension/schemas"
+fi
+
 DIST_DIR="$PROJECT_ROOT/dist"
 GNOME_ARCHIVE="$DIST_DIR/Perdana-Island-GNOME-${RELEASE_TAG}.shell-extension.zip"
 PLASMA_ARCHIVE="$DIST_DIR/Perdana-Island-KDE-Plasma-${RELEASE_TAG}.zip"

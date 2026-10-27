@@ -4,11 +4,15 @@
   background-color: transparent;
   border: 0;
   box-shadow: none;
-  border-radius: 0;
+  border-radius: 0 0 19px 19px;
 }
 
 .perdana-island--expanded {
-  border-radius: 0;
+  border-radius: 0 0 34px 34px;
+}
+
+.perdana-island--resting-lyrics {
+  border-radius: 0 0 21px 21px;
 }
 
 .perdana-island.perdana-island--glass {
@@ -20,8 +24,18 @@
   background-color: transparent;
 }
 
-.perdana-island__glass-blur {
-  background-color: rgba(255, 255, 255, 0.01);
+.perdana-island.perdana-island--glass StScrollView,
+.perdana-island.perdana-island--glass StViewport,
+.perdana-island.perdana-island--glass .perdana-island__album-art,
+.perdana-island.perdana-island--glass .perdana-island__compact-artwork,
+.perdana-island.perdana-island--glass .perdana-island__settings-scroll-content,
+.perdana-island.perdana-island--glass .perdana-island__settings-content,
+.perdana-island.perdana-island--glass .perdana-island__notification-list,
+.perdana-island.perdana-island--glass .perdana-island__task-list {
+  background-color: transparent;
+  background-image: none;
+  border: 0;
+  box-shadow: none;
 }
 
 .perdana-island--custom-shape:not(.perdana-island--v12) .perdana-island__equalizer:not(.perdana-island__page-equalizer) {
@@ -62,7 +76,7 @@
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  background-color: #1d1d1f;
+  background-color: #000000;
 }
 
 .perdana-island__compact-artwork-icon {
@@ -78,6 +92,24 @@
   color: #ffffff;
   font-size: 12px;
   font-weight: 500;
+  text-align: center;
+}
+
+.perdana-island__compact-track-title--lyrics {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.perdana-island__compact-track-title--lyrics-small {
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.perdana-island__compact-track-title--lyrics-smaller {
+  font-size: 9px;
+  line-height: 12px;
 }
 
 .perdana-island__focus-compact {
@@ -260,7 +292,7 @@
   width: 58px;
   height: 58px;
   border-radius: 14px;
-  background-color: #292929;
+  background-color: #000000;
 }
 
 .perdana-island__album-art-icon {
@@ -270,14 +302,48 @@
 }
 
 .perdana-island__lyrics-art {
-  width: 80px;
-  height: 80px;
-  border-radius: 16px;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
 }
 
 .perdana-island__lyrics-art .perdana-island__album-art-icon {
-  icon-size: 80px;
-  border-radius: 16px;
+  icon-size: 64px;
+  border-radius: 12px;
+}
+
+.perdana-island__track-title.perdana-island__lyrics-title {
+  font-size: 14px;
+}
+
+.perdana-button.perdana-button--lyrics-transport {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 14px;
+}
+
+.perdana-button.perdana-button--lyrics-resting-toggle {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 17px;
+}
+
+.perdana-button--lyrics-resting-toggle .perdana-island__icon {
+  icon-size: 16px;
+}
+
+.perdana-button--lyrics-resting-active,
+.perdana-button--lyrics-resting-active:hover {
+  color: #ffffff;
+  background-color: var(--perdana-accent-soft, rgba(85, 119, 184, 0.24));
+}
+
+.perdana-button.perdana-button--lyrics-play {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 17px;
 }
 
 .perdana-island__track-title {
@@ -567,6 +633,10 @@
   padding: 0 9px;
   border-radius: 11px;
   background-color: rgba(255, 255, 255, 0.075);
+}
+
+.perdana-island__task-list {
+  spacing: 7px;
 }
 
 .perdana-island__task-row--done {
@@ -868,34 +938,23 @@
   font-weight: 700;
 }
 
-.perdana-island__settings-title {
-  spacing: 6px;
-}
-
-.perdana-island__settings-title-icon {
-  icon-size: 16px;
-  color: #5577b8;
-}
-
 .perdana-island__settings-title-label {
   color: #ffffff;
   font-size: 13px;
   font-weight: 600;
 }
 
-.perdana-island__settings-heading-content {
-  spacing: 5px;
-}
-
-.perdana-island__settings-heading-icon {
-  icon-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
-}
-
 .perdana-island__settings-heading-label {
   color: rgba(255, 255, 255, 0.56);
   font-size: 10px;
   font-weight: 600;
+  text-align: right;
+}
+
+.perdana-island__settings-shortcut {
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 11px;
+  text-align: right;
 }
 
 .perdana-island__setting-option-content {
@@ -998,6 +1057,8 @@
 }
 
 .perdana-island__notification-scroll,
+.perdana-island__task-scroll,
+.perdana-island__settings-scroll,
 .perdana-island__notification-list {
   min-width: 0;
   min-height: 0;

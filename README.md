@@ -10,6 +10,10 @@ Perdana Island provides separate native packages for GNOME Shell and KDE Plasma.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
+## Latest release: v63
+
+The GNOME package fixes the remaining black corners on rounded album artwork in Glass mode and removes the rectangular blur artifact that caused dark edges around the island. It also includes the current local extension source and its compiled settings schema. See the [v63 release notes](docs/releases/v63.md) for the package and verification details. The KDE package is version-aligned with the shared release; its widget code did not change in v63.
+
 ## Feature previews
 
 These images show representative UI states with sample content. Media, battery, and system values in a running extension come from the current desktop session.
@@ -69,7 +73,7 @@ Quick install from this repository:
 
 ```sh
 mkdir -p dist
-gnome-extensions pack ./extension --extra-source=./LICENSE --out-dir ./dist
+gnome-extensions pack ./extension --extra-source=../LICENSE --out-dir ./dist
 gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.zip
 gnome-extensions enable perdana.island@perdana
 ```
@@ -78,10 +82,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
 
-- `Perdana-Island-GNOME-v45.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
-- `Perdana-Island-KDE-Plasma-v45.zip` for KDE Plasma 6.
+- `Perdana-Island-GNOME-v63.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
+- `Perdana-Island-KDE-Plasma-v63.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the current v45 archives locally, run `./scripts/package-release.sh v45`.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v63 archives locally, run `./scripts/package-release.sh v63`.
 
 ## Use
 

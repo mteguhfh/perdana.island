@@ -1,2 +1,3 @@
 /dist/
 *.shell-extension.zip
+/extension/schemas/gschemas.compiled

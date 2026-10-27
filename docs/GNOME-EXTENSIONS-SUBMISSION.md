@@ -1,17 +1,17 @@
 # GNOME Extensions submission
 
-Perdana Island's GNOME package targets GNOME Shell 50 and is prepared as a separate upload from the KDE Plasma widget. The ZIP built by `gnome-extensions pack` contains only the extension metadata, JavaScript, stylesheet, and GPL license.
+Perdana Island's GNOME package targets GNOME Shell 50 and is prepared as a separate upload from the KDE Plasma widget. The ZIP contains the extension metadata, JavaScript, stylesheet, GSettings schema XML, and GPL license.
 
 ## Build and check the ZIP
 
 From the repository root:
 
 ```sh
-gnome-extensions pack ./extension --extra-source=./LICENSE --out-dir ./dist
+gnome-extensions pack ./extension --extra-source=../LICENSE --force --out-dir ./dist
 unzip -l ./dist/perdana.island@perdana.shell-extension.zip
 ```
 
-The archive root should contain `metadata.json`, `extension.js`, `stylesheet.css`, and `LICENSE`. Do not upload the KDE package or repository development files.
+The archive root should contain `metadata.json`, `extension.js`, `stylesheet.css`, `LICENSE`, and the schema XML in `schemas/`. GNOME compiles schemas when it installs extensions through its supported tools; the XML file itself must be included in the upload. Do not upload the KDE package or repository development files.
 
 Run Shexli before uploading:
 
