@@ -30,7 +30,7 @@ The extension is for GNOME users who want quick media controls and short focus s
 - **Focus:** Focus, Short, Long, and custom durations; Start/Pause, Reset, and Skip; completion notice and daily session count.
 - **Shelf:** file chooser, local file copy, open-folder action, filesystem refresh, persisted Grid/List view, image thumbnails, and a scrollable 10-item view.
 - **To-do:** add, complete, and delete tasks; persist the list as JSON.
-- **Clipboard:** collect recent text only while the page is open, skip sensitive MIME types, allow recopy and delete, and persist up to four entries locally between sessions.
+- **Clipboard:** observe clipboard owner changes while the extension is enabled; skip explicit sensitive MIME types and recognizable credential formats; allow recopy and delete; persist up to four unique entries locally between sessions. Normalize repeated text and URL forms to prevent duplicate rows.
 - **Today:** local date plus available processor, memory, disk, and battery metrics.
 - **Notifications:** recent desktop notifications, activation of the originating notification, and clear action.
 - **Settings:** resting style, glass appearance, accent color, system notices, and visible page tabs.
@@ -42,7 +42,7 @@ The extension is for GNOME users who want quick media controls and short focus s
 - Reconcile tasks from both the Perdana and legacy Pulo data directories, then synchronize task changes to both locations for compatibility across extension UUIDs.
 - Copy files under `shelf/` from the former `pulo-island` data directory only when the corresponding destination does not exist.
 - Store recent clipboard text in the Perdana data directory with user-only permissions.
-- Read clipboard text only while the Clipboard page is open. Keep clipboard history local; do not transmit it to LRCLIB or another third party.
+- Observe clipboard changes while the extension is enabled, including while collapsed or on another page. Keep clipboard history local with user-only file permissions; do not transmit it to LRCLIB or another third party. Mask email addresses and URLs in displayed previews and prevent duplicate entries.
 
 ## Platform and architecture
 
@@ -54,4 +54,4 @@ The extension is for GNOME users who want quick media controls and short focus s
 
 ## Constraints
 
-GNOME Shell's internal volume module and bundled Gvc API are tied to Shell releases and need a compatibility review before targeting another major version. GNOME Shell actors do not receive the desktop file list for direct drop onto the island, so file selection or copying into the Shelf folder is required. Clipboard polling is limited to the open Clipboard page; accepted text entries persist locally, while sensitive MIME types are skipped. LRCLIB lookups send track title, artist, optional album, and duration to the public LRCLIB API.
+GNOME Shell's internal volume module and bundled Gvc API are tied to Shell releases and need a compatibility review before targeting another major version. GNOME Shell actors do not receive the desktop file list for direct drop onto the island, so file selection or copying into the Shelf folder is required. Clipboard owner changes are monitored while the extension is enabled; only recognized sensitive MIME types or explicit credential patterns are skipped. Accepted text entries persist locally and repeated entries are deduplicated. LRCLIB lookups send track title, artist, optional album, and duration to the public LRCLIB API.

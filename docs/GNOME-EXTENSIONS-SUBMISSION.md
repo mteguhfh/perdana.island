@@ -22,7 +22,7 @@ pip install -U shexli
 shexli ./dist/perdana.island@perdana.shell-extension.zip
 ```
 
-Review every warning manually. Clipboard access is a core feature and is declared in the extension description. It runs only while the Clipboard page is open, stores entries locally, and does not share them with third parties. LRCLIB lyric lookup sends the current track title, artist, optional album, and duration to `lrclib.net`.
+Review every warning manually. Clipboard access is a core feature and is declared in the extension description. Clipboard changes are observed while the extension is enabled; up to four unique entries are stored locally with email addresses and links masked in previews. Explicitly marked password-manager data and recognized credential formats are skipped. Clipboard text is not sent to third parties. LRCLIB lyric lookup sends the current track title, artist, optional album, and duration to `lrclib.net`.
 
 ## Upload
 

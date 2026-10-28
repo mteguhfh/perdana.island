@@ -2,6 +2,7 @@
 
 import Clutter from 'gi://Clutter';
 import Cairo from 'cairo';
+import Gdk from 'gi://Gdk?version=4.0';
 import Gio from 'gi://Gio';
 import GdkPixbuf from 'gi://GdkPixbuf';
 import GLib from 'gi://GLib';
@@ -96,6 +97,47 @@ const CLIPBOARD_EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const CLIPBOARD_URL_PATTERN = /\b(?:(?:https?|ftp|file):\/\/|www\.)[^\s<>"']+/gi;
 const CLIPBOARD_DOMAIN_PATTERN = /(^|[^\w@.-])((?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s<>"']*)?)/gi;
 
+function normalizeClipboardHistoryKey(value) {
+    const text = String(value || '').normalize('NFC').trim().replace(/\s+/g, ' ');
+    const url = text.replace(/[.,!?;:)\]}]+$/, '');
+    const match = url.match(/^(https?:\/\/|ftp:\/\/|file:\/\/|www\.)([^/?#]*)(.*)$/i);
+    if (!match)
+        return text;
+
+    const [, prefix, authority, suffix] = match;
+    const atIndex = authority.lastIndexOf('@');
+    const userInfo = atIndex >= 0 ? authority.slice(0, atIndex + 1) : '';
+    const hostAndPort = authority.slice(atIndex + 1);
+    let hostname = hostAndPort;
+    let port = '';
+    if (hostAndPort.startsWith('[')) {
+        const bracketEnd = hostAndPort.indexOf(']');
+        if (bracketEnd >= 0) {
+            hostname = hostAndPort.slice(0, bracketEnd + 1);
+            port = hostAndPort.slice(bracketEnd + 1);
+        }
+    } else {
+        const colonIndex = hostAndPort.lastIndexOf(':');
+        if (colonIndex >= 0 && /^:\d+$/.test(hostAndPort.slice(colonIndex))) {
+            hostname = hostAndPort.slice(0, colonIndex);
+            port = hostAndPort.slice(colonIndex);
+        }
+    }
+
+    const normalizedPrefix = prefix.toLowerCase();
+    const normalizedPort = (normalizedPrefix === 'https://' && port === ':443')
+        || (normalizedPrefix === 'http://' && port === ':80')
+        || (normalizedPrefix === 'ftp://' && port === ':21')
+        ? ''
+        : port;
+    const normalizedSuffix = suffix === '/' ? '' : suffix;
+    return `${normalizedPrefix}${userInfo}${hostname.toLowerCase()}${normalizedPort}${normalizedSuffix}`;
+}
+
+function areClipboardHistoryValuesEqual(first, second) {
+    return normalizeClipboardHistoryKey(first) === normalizeClipboardHistoryKey(second);
+}
+
 function maskClipboardPart(value) {
     const text = String(value || '');
     if (text.length <= 1)
@@ -176,29 +218,17 @@ function isPasswordLikeClipboardText(value) {
         || /^eyJ[A-Z0-9_-]{8,}\.eyJ[A-Z0-9_-]{8,}\.[A-Z0-9_-]{8,}$/i.test(text)
         || /^(?:gh[pousr]_|github_pat_|glpat-|xox[baprs]-|sk-(?:proj-)?|AIzaSy)[A-Z0-9_-]{16,}/i.test(text)
         || /\bhttps?:\/\/[^/@\s]+:[^/@\s]+@/i.test(text)
-        || /[?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|password|passwd|secret|session|signature|auth|code)=[^&#\s]{8,}/i.test(text)) {
+        || /[?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|client[_-]?secret|password|passwd)=[^&#\s]{8,}/i.test(text)) {
         return true;
     }
 
-    if (/\s|@|(?:https?|ftp|file):\/\/|\bwww\./i.test(text)
-        || /\b[a-z0-9-]+\.[a-z]{2,}(?:\/|$)/i.test(text)) {
-        return false;
-    }
+    return false;
+}
 
-    const hasLower = /[a-z]/.test(text);
-    const hasUpper = /[A-Z]/.test(text);
-    const hasDigit = /\d/.test(text);
-    const hasSymbol = /[^a-z0-9]/i.test(text);
-    const classes = [hasLower, hasUpper, hasDigit, hasSymbol].filter(Boolean).length;
-    const frequencies = new Map();
-    for (const character of text)
-        frequencies.set(character, (frequencies.get(character) || 0) + 1);
-    const entropy = [...frequencies.values()].reduce((sum, count) => {
-        const probability = count / text.length;
-        return sum - probability * Math.log2(probability);
-    }, 0);
-    return (text.length >= 16 && classes >= 3 && entropy >= 3.8)
-        || (text.length >= 24 && entropy >= 3.2);
+function isSensitiveClipboardMimeType(mimeType) {
+    // KDE's password-manager hint is explicit. Match it exactly so an
+    // unrelated MIME name cannot suppress normal copied text.
+    return String(mimeType || '').trim().toLowerCase() === 'application/x-kde-passwordmanagerhint';
 }
 
 function makeLabel(text, styleClass = '') {
@@ -350,6 +380,12 @@ export default class PerdanaIslandExtension extends Extension {
         this._clipboardItems = [];
         this._clipboardNotice = null;
         this._clipboardSuppressedValue = null;
+        this._clipboardInFlight = false;
+        this._clipboardSelection = null;
+        this._clipboardOwnerChangedSignal = 0;
+        this._clipboardRequestGeneration = 0;
+        this._clipboardRequestTimeoutSource = 0;
+        this._clipboardReadFailed = false;
         this._shelfItems = [];
         this._shelfNotice = null;
         this._shelfNoticeSource = 0;
@@ -474,6 +510,7 @@ export default class PerdanaIslandExtension extends Extension {
             }
         );
         this._discoverPlayers();
+        this._connectClipboardMonitor();
     }
 
     _loadPreferences() {
@@ -602,8 +639,6 @@ export default class PerdanaIslandExtension extends Extension {
             this._activePage = 'settings';
         if (this._activePage !== 'today')
             this._stopTodayTicker();
-        if (this._activePage !== 'clipboard')
-            this._stopClipboardTicker();
         this._layoutTabs(this._expandedWidth());
         this._renderPanel();
     }
@@ -778,8 +813,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._noticeDismissSource = 0;
         this._blinkSource && GLib.source_remove(this._blinkSource);
         this._blinkSource = 0;
-        this._clipboardSource && GLib.source_remove(this._clipboardSource);
-        this._clipboardSource = 0;
+        this._disconnectClipboardMonitor();
         this._shelfRefreshSource && GLib.source_remove(this._shelfRefreshSource);
         this._shelfRefreshSource = 0;
         this._shelfNoticeSource && GLib.source_remove(this._shelfNoticeSource);
@@ -1497,7 +1531,6 @@ export default class PerdanaIslandExtension extends Extension {
                 this._expanded = false;
                 this._closing = false;
                 this._stopTodayTicker();
-                this._stopClipboardTicker();
                 this._root.remove_all_transitions();
                 this._header.remove_all_transitions();
                 this._panel.remove_all_transitions();
@@ -1600,12 +1633,9 @@ export default class PerdanaIslandExtension extends Extension {
             });
             if (this._activePage === 'today')
                 this._startTodayTicker();
-            if (this._activePage === 'clipboard')
-                this._startClipboardTicker();
             this._clearTimeout('_blinkSource');
         } else {
             this._stopTodayTicker();
-            this._stopClipboardTicker();
             this._setEqualizerPlaying(this._mediaEqualizer, false);
             this._compactButton.show();
             this._compactButton.opacity = 0;
@@ -1722,10 +1752,6 @@ export default class PerdanaIslandExtension extends Extension {
             this._startTodayTicker();
         else
             this._stopTodayTicker();
-        if (key === 'clipboard' && this._expanded)
-            this._startClipboardTicker();
-        else
-            this._stopClipboardTicker();
     }
 
     _pageHeight() {
@@ -2358,7 +2384,7 @@ export default class PerdanaIslandExtension extends Extension {
     _lookupLyrics(track, metadata, key) {
         if (!this._lyricsSession)
             this._lyricsSession = new Soup.Session();
-        this._lyricsSession.set_user_agent('Perdana Island/63 (https://github.com/txtperdana/perdana.island)');
+        this._lyricsSession.set_user_agent('Perdana Island/68 (https://github.com/txtperdana/perdana.island)');
         this._lyricsCancellable = new Gio.Cancellable();
 
         const params = {track_name: track.title};
@@ -3331,13 +3357,13 @@ export default class PerdanaIslandExtension extends Extension {
 
     _renderClipboardPage(body) {
         place(body, makeLabel('Clipboard', 'perdana-island__todo-heading'), 0, 5, 240, 22);
-        const hint = this._clipboardNotice || 'Email/link masked';
+        const hint = this._clipboardNotice || 'Local history while enabled · email/link masked';
         const hintStyle = this._clipboardNotice
             ? 'perdana-island__clipboard-notice'
             : 'perdana-island__muted';
         place(body, makeLabel(hint, hintStyle), 244, 7, this._pageWidth() - 244, 20);
         if (!this._clipboardItems.length) {
-            place(body, makeLabel('Copy text while this page is open', 'perdana-island__empty-media'), 0, 66, this._pageWidth(), 24);
+            place(body, makeLabel('Copy text while the extension is enabled', 'perdana-island__empty-media'), 0, 66, this._pageWidth(), 24);
             return;
         }
         this._clipboardItems.slice(0, 4).forEach((item, index) => {
@@ -4138,55 +4164,11 @@ export default class PerdanaIslandExtension extends Extension {
 
         try {
             const source = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, size, size, true);
-            const rounded = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, true, 8, size, size);
-            rounded.fill(0);
-            const sourcePixels = source.get_pixels();
-            const roundedPixels = rounded.get_pixels();
-            const sourceChannels = source.n_channels;
-            const sourceHasAlpha = source.get_has_alpha();
+            const surface = new Cairo.ImageSurface(Cairo.Format.ARGB32, size, size);
+            const cr = new Cairo.Context(surface);
+            const corner = Math.min(Math.round(radius), Math.floor(size / 2));
             const offsetX = Math.floor((size - source.width) / 2);
             const offsetY = Math.floor((size - source.height) / 2);
-
-            for (let y = 0; y < source.height; y++) {
-                for (let x = 0; x < source.width; x++) {
-                    const sourceIndex = y * source.rowstride + x * sourceChannels;
-                    const roundedIndex = (offsetY + y) * rounded.rowstride + (offsetX + x) * 4;
-                    roundedPixels[roundedIndex] = sourcePixels[sourceIndex];
-                    roundedPixels[roundedIndex + 1] = sourcePixels[sourceIndex + 1];
-                    roundedPixels[roundedIndex + 2] = sourcePixels[sourceIndex + 2];
-                    roundedPixels[roundedIndex + 3] = sourceHasAlpha
-                        ? sourcePixels[sourceIndex + 3]
-                        : 255;
-                }
-            }
-
-            const corner = Math.min(Math.round(radius), Math.floor(size / 2));
-            for (let y = 0; y < size; y++) {
-                for (let x = 0; x < size; x++) {
-                    let centerX;
-                    let centerY;
-                    if (x < corner && y < corner) {
-                        centerX = corner;
-                        centerY = corner;
-                    } else if (x >= size - corner && y < corner) {
-                        centerX = size - corner;
-                        centerY = corner;
-                    } else if (x < corner && y >= size - corner) {
-                        centerX = corner;
-                        centerY = size - corner;
-                    } else if (x >= size - corner && y >= size - corner) {
-                        centerX = size - corner;
-                        centerY = size - corner;
-                    } else {
-                        continue;
-                    }
-
-                    const distance = Math.hypot(x + 0.5 - centerX, y + 0.5 - centerY);
-                    const coverage = Math.max(0, Math.min(1, corner - distance + 0.5));
-                    const alphaIndex = y * rounded.rowstride + x * 4 + 3;
-                    roundedPixels[alphaIndex] = Math.round(roundedPixels[alphaIndex] * coverage);
-                }
-            }
 
             if (!this._artworkCacheDirectory)
                 this._artworkCacheDirectory = GLib.dir_make_tmp('perdana-island-art-XXXXXX');
@@ -4195,8 +4177,26 @@ export default class PerdanaIslandExtension extends Extension {
                 this._artworkCacheDirectory,
                 `${digest}.png`,
             ]);
-            if (!rounded.savev(roundedPath, 'png', [], []))
-                return null;
+
+            cr.setOperator(Cairo.Operator.CLEAR);
+            cr.paint();
+            cr.setOperator(Cairo.Operator.OVER);
+            cr.newPath();
+            cr.moveTo(corner, 0);
+            cr.lineTo(size - corner, 0);
+            cr.arc(size - corner, corner, corner, -Math.PI / 2, 0);
+            cr.lineTo(size, size - corner);
+            cr.arc(size - corner, size - corner, corner, 0, Math.PI / 2);
+            cr.lineTo(corner, size);
+            cr.arc(corner, size - corner, corner, Math.PI / 2, Math.PI);
+            cr.lineTo(0, corner);
+            cr.arc(corner, corner, corner, Math.PI, Math.PI * 1.5);
+            cr.closePath();
+            cr.clip();
+            Gdk.cairo_set_source_pixbuf(cr, source, offsetX, offsetY);
+            cr.paint();
+            cr.$dispose();
+            surface.writeToPNG(roundedPath);
 
             const roundedFile = Gio.File.new_for_path(roundedPath);
             this._artworkFiles.add(roundedPath);
@@ -4762,23 +4762,61 @@ export default class PerdanaIslandExtension extends Extension {
         this._clearTimeout('_todaySource');
     }
 
-    _startClipboardTicker() {
-        if (this._clipboardSource || !this._enabled)
+    _connectClipboardMonitor() {
+        if (!this._enabled || this._clipboardOwnerChangedSignal)
             return;
-        this._captureClipboard();
-        this._clipboardSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
-            if (!this._enabled || !this._expanded || this._activePage !== 'clipboard') {
-                this._clipboardSource = 0;
-                return GLib.SOURCE_REMOVE;
-            }
-            this._captureClipboard();
-            return GLib.SOURCE_CONTINUE;
-        });
+
+        try {
+            this._clipboardSelection = global.display.get_selection();
+            this._clipboardOwnerChangedSignal = this._clipboardSelection.connect(
+                'owner-changed', (_selection, selectionType) => {
+                    if (!this._enabled || selectionType !== Meta.SelectionType.SELECTION_CLIPBOARD)
+                        return;
+
+                    // A new owner means a new copy, including when the copied
+                    // value matches an item the user previously deleted.
+                    this._clipboardSuppressedValue = null;
+                    this._scheduleClipboardCapture();
+                }
+            );
+            this._scheduleClipboardCapture();
+        } catch (error) {
+            this._clipboardSelection = null;
+            this._clipboardOwnerChangedSignal = 0;
+            logError(error, 'Perdana Island could not monitor clipboard changes');
+            this._setClipboardNotice('Clipboard monitor unavailable');
+        }
     }
 
-    _stopClipboardTicker() {
+    _disconnectClipboardMonitor() {
         this._clearTimeout('_clipboardSource');
+        this._clearTimeout('_clipboardRequestTimeoutSource');
+        this._clipboardRequestGeneration++;
         this._clipboardInFlight = false;
+        if (this._clipboardSelection && this._clipboardOwnerChangedSignal) {
+            this._clipboardSelection.disconnect(this._clipboardOwnerChangedSignal);
+            this._clipboardOwnerChangedSignal = 0;
+        }
+        this._clipboardSelection = null;
+    }
+
+    _scheduleClipboardCapture(delayMs = 150) {
+        this._clearTimeout('_clipboardSource');
+
+        // If the clipboard changes while a request is in flight, discard the
+        // stale result and read from the newest owner after it settles.
+        if (this._clipboardInFlight) {
+            this._clipboardRequestGeneration++;
+            this._clipboardInFlight = false;
+            this._clearTimeout('_clipboardRequestTimeoutSource');
+        }
+
+        this._clipboardSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delayMs, () => {
+            this._clipboardSource = 0;
+            if (this._enabled)
+                this._captureClipboard();
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _migrateLegacyData() {
@@ -4880,30 +4918,56 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _captureClipboard() {
-        if (this._clipboardInFlight || !this._enabled || !this._expanded || this._activePage !== 'clipboard')
+        if (this._clipboardInFlight || !this._enabled)
             return;
+
+        let requestGeneration = 0;
         try {
             const clipboard = St.Clipboard.get_default();
             const mimeTypes = clipboard.get_mimetypes(St.ClipboardType.CLIPBOARD) || [];
-            if (mimeTypes.some(type => /password|secret|sensitive|credential|keepass|passphrase|token/i.test(type))) {
+            if (mimeTypes.some(isSensitiveClipboardMimeType)) {
                 this._setClipboardNotice('Password skipped');
                 return;
             }
             this._clipboardInFlight = true;
+            requestGeneration = ++this._clipboardRequestGeneration;
+            this._clipboardRequestTimeoutSource = GLib.timeout_add_seconds(
+                GLib.PRIORITY_DEFAULT, 5, () => {
+                    this._clipboardRequestTimeoutSource = 0;
+                    if (requestGeneration === this._clipboardRequestGeneration) {
+                        this._clipboardInFlight = false;
+                        this._clipboardReadFailed = true;
+                        log('Perdana Island clipboard read timed out');
+                        this._setClipboardNotice('Clipboard read timed out');
+                    }
+                    return GLib.SOURCE_REMOVE;
+                }
+            );
             clipboard.get_text(St.ClipboardType.CLIPBOARD, (_clipboard, text) => {
-                this._clipboardInFlight = false;
-                if (!this._enabled || !this._expanded || this._activePage !== 'clipboard')
+                if (requestGeneration !== this._clipboardRequestGeneration)
                     return;
+
+                this._clearTimeout('_clipboardRequestTimeoutSource');
+                this._clipboardInFlight = false;
+                if (!this._enabled)
+                    return;
+
+                this._clipboardReadFailed = false;
                 const rawValue = String(text || '').trim();
                 if (isPasswordLikeClipboardText(rawValue)) {
                     this._setClipboardNotice('Password skipped');
                     return;
                 }
-                if (!rawValue)
-                    return;
-                const value = rawValue.slice(0, 1200);
+
                 const noticeChanged = this._clipboardNotice !== null;
                 this._clipboardNotice = null;
+                if (!rawValue) {
+                    if (noticeChanged && this._expanded && this._activePage === 'clipboard')
+                        this._renderPanel();
+                    return;
+                }
+
+                const value = rawValue.slice(0, 1200);
                 if (this._clipboardSuppressedValue !== null) {
                     if (value === this._clipboardSuppressedValue) {
                         if (noticeChanged)
@@ -4912,18 +4976,41 @@ export default class PerdanaIslandExtension extends Extension {
                     }
                     this._clipboardSuppressedValue = null;
                 }
-                if (!value || value === this._clipboardItems[0]) {
+                if (!value) {
                     if (noticeChanged)
                         this._renderPanel();
                     return;
                 }
+
+                const duplicateIndex = this._clipboardItems.findIndex(item =>
+                    areClipboardHistoryValuesEqual(item, value));
+                if (duplicateIndex >= 0) {
+                    if (duplicateIndex > 0) {
+                        const [existingValue] = this._clipboardItems.splice(duplicateIndex, 1);
+                        this._clipboardItems.unshift(existingValue);
+                        this._saveClipboardItems();
+                    }
+                    if (noticeChanged || duplicateIndex > 0)
+                        this._renderPanel();
+                    return;
+                }
+
                 this._clipboardItems.unshift(value);
                 this._clipboardItems = this._clipboardItems.slice(0, 4);
                 this._saveClipboardItems();
-                this._renderPanel();
+                if (this._expanded && this._activePage === 'clipboard')
+                    this._renderPanel();
             });
-        } catch (_error) {
+        } catch (error) {
+            if (requestGeneration)
+                this._clipboardRequestGeneration++;
+            this._clearTimeout('_clipboardRequestTimeoutSource');
             this._clipboardInFlight = false;
+            if (!this._clipboardReadFailed) {
+                logError(error, 'Perdana Island could not read the clipboard');
+                this._setClipboardNotice('Clipboard read failed');
+            }
+            this._clipboardReadFailed = true;
         }
     }
 
@@ -4950,12 +5037,26 @@ export default class PerdanaIslandExtension extends Extension {
             const data = JSON.parse(new TextDecoder().decode(contents));
             if (!Array.isArray(data))
                 return [];
-            const normalized = [...new Set(data
+            const normalized = data
                 .filter(value => typeof value === 'string')
                 .map(value => value.trim().slice(0, 1200))
-                .filter(Boolean))];
-            const safeItems = normalized.filter(value => !isPasswordLikeClipboardText(value)).slice(0, 4);
-            if (safeItems.length !== normalized.length)
+                .filter(Boolean);
+            const uniqueItems = [];
+            const seenKeys = new Set();
+            let skippedSensitiveItem = false;
+            normalized.forEach(value => {
+                if (isPasswordLikeClipboardText(value)) {
+                    skippedSensitiveItem = true;
+                    return;
+                }
+                const key = normalizeClipboardHistoryKey(value);
+                if (!seenKeys.has(key)) {
+                    seenKeys.add(key);
+                    uniqueItems.push(value);
+                }
+            });
+            const safeItems = uniqueItems.slice(0, 4);
+            if (skippedSensitiveItem)
                 this._clipboardNotice = 'Password skipped';
             // Older extension versions may have created this file with the
             // default umask. Re-save it on load to enforce mode 0600.

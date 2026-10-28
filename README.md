@@ -10,9 +10,9 @@ Perdana Island provides separate native packages for GNOME Shell and KDE Plasma.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
-## Latest release: v63
+## Latest release: v68
 
-The GNOME package fixes the remaining black corners on rounded album artwork in Glass mode and removes the rectangular blur artifact that caused dark edges around the island. It also includes the current local extension source and its compiled settings schema. See the [v63 release notes](docs/releases/v63.md) for the package and verification details. The KDE package is version-aligned with the shared release; its widget code did not change in v63.
+The GNOME package records clipboard changes while the extension is enabled, avoids duplicate history entries, narrows password detection to explicit sensitive markers, and fixes rounded album artwork in Glass mode. The KDE package is version-aligned with the shared release; its widget code did not change in v68. See the [v68 release notes](docs/releases/v68.md) for details.
 
 ## Feature previews
 
@@ -40,7 +40,7 @@ These images show representative UI states with sample content. Media, battery, 
 - Focus offers Focus, Short, Long, and custom durations in seconds or minutes. Completion shows a temporary notice.
 - Shelf offers Grid and List views, image thumbnails, a scrollable list capped at 10 visible items, and a local folder that refreshes when files change.
 - To-do supports adding, completing, editing, and deleting tasks. Tasks persist between sessions.
-- Clipboard keeps up to four recent text entries between sessions. Sampling runs only while its page is open; entries can be recopied or removed, and sensitive MIME types are skipped.
+- Clipboard keeps up to four recent text entries between sessions. It records changes while the extension is enabled, deduplicates repeated text and URLs, masks email addresses and links in previews, and skips explicitly identified credentials.
 - Notifications can be cleared or activated to open their originating application. Settings control the resting style, glass effect, accent color, notices, and visible tabs.
 - Today shows available CPU, memory, disk, and battery information.
 - Charging, charger disconnect, and output-volume changes show short notices.
@@ -82,10 +82,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
 
-- `Perdana-Island-GNOME-v63.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
-- `Perdana-Island-KDE-Plasma-v63.zip` for KDE Plasma 6.
+- `Perdana-Island-GNOME-v68.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
+- `Perdana-Island-KDE-Plasma-v68.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v63 archives locally, run `./scripts/package-release.sh v63`.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v68 archives locally, run `./scripts/package-release.sh v68`.
 
 ## Use
 
@@ -93,7 +93,7 @@ Click the island to open it. When media or a focus timer is active, hovering ove
 
 ## Data and limitations
 
-Tasks, preferences, clipboard history, and Shelf files are stored in `~/.local/share/perdana.island/`. Task data is reconciled with `~/.local/share/pulo-island/tasks.json` and synchronized to both locations, so changes survive switching between the old and new extension UUIDs. Shelf files are copied from the previous location when a matching destination file is absent. Clipboard history is stored locally in a private directory and limited to four entries; sampling runs only while the Clipboard page is open. Clipboard text is not sent to third parties. LRCLIB lyric lookup sends the current track title, artist, optional album, and duration to `lrclib.net`.
+Tasks, preferences, clipboard history, and Shelf files are stored in `~/.local/share/perdana.island/`. Task data is reconciled with `~/.local/share/pulo-island/tasks.json` and synchronized to both locations, so changes survive switching between the old and new extension UUIDs. Shelf files are copied from the previous location when a matching destination file is absent. Clipboard history is stored locally with user-only permissions and limited to four unique entries. It is monitored while the extension is enabled; repeated copies do not create duplicate rows. Clipboard text is not sent to third parties. LRCLIB lyric lookup sends the current track title, artist, optional album, and duration to `lrclib.net`.
 
 GNOME Shell does not provide the dragged desktop file list to these island actors. Add files through **Add files**, or copy them into the Shelf folder; direct drop onto the island is unavailable.
 

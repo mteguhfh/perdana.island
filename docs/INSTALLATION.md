@@ -58,7 +58,7 @@ The extension reconciles `tasks.json` with `~/.local/share/pulo-island/tasks.jso
 gnome-extensions info perdana.island@perdana
 ```
 
-After enabling, the output should show **Perdana Island**, version 63, and `State: ACTIVE`.
+After enabling, the output should show **Perdana Island**, version 68, and `State: ACTIVE`.
 
 ## Remove
 

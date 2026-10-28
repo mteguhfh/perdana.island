@@ -36,7 +36,7 @@ Use **Add task** to create an item. Select its check control to mark it complete
 
 ## Clipboard
 
-Open the Clipboard page to collect recent text copies. Select a row to copy it again and use its delete control to remove it. Sampling happens only while this page is open. Up to four entries are saved locally and restored after sign-out or an extension update. Entries marked sensitive by MIME type are skipped.
+Clipboard records text changes while the extension is enabled, even when the island is collapsed or another page is selected. Open the Clipboard page to review up to four recent entries. Recopying an item already in the list moves that entry to the top instead of adding a duplicate. Repeated URLs are compared without differences in scheme/host capitalization, default ports, or a final root slash creating another row. Select a row to copy its original text again; use its delete control to remove it. Email addresses and links are masked in the preview, and clipboard data stays on this device. Explicitly marked password-manager MIME data and text matching credential patterns are skipped.
 
 ## Today and system notices
 
@@ -54,4 +54,4 @@ Use **Settings** to choose the resting eyes/clock style, enable the glass surfac
 
 Tasks, clipboard history, and Shelf files are in `~/.local/share/perdana.island/`. Task changes are also synchronized to `~/.local/share/pulo-island/tasks.json` for compatibility with the previous extension UUID. Task data from either location is reconciled on enable; Shelf files are copied from the previous location when a matching file is not already present.
 
-Clipboard history is local, sampled only while the Clipboard page is open, and never sent to LRCLIB. Lyric lookup sends the active track's title, artist, optional album, and duration to `lrclib.net`.
+Clipboard history is local and never sent to LRCLIB. Lyrics lookup sends the active track's title, artist, optional album, and duration to `lrclib.net`.
