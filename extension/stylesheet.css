@@ -1172,3 +1172,124 @@
   animation: none;
   transform: scaleY(0.35);
 }
+
+/* Themes. The shell paints the island material in Cairo, so these rules
+   only carry the parts CSS owns: control shapes and surface tints. Transport
+   and play buttons keep their round shape in every theme. */
+.perdana-island__theme-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+}
+
+/* Aero: tighter corners and a top highlight, echoing the gloss band. */
+.perdana-island--theme-aero .perdana-button--nav,
+.perdana-island--theme-aero .perdana-button--segment,
+.perdana-island--theme-aero .perdana-island__setting-option,
+.perdana-island--theme-aero .perdana-island__notification-button,
+.perdana-island--theme-aero .perdana-island__shelf-file--list,
+.perdana-island--theme-aero .perdana-island__shelf-file--grid,
+.perdana-island--theme-aero .perdana-island__color-entry,
+.perdana-island--theme-aero .perdana-island__color-apply,
+.perdana-island--theme-aero .perdana-button--focus-unit,
+.perdana-island--theme-aero .perdana-island__focus-custom-entry {
+  border-radius: 5px;
+}
+
+.perdana-island--theme-aero .perdana-button--nav:hover,
+.perdana-island--theme-aero .perdana-button--segment:hover,
+.perdana-island--theme-aero .perdana-island__setting-option:hover,
+.perdana-island--theme-aero .perdana-island__notification-button:hover,
+.perdana-island--theme-aero .perdana-island__shelf-file--grid:hover,
+.perdana-island--theme-aero .perdana-island__shelf-file--list:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.perdana-island--theme-aero .perdana-island__focus-custom-entry,
+.perdana-island--theme-aero .perdana-button--focus-unit,
+.perdana-island--theme-aero .perdana-island__shelf-thumbnail {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Aqua: calmer hover and roomier cards, no gloss. */
+.perdana-island--theme-aqua .perdana-button--nav,
+.perdana-island--theme-aqua .perdana-button--segment,
+.perdana-island--theme-aqua .perdana-island__setting-option,
+.perdana-island--theme-aqua .perdana-island__color-entry,
+.perdana-island--theme-aqua .perdana-island__color-apply,
+.perdana-island--theme-aqua .perdana-button--focus-unit,
+.perdana-island--theme-aqua .perdana-island__focus-custom-entry {
+  border-radius: 10px;
+}
+
+.perdana-island--theme-aqua .perdana-island__notification-button,
+.perdana-island--theme-aqua .perdana-island__shelf-file--grid,
+.perdana-island--theme-aqua .perdana-island__shelf-file--list {
+  border-radius: 14px;
+}
+
+.perdana-island--theme-aqua .perdana-button--nav:hover,
+.perdana-island--theme-aqua .perdana-button--segment:hover,
+.perdana-island--theme-aqua .perdana-island__setting-option:hover,
+.perdana-island--theme-aqua .perdana-island__notification-button:hover,
+.perdana-island--theme-aqua .perdana-island__shelf-file--grid:hover,
+.perdana-island--theme-aqua .perdana-island__shelf-file--list:hover {
+  background-color: rgba(255, 255, 255, 0.13);
+}
+
+.perdana-island--theme-aqua .perdana-island__shelf-file--grid {
+  background-color: rgba(255, 255, 255, 0.09);
+}
+
+/* Yaru: medium corners with a warm surface lift. */
+.perdana-island--theme-yaru .perdana-button--nav,
+.perdana-island--theme-yaru .perdana-button--segment,
+.perdana-island--theme-yaru .perdana-island__setting-option,
+.perdana-island--theme-yaru .perdana-island__notification-button,
+.perdana-island--theme-yaru .perdana-island__shelf-file--list,
+.perdana-island--theme-yaru .perdana-island__shelf-file--grid,
+.perdana-island--theme-yaru .perdana-island__color-entry,
+.perdana-island--theme-yaru .perdana-island__color-apply,
+.perdana-island--theme-yaru .perdana-button--focus-unit,
+.perdana-island--theme-yaru .perdana-island__focus-custom-entry {
+  border-radius: 9px;
+}
+
+.perdana-island--theme-yaru .perdana-button--nav:hover,
+.perdana-island--theme-yaru .perdana-button--segment:hover,
+.perdana-island--theme-yaru .perdana-island__setting-option:hover,
+.perdana-island--theme-yaru .perdana-island__notification-button:hover,
+.perdana-island--theme-yaru .perdana-island__shelf-file--grid:hover,
+.perdana-island--theme-yaru .perdana-island__shelf-file--list:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Graphite: flat surfaces with small corners. */
+.perdana-island--theme-graphite .perdana-button--nav,
+.perdana-island--theme-graphite .perdana-button--segment,
+.perdana-island--theme-graphite .perdana-island__setting-option,
+.perdana-island--theme-graphite .perdana-island__notification-button,
+.perdana-island--theme-graphite .perdana-island__shelf-file--list,
+.perdana-island--theme-graphite .perdana-island__shelf-file--grid,
+.perdana-island--theme-graphite .perdana-island__color-entry,
+.perdana-island--theme-graphite .perdana-island__color-apply,
+.perdana-island--theme-graphite .perdana-button--focus-unit,
+.perdana-island--theme-graphite .perdana-island__focus-custom-entry {
+  border-radius: 6px;
+}
+
+.perdana-island--theme-graphite .perdana-button--nav:hover,
+.perdana-island--theme-graphite .perdana-button--segment:hover,
+.perdana-island--theme-graphite .perdana-island__setting-option:hover,
+.perdana-island--theme-graphite .perdana-island__notification-button:hover,
+.perdana-island--theme-graphite .perdana-island__shelf-file--grid:hover,
+.perdana-island--theme-graphite .perdana-island__shelf-file--list:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.perdana-island--theme-graphite .perdana-island__focus-custom-entry,
+.perdana-island--theme-graphite .perdana-button--focus-unit {
+  background-color: rgba(255, 255, 255, 0.09);
+}

@@ -31,6 +31,7 @@ const MPRIS_PLAYER_IFACE = 'org.mpris.MediaPlayer2.Player';
 const DEFAULT_FOCUS_SECONDS = 25 * 60;
 const DEFAULT_BREAK_SECONDS = 5 * 60;
 const DEFAULT_ACCENT_COLOR = '#5577B8';
+const DEFAULT_THEME = 'midnight';
 const MAX_SHELF_ITEMS = 10;
 const MICROSECONDS_PER_SECOND = 1_000_000;
 const LEGACY_DATA_DIRECTORY = 'pulo-island';
@@ -69,6 +70,63 @@ const PAGES = [
     {key: 'today', label: 'Today', icon: 'x-office-calendar-symbolic'},
     {key: 'notifications', label: 'Notifications', icon: 'preferences-system-notifications-symbolic'},
     {key: 'settings', label: 'Settings', icon: 'preferences-system-symbolic'},
+];
+const THEMES = [
+    {
+        key: 'midnight',
+        label: 'Midnight',
+        dot: '#3A3D44',
+        opaque: true,
+        radius: 0,
+        gloss: 0,
+        border: null,
+        fill: [[0, 0, 0, 0, 1], [1, 0, 0, 0, 1]],
+        glassFill: [[0, 0.08, 0.12, 0.2, 0.38], [1, 0.04, 0.08, 0.15, 0.58]],
+    },
+    {
+        key: 'aero',
+        label: 'Aero',
+        dot: '#3F7FBF',
+        opaque: false,
+        radius: 2,
+        gloss: 0.14,
+        border: [1, 1, 1, 0.34],
+        fill: [[0, 0.15, 0.31, 0.5, 0.94], [1, 0.04, 0.11, 0.22, 0.96]],
+        glassFill: [[0, 0.16, 0.33, 0.52, 0.82], [1, 0.05, 0.13, 0.25, 0.9]],
+    },
+    {
+        key: 'aqua',
+        label: 'Aqua',
+        dot: '#B8BEC9',
+        opaque: false,
+        radius: 6,
+        gloss: 0.08,
+        border: [1, 1, 1, 0.16],
+        fill: [[0, 0.2, 0.2, 0.22, 0.86], [1, 0.09, 0.09, 0.11, 0.94]],
+        glassFill: [[0, 0.22, 0.22, 0.25, 0.72], [1, 0.1, 0.1, 0.12, 0.86]],
+    },
+    {
+        key: 'yaru',
+        label: 'Yaru',
+        dot: '#8E3A7E',
+        opaque: false,
+        radius: 0,
+        gloss: 0.12,
+        border: [1, 1, 1, 0.12],
+        fill: [[0, 0.24, 0.05, 0.2, 0.9], [1, 0.13, 0.02, 0.1, 0.95]],
+        glassFill: [[0, 0.26, 0.06, 0.22, 0.8], [1, 0.14, 0.03, 0.11, 0.9]],
+    },
+    {
+        key: 'graphite',
+        label: 'Graphite',
+        dot: '#565C66',
+        opaque: true,
+        radius: -5,
+        gloss: 0.05,
+        border: [1, 1, 1, 0.1],
+        fill: [[0, 0.15, 0.16, 0.18, 1], [1, 0.1, 0.11, 0.13, 1]],
+        glassFill: [[0, 0.18, 0.19, 0.22, 0.72], [1, 0.12, 0.13, 0.15, 0.86]],
+    },
 ];
 
 function unpack(value) {
@@ -333,6 +391,7 @@ export default class PerdanaIslandExtension extends Extension {
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
             () => this._toggleIslandVisibility()
         );
+        this._applyTheme();
         this._applyGlassPreference();
         this._monitorSignal = Main.layoutManager.connect('monitors-changed', () => {
             if (this._expanded)
@@ -386,6 +445,7 @@ export default class PerdanaIslandExtension extends Extension {
         const visiblePages = Object.fromEntries(PAGES.map(page => [page.key, true]));
         const defaults = {
             glass: false,
+            theme: DEFAULT_THEME,
             accentColor: DEFAULT_ACCENT_COLOR,
             restingStyle: 'hover-clock',
             showRestingLyrics: false,
@@ -403,6 +463,9 @@ export default class PerdanaIslandExtension extends Extension {
                     defaults.visiblePages[page.key] = savedPages[page.key];
             }
             defaults.glass = Boolean(stored.glass);
+            defaults.theme = THEMES.some(theme => theme.key === stored.theme)
+                ? stored.theme
+                : DEFAULT_THEME;
             defaults.accentColor = normalizeHexColor(stored.accentColor) || defaults.accentColor;
             defaults.restingStyle = ['hover-clock', 'eyes-clock'].includes(stored.restingStyle)
                 ? stored.restingStyle
@@ -440,6 +503,10 @@ export default class PerdanaIslandExtension extends Extension {
             this._dismissSystemNotice(true);
         if (key === 'glass')
             this._applyGlassPreference();
+        if (key === 'theme') {
+            this._applyTheme();
+            this._applyAccentStyles();
+        }
         if (key === 'accentColor') {
             this._focusRing?.queue_repaint();
             this._applyAccentStyles();
@@ -512,6 +579,29 @@ export default class PerdanaIslandExtension extends Extension {
         this._renderPanel();
     }
 
+    _theme() {
+        return THEMES.find(theme => theme.key === this._preferences?.theme) || THEMES[0];
+    }
+
+    _applyTheme() {
+        if (!this._root)
+            return;
+        const theme = this._theme();
+        for (const candidate of THEMES)
+            this._root.remove_style_class_name(`perdana-island--theme-${candidate.key}`);
+        this._root.add_style_class_name(`perdana-island--theme-${theme.key}`);
+        this._updateEarVisibility();
+        this._surface?.queue_repaint();
+    }
+
+    _updateEarVisibility() {
+        const visible = !this._preferences?.glass && this._theme().opaque;
+        for (const ear of this._islandEars || []) {
+            ear.visible = visible;
+            ear.queue_repaint();
+        }
+    }
+
     _applyGlassPreference() {
         if (!this._root || !this._surface)
             return;
@@ -521,10 +611,7 @@ export default class PerdanaIslandExtension extends Extension {
         } else {
             this._root.remove_style_class_name('perdana-island--glass');
         }
-        for (const ear of this._islandEars) {
-            ear.visible = !enabled;
-            ear.queue_repaint();
-        }
+        this._updateEarVisibility();
         this._updateIslandShapeStyle();
         // Shell.BlurEffect paints the background into rectangular actor bounds.
         // It cannot follow this custom rounded Cairo silhouette on GNOME 50,
@@ -1209,8 +1296,9 @@ export default class PerdanaIslandExtension extends Extension {
 
     _islandRadius(width, height) {
         return Math.min(
-            34,
-            Math.max(1, 19 + (height - COLLAPSED_HEIGHT) * 15 / (OPEN_HEIGHT - COLLAPSED_HEIGHT)),
+            34 + this._theme().radius,
+            Math.max(1, this._theme().radius
+                + 19 + (height - COLLAPSED_HEIGHT) * 15 / (OPEN_HEIGHT - COLLAPSED_HEIGHT)),
             height / 2,
             width / 2
         );
@@ -1254,7 +1342,8 @@ export default class PerdanaIslandExtension extends Extension {
             cr.arcNegative(0, ISLAND_EAR_SIZE, ISLAND_EAR_SIZE, 0, -Math.PI / 2);
         }
         cr.closePath();
-        cr.setSourceRGBA(0, 0, 0, 1);
+        const [earRed, earGreen, earBlue] = this._theme().fill[0].slice(1, 4);
+        cr.setSourceRGBA(earRed, earGreen, earBlue, 1);
         cr.fill();
         cr.$dispose();
     }
@@ -1268,24 +1357,46 @@ export default class PerdanaIslandExtension extends Extension {
         const width = area.width;
         const height = area.height;
         const radius = this._islandRadius(width, height);
-        cr.newPath();
-        cr.moveTo(0, 0);
-        cr.lineTo(width, 0);
-        cr.lineTo(width, height - radius);
-        cr.arc(width - radius, height - radius, radius, 0, Math.PI / 2);
-        cr.lineTo(radius, height);
-        cr.arc(radius, height - radius, radius, Math.PI / 2, Math.PI);
-        cr.lineTo(0, 0);
-        cr.closePath();
-        if (this._preferences?.glass) {
-            const gradient = new Cairo.LinearGradient(0, 0, 0, height);
-            gradient.addColorStopRGBA(0, 0.08, 0.12, 0.2, 0.38);
-            gradient.addColorStopRGBA(1, 0.04, 0.08, 0.15, 0.58);
-            cr.setSource(gradient);
-        } else {
-            cr.setSourceRGBA(0, 0, 0, 1);
+        const theme = this._theme();
+        const stops = this._preferences?.glass ? theme.glassFill : theme.fill;
+        const tracePath = () => {
+            cr.newPath();
+            cr.moveTo(0, 0);
+            cr.lineTo(width, 0);
+            cr.lineTo(width, height - radius);
+            cr.arc(width - radius, height - radius, radius, 0, Math.PI / 2);
+            cr.lineTo(radius, height);
+            cr.arc(radius, height - radius, radius, Math.PI / 2, Math.PI);
+            cr.lineTo(0, 0);
+            cr.closePath();
+        };
+        tracePath();
+        const gradient = new Cairo.LinearGradient(0, 0, 0, height);
+        for (const [offset, red, green, blue, alpha] of stops)
+            gradient.addColorStopRGBA(offset, red, green, blue, alpha);
+        cr.setSource(gradient);
+        cr.fillPreserve();
+        if (theme.gloss > 0) {
+            // A single top gloss band marks the material edge, the same way
+            // Aero and Aqua titles read as glass without touching the content.
+            cr.save();
+            cr.clip();
+            const gloss = new Cairo.LinearGradient(0, 0, 0, height * 0.62);
+            gloss.addColorStopRGBA(0, 1, 1, 1, theme.gloss);
+            gloss.addColorStopRGBA(0.55, 1, 1, 1, theme.gloss * 0.28);
+            gloss.addColorStopRGBA(1, 1, 1, 1, 0);
+            cr.setSource(gloss);
+            cr.paint();
+            cr.restore();
         }
-        cr.fill();
+        if (theme.border) {
+            // Clipping consumed the path while painting the gloss band.
+            tracePath();
+            const [red, green, blue, alpha] = theme.border;
+            cr.setLineWidth(1);
+            cr.setSourceRGBA(red, green, blue, alpha);
+            cr.stroke();
+        }
         cr.$dispose();
     }
 
@@ -3430,12 +3541,12 @@ export default class PerdanaIslandExtension extends Extension {
             orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__settings-scroll-content',
         });
-        scrollContent.set_size(settingsWidth, 360);
+        scrollContent.set_size(settingsWidth, 460);
         const content = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
             style_class: 'perdana-island__settings-content',
         });
-        content.set_size(settingsWidth, 360);
+        content.set_size(settingsWidth, 460);
         scrollContent.add_child(content);
         scroll.set_child(scrollContent);
         place(body, scroll, 0, 0, this._pageWidth(), this._bodyHeight());
@@ -3474,6 +3585,35 @@ export default class PerdanaIslandExtension extends Extension {
             button.connect('clicked', callback);
             place(content, button, x, y, width, 30);
         };
+        const themeButton = (theme, x, y, width) => {
+            const contents = new St.BoxLayout({
+                style_class: 'perdana-island__setting-option-content',
+                y_align: Clutter.ActorAlign.CENTER,
+                x_expand: true,
+                x_align: Clutter.ActorAlign.FILL,
+            });
+            contents.add_child(new St.Widget({
+                style_class: 'perdana-island__theme-dot',
+                style: `background-color: ${theme.dot};`,
+            }));
+            const text = makeLabel(theme.label, 'perdana-island__setting-option-label');
+            text.x_expand = true;
+            text.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            contents.add_child(text);
+            const selected = this._theme().key === theme.key;
+            const button = new St.Button({
+                child: contents,
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: `perdana-button ${selected
+                    ? 'perdana-island__setting-option perdana-island__setting-option--active'
+                    : 'perdana-island__setting-option'}`,
+                accessible_name: `${theme.label} theme`,
+            });
+            button.connect('clicked', () => this._setPreference('theme', theme.key));
+            place(content, button, x, y, width, 30);
+        };
 
         const shortcutWidth = Math.min(140, Math.max(96, settingsWidth * 0.36));
         const shortcutX = settingsWidth - shortcutWidth;
@@ -3482,19 +3622,28 @@ export default class PerdanaIslandExtension extends Extension {
         place(content, makeLabel('Ctrl+Alt+X hide/show', 'perdana-island__settings-shortcut'),
             shortcutX, 5, shortcutWidth, 18);
 
-        heading('Resting island', 28);
-        settingButton('Clock on hover', this._preferences.restingStyle === 'hover-clock', 0, 49, halfWidth,
+        heading('Theme', 28);
+        const themeGap = 8;
+        const themeWidth = (settingsWidth - themeGap * 2) / 3;
+        THEMES.forEach((theme, index) => {
+            const row = Math.floor(index / 3);
+            const column = index % 3;
+            themeButton(theme, column * (themeWidth + themeGap), 49 + row * 34, themeWidth);
+        });
+
+        heading('Resting island', 118);
+        settingButton('Clock on hover', this._preferences.restingStyle === 'hover-clock', 0, 139, halfWidth,
             () => this._setPreference('restingStyle', 'hover-clock'), 'alarm-symbolic');
-        settingButton('Eyes + clock', this._preferences.restingStyle === 'eyes-clock', halfWidth + columnGap, 49, halfWidth,
+        settingButton('Eyes + clock', this._preferences.restingStyle === 'eyes-clock', halfWidth + columnGap, 139, halfWidth,
             () => this._setPreference('restingStyle', 'eyes-clock'), 'preferences-system-symbolic');
 
-        heading('Appearance & notices', 84);
-        settingButton(this._preferences.glass ? 'Glass on' : 'Glass off', this._preferences.glass, 0, 105, halfWidth,
+        heading('Appearance & notices', 174);
+        settingButton(this._preferences.glass ? 'Glass on' : 'Glass off', this._preferences.glass, 0, 195, halfWidth,
             () => this._setPreference('glass', !this._preferences.glass), 'preferences-desktop-appearance-symbolic');
-        settingButton(this._preferences.systemNotices ? 'Notices on' : 'Notices off', this._preferences.systemNotices, halfWidth + columnGap, 105, halfWidth,
+        settingButton(this._preferences.systemNotices ? 'Notices on' : 'Notices off', this._preferences.systemNotices, halfWidth + columnGap, 195, halfWidth,
             () => this._setPreference('systemNotices', !this._preferences.systemNotices), 'preferences-system-notifications-symbolic');
 
-        heading('Accent color', 143);
+        heading('Accent color', 230);
         const palette = [
             ['Navy', '#5577B8'], ['Ocean', '#35A7C8'], ['Blue', '#4C83E2'],
             ['Plum', '#A579D4'], ['Forest', '#43A778'], ['Bronze', '#D89651'], ['Slate', '#98A6B8'],
@@ -3511,7 +3660,7 @@ export default class PerdanaIslandExtension extends Extension {
             });
             swatch.set_style(`background-color: ${color}; border: 2px solid ${selected ? '#ffffff' : 'rgba(255,255,255,0.18)'}; border-radius: 10px; padding: 0;`);
             swatch.connect('clicked', () => this._setPreference('accentColor', color));
-            place(content, swatch, index * 42, 165, 34, 32);
+            place(content, swatch, index * 42, 252, 34, 32);
         });
 
         const colorEntry = new St.Entry({
@@ -3529,16 +3678,16 @@ export default class PerdanaIslandExtension extends Extension {
             else
                 colorEntry.add_style_class_name('perdana-island__color-entry--invalid');
         });
-        place(content, colorEntry, 0, 203, 132, 32);
+        place(content, colorEntry, 0, 290, 132, 32);
         place(content, makeTextButton('Apply', 'Apply accent color', () => {
             const color = normalizeHexColor(colorEntry.get_text());
             if (color)
                 this._setPreference('accentColor', color);
             else
                 colorEntry.add_style_class_name('perdana-island__color-entry--invalid');
-        }, 'perdana-island__color-apply'), 142, 203, 82, 32);
+        }, 'perdana-island__color-apply'), 142, 290, 82, 32);
 
-        heading('Visible tabs', 243);
+        heading('Visible tabs', 327);
         const pages = PAGES.filter(page => page.key !== 'settings');
         const gap = 8;
         const itemWidth = (settingsWidth - gap * 3) / 4;
@@ -3547,7 +3696,7 @@ export default class PerdanaIslandExtension extends Extension {
             const column = index % 4;
             const label = page.key === 'notifications' ? 'Alerts' : page.label;
             settingButton(label, this._preferences.visiblePages[page.key] !== false,
-                column * (itemWidth + gap), 265 + row * 34, itemWidth, () =>
+                column * (itemWidth + gap), 349 + row * 34, itemWidth, () =>
                     this._setPageVisible(page.key, this._preferences.visiblePages[page.key] === false), page.icon);
         });
     }
