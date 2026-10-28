@@ -430,12 +430,15 @@ export default class PerdanaIslandExtension extends Extension {
         this._focusCompact = null;
         this._focusCompactLabel = null;
         this._focusCompactTime = null;
+        this._settingsSection = 'island';
         this._clockSource = 0;
         this._mediaSource = 0;
         this._mediaTickerInterval = 0;
         this._todaySource = 0;
         this._chargingSource = 0;
         this._noticeDismissSource = 0;
+        this._greetingSource = 0;
+        this._greetingPreviewSource = 0;
         this._blinkSource = 0;
         this._clipboardSource = 0;
         this._systemNoticeActive = false;
@@ -543,6 +546,7 @@ export default class PerdanaIslandExtension extends Extension {
         );
         this._discoverPlayers();
         this._connectClipboardMonitor();
+        this._queueSessionGreeting();
     }
 
     _loadPreferences() {
@@ -566,6 +570,13 @@ export default class PerdanaIslandExtension extends Extension {
             lastWaterAt: 0,
             lastPrayerNotice: '',
             shelfView: 'grid',
+            greetingEnabled: true,
+            greetingNameSource: 'account',
+            greetingCustomName: '',
+            greetingWelcomeText: 'Hello, {name}',
+            greetingReturnText: "You're back, {name}",
+            greetingWelcomeShown: false,
+            greetingLastSession: '',
             visiblePages,
         };
         try {
@@ -609,6 +620,23 @@ export default class PerdanaIslandExtension extends Extension {
             defaults.shelfView = ['grid', 'list'].includes(stored.shelfView)
                 ? stored.shelfView
                 : 'grid';
+            defaults.greetingEnabled = stored.greetingEnabled !== false;
+            defaults.greetingNameSource = ['account', 'device', 'custom'].includes(stored.greetingNameSource)
+                ? stored.greetingNameSource
+                : 'account';
+            defaults.greetingCustomName = typeof stored.greetingCustomName === 'string'
+                ? stored.greetingCustomName.replace(/[\r\n]+/g, ' ').slice(0, 40)
+                : '';
+            defaults.greetingWelcomeText = typeof stored.greetingWelcomeText === 'string'
+                ? stored.greetingWelcomeText.replace(/[\r\n]+/g, ' ').slice(0, 56)
+                : defaults.greetingWelcomeText;
+            defaults.greetingReturnText = typeof stored.greetingReturnText === 'string'
+                ? stored.greetingReturnText.replace(/[\r\n]+/g, ' ').slice(0, 56)
+                : defaults.greetingReturnText;
+            defaults.greetingWelcomeShown = stored.greetingWelcomeShown === true;
+            defaults.greetingLastSession = typeof stored.greetingLastSession === 'string'
+                ? stored.greetingLastSession
+                : '';
         } catch (_error) {
             // Corrupt or missing preferences fall back to the default appearance.
         }
@@ -630,10 +658,14 @@ export default class PerdanaIslandExtension extends Extension {
             || this._preferences?.visiblePages?.[page.key] !== false);
     }
 
-    _setPreference(key, value) {
+    _setPreference(key, value, render = true) {
         this._preferences[key] = value;
         this._savePreferences();
-        if (key === 'systemNotices' && !value && this._systemNoticeActive)
+        if (key === 'systemNotices' && !value && this._systemNoticeActive
+            && this._systemNoticeType !== 'greeting')
+            this._dismissSystemNotice(true);
+        if (key === 'greetingEnabled' && !value && this._systemNoticeActive
+            && this._systemNoticeType === 'greeting')
             this._dismissSystemNotice(true);
         if (key === 'glass')
             this._applyGlassPreference();
@@ -666,8 +698,75 @@ export default class PerdanaIslandExtension extends Extension {
             this._updateMediaTicker();
             this._updateCollapsedLabel();
         }
-        if (['settings', 'shelf'].includes(this._activePage))
+        if (key === 'greetingEnabled' && value)
+            this._queueSessionGreeting();
+        else if (key === 'greetingEnabled')
+            this._clearTimeout('_greetingSource');
+        if (render && ['settings', 'shelf'].includes(this._activePage))
             this._renderPanel();
+    }
+
+    _sessionIdentifier() {
+        const loginSession = GLib.getenv('XDG_SESSION_ID');
+        if (loginSession)
+            return `xdg:${loginSession}`;
+        try {
+            const busName = Gio.DBus.session.get_unique_name();
+            if (busName)
+                return `bus:${busName}`;
+        } catch (_error) {
+            // Shell may still be connecting to the session bus during startup.
+        }
+        return '';
+    }
+
+    _greetingName() {
+        if (this._preferences?.greetingNameSource === 'device')
+            return GLib.get_host_name() || GLib.get_user_name();
+        if (this._preferences?.greetingNameSource === 'custom')
+            return this._preferences.greetingCustomName.trim() || GLib.get_user_name();
+        return GLib.get_user_name();
+    }
+
+    _greetingMessage(returning = false) {
+        const template = returning
+            ? this._preferences.greetingReturnText
+            : this._preferences.greetingWelcomeText;
+        const message = String(template || '').replace(/\{name\}/gi, this._greetingName())
+            .replace(/[\r\n]+/g, ' ').trim();
+        return message || (returning ? "You're back" : 'Hello');
+    }
+
+    _queueSessionGreeting(attempt = 0) {
+        this._clearTimeout('_greetingSource');
+        if (!this._enabled || !this._preferences?.greetingEnabled)
+            return;
+        const sessionId = this._sessionIdentifier();
+        if (!sessionId || this._preferences.greetingLastSession === sessionId)
+            return;
+        this._greetingSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            this._greetingSource = 0;
+            if (!this._enabled || !this._preferences?.greetingEnabled)
+                return GLib.SOURCE_REMOVE;
+            if (!this._root || this._expanded || this._userHidden || this._systemNoticeActive) {
+                if (attempt < 10)
+                    this._queueSessionGreeting(attempt + 1);
+                return GLib.SOURCE_REMOVE;
+            }
+            const welcome = !this._preferences.greetingWelcomeShown;
+            const shown = this._showSystemNotice('greeting', {
+                title: this._greetingMessage(!welcome),
+                subtitle: '',
+            });
+            if (shown) {
+                this._preferences.greetingWelcomeShown = true;
+                this._preferences.greetingLastSession = sessionId;
+                this._savePreferences();
+            } else if (attempt < 10) {
+                this._queueSessionGreeting(attempt + 1);
+            }
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _applyAccentStyles(actor = this._root) {
@@ -907,6 +1006,10 @@ export default class PerdanaIslandExtension extends Extension {
         this._chargingSource = 0;
         this._noticeDismissSource && GLib.source_remove(this._noticeDismissSource);
         this._noticeDismissSource = 0;
+        this._greetingSource && GLib.source_remove(this._greetingSource);
+        this._greetingSource = 0;
+        this._greetingPreviewSource && GLib.source_remove(this._greetingPreviewSource);
+        this._greetingPreviewSource = 0;
         this._blinkSource && GLib.source_remove(this._blinkSource);
         this._blinkSource = 0;
         this._disconnectClipboardMonitor();
@@ -1693,6 +1796,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._layoutIsland();
         this._positionIsland();
         this._updateCollapsedLabel();
+        this._queueSessionGreeting();
         if (!this._isPlaying() && !this._focusSource)
             this._scheduleBlink();
     }
@@ -1818,6 +1922,7 @@ export default class PerdanaIslandExtension extends Extension {
                     this._compactVisualState = null;
                     this._updateHeaderClock();
                     this._updateCollapsedLabel();
+                    this._queueSessionGreeting();
                     if (!this._isPlaying() && !this._focusSource)
                         this._scheduleBlink();
                 },
@@ -3954,9 +4059,53 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _renderSettingsPage(body) {
-        const columnGap = 12;
-        const settingsWidth = Math.max(0, this._pageWidth() - 16);
-        const halfWidth = (settingsWidth - columnGap) / 2;
+        const layoutWidth = Math.max(0, this._pageWidth() - 16);
+        const navWidth = Math.min(112, Math.max(88, Math.round(layoutWidth * 0.2)));
+        const panelX = navWidth + 12;
+        const panelWidth = Math.max(0, layoutWidth - panelX);
+        const contentWidth = Math.max(0, panelWidth - 8);
+        const columnGap = 10;
+        const halfWidth = Math.max(0, (contentWidth - columnGap) / 2);
+        const sections = [
+            ['island', 'Island'],
+            ['greeting', 'Greeting'],
+            ['reminders', 'Reminders'],
+            ['tabs', 'Tabs'],
+        ];
+        if (!sections.some(([key]) => key === this._settingsSection))
+            this._settingsSection = 'island';
+
+        place(body, makeLabel('Settings', 'perdana-island__settings-title-label'),
+            0, 3, navWidth, 22);
+        place(body, makeLabel('Ctrl+Alt+X hide/show', 'perdana-island__settings-shortcut'),
+            panelX, 5, panelWidth, 18);
+
+        sections.forEach(([key, label], index) => {
+            const selected = this._settingsSection === key;
+            const text = makeLabel(label, 'perdana-island__settings-tab-label');
+            text.x_expand = true;
+            text.x_align = Clutter.ActorAlign.FILL;
+            text.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            const button = new St.Button({
+                child: text,
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: `perdana-button perdana-island__settings-tab ${selected
+                    ? 'perdana-island__settings-tab--active' : ''}`,
+                accessible_name: `${label} settings`,
+            });
+            button.connect('clicked', () => {
+                if (this._settingsSection === key)
+                    return;
+                this._settingsSection = key;
+                this._renderPanel();
+            });
+            place(body, button, 0, 31 + index * 32, navWidth, 27);
+        });
+
+        const contentHeights = {island: 310, greeting: 402, reminders: 310, tabs: 158};
+        const contentHeight = contentHeights[this._settingsSection];
         const scroll = new St.ScrollView({
             overlay_scrollbars: false,
             style_class: 'perdana-island__settings-scroll',
@@ -3966,21 +4115,22 @@ export default class PerdanaIslandExtension extends Extension {
             orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__settings-scroll-content',
         });
-        scrollContent.set_size(settingsWidth, 700);
+        scrollContent.set_size(contentWidth, contentHeight);
         const content = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
             style_class: 'perdana-island__settings-content',
         });
-        content.set_size(settingsWidth, 700);
+        content.set_size(contentWidth, contentHeight);
         scrollContent.add_child(content);
-        scroll.set_child(scrollContent);
-        place(body, scroll, 0, 0, this._pageWidth(), this._bodyHeight());
+        scroll.add_child(scrollContent);
+        place(body, scroll, panelX, 29, contentWidth, Math.max(0, this._bodyHeight() - 29));
+
         const heading = (label, y) => {
             const text = makeLabel(label, 'perdana-island__settings-heading-label');
             text.x_expand = true;
             text.x_align = Clutter.ActorAlign.FILL;
             text.clutter_text.line_alignment = Pango.Alignment.RIGHT;
-            place(content, text, 0, y, Math.max(0, settingsWidth - 12), 18);
+            place(content, text, 0, y, contentWidth, 18);
         };
         const settingButton = (label, selected, x, y, width, callback, iconName) => {
             const contents = new St.BoxLayout({
@@ -3989,10 +4139,12 @@ export default class PerdanaIslandExtension extends Extension {
                 x_expand: true,
                 x_align: Clutter.ActorAlign.FILL,
             });
-            contents.add_child(new St.Icon({
-                icon_name: iconName,
-                style_class: 'perdana-island__setting-option-icon',
-            }));
+            if (iconName) {
+                contents.add_child(new St.Icon({
+                    icon_name: iconName,
+                    style_class: 'perdana-island__setting-option-icon',
+                }));
+            }
             const text = makeLabel(label, 'perdana-island__setting-option-label');
             text.x_expand = true;
             text.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -4009,6 +4161,7 @@ export default class PerdanaIslandExtension extends Extension {
             });
             button.connect('clicked', callback);
             place(content, button, x, y, width, 30);
+            return button;
         };
         const themeButton = (theme, x, y, width) => {
             const contents = new St.BoxLayout({
@@ -4039,149 +4192,227 @@ export default class PerdanaIslandExtension extends Extension {
             button.connect('clicked', () => this._setPreference('theme', theme.key));
             place(content, button, x, y, width, 30);
         };
-
-        const shortcutWidth = Math.min(140, Math.max(96, settingsWidth * 0.36));
-        const shortcutX = settingsWidth - shortcutWidth;
-        place(content, makeLabel('Settings', 'perdana-island__settings-title-label'),
-            0, 3, Math.max(72, shortcutX - 8), 22);
-        place(content, makeLabel('Ctrl+Alt+X hide/show', 'perdana-island__settings-shortcut'),
-            shortcutX, 5, shortcutWidth, 18);
-
-        heading('Theme', 28);
-        const themeGap = 8;
-        const themeWidth = (settingsWidth - themeGap * 2) / 3;
-        THEMES.forEach((theme, index) => {
-            const row = Math.floor(index / 3);
-            const column = index % 3;
-            themeButton(theme, column * (themeWidth + themeGap), 49 + row * 34, themeWidth);
-        });
-
-        heading('Resting island', 118);
-        settingButton('Clock on hover', this._preferences.restingStyle === 'hover-clock', 0, 139, halfWidth,
-            () => this._setPreference('restingStyle', 'hover-clock'), 'alarm-symbolic');
-        settingButton('Eyes + clock', this._preferences.restingStyle === 'eyes-clock', halfWidth + columnGap, 139, halfWidth,
-            () => this._setPreference('restingStyle', 'eyes-clock'), 'preferences-system-symbolic');
-
-        heading('Appearance & notices', 174);
-        settingButton(this._preferences.glass ? 'Glass on' : 'Glass off', this._preferences.glass, 0, 195, halfWidth,
-            () => this._setPreference('glass', !this._preferences.glass), 'preferences-desktop-appearance-symbolic');
-        settingButton(this._preferences.systemNotices ? 'Notices on' : 'Notices off', this._preferences.systemNotices, halfWidth + columnGap, 195, halfWidth,
-            () => this._setPreference('systemNotices', !this._preferences.systemNotices), 'preferences-system-notifications-symbolic');
-
-        heading('Accent color', 230);
-        const palette = [
-            ['Navy', '#5577B8'], ['Ocean', '#35A7C8'], ['Blue', '#4C83E2'],
-            ['Plum', '#A579D4'], ['Forest', '#43A778'], ['Bronze', '#D89651'], ['Slate', '#98A6B8'],
-        ];
-        palette.forEach(([name, color], index) => {
-            const selected = this._preferences.accentColor === color;
-            const swatch = new St.Button({
-                child: selected ? new St.Icon({icon_name: 'object-select-symbolic'}) : null,
+        const addEntry = (name, value, x, y, width, onChanged, hintText = '') => {
+            const entry = new St.Entry({
+                text: value,
+                hint_text: hintText,
                 can_focus: true,
-                reactive: true,
-                track_hover: true,
-                style_class: 'perdana-button perdana-island__color-swatch',
-                accessible_name: `${name} ${color}`,
+                style_class: 'perdana-island__settings-entry',
+                accessible_name: name,
             });
-            swatch.set_style(`background-color: ${color}; border: 2px solid ${selected ? '#ffffff' : 'rgba(255,255,255,0.18)'}; border-radius: 10px; padding: 0;`);
-            swatch.connect('clicked', () => this._setPreference('accentColor', color));
-            place(content, swatch, index * 42, 252, 34, 32);
-        });
-
-        const colorEntry = new St.Entry({
-            hint_text: DEFAULT_ACCENT_COLOR,
-            can_focus: true,
-            style_class: 'perdana-island__color-entry',
-        });
-        colorEntry.set_text(this._preferences.accentColor);
-        colorEntry.clutter_text.connect('text-changed', () =>
-            colorEntry.remove_style_class_name('perdana-island__color-entry--invalid'));
-        colorEntry.clutter_text.connect('activate', () => {
-            const color = normalizeHexColor(colorEntry.get_text());
-            if (color)
-                this._setPreference('accentColor', color);
-            else
-                colorEntry.add_style_class_name('perdana-island__color-entry--invalid');
-        });
-        place(content, colorEntry, 0, 290, 132, 32);
-        place(content, makeTextButton('Apply', 'Apply accent color', () => {
-            const color = normalizeHexColor(colorEntry.get_text());
-            if (color)
-                this._setPreference('accentColor', color);
-            else
-                colorEntry.add_style_class_name('perdana-island__color-entry--invalid');
-        }, 'perdana-island__color-apply'), 142, 290, 82, 32);
-
-        heading('Visible tabs', 327);
-        const pages = PAGES.filter(page => page.key !== 'settings');
-        const gap = 8;
-        const itemWidth = (settingsWidth - gap * 3) / 4;
-        pages.forEach((page, index) => {
-            const row = Math.floor(index / 4);
-            const column = index % 4;
-            const label = page.key === 'notifications' ? 'Alerts' : page.label;
-            settingButton(label, this._preferences.visiblePages[page.key] !== false,
-                column * (itemWidth + gap), 349 + row * 34, itemWidth, () =>
-                    this._setPageVisible(page.key, this._preferences.visiblePages[page.key] === false), page.icon);
-        });
-
-        heading('Daily agenda', 461);
-        settingButton('Morning 08:00', this._preferences.morningAgenda !== false, 0, 483, halfWidth,
-            () => this._setPreference('morningAgenda', this._preferences.morningAgenda === false),
-            'x-office-calendar-symbolic');
-        settingButton('Evening 17:00', this._preferences.eveningRecap !== false, halfWidth + columnGap, 483, halfWidth,
-            () => this._setPreference('eveningRecap', this._preferences.eveningRecap === false),
-            'emblem-ok-symbolic');
-        heading('Focus guard', 521);
-        settingButton(this._preferences.focusGuard !== false ? 'Guard on' : 'Guard off',
-            this._preferences.focusGuard !== false, 0, 543, halfWidth,
-            () => this._setPreference('focusGuard', this._preferences.focusGuard === false),
-            'dialog-warning-symbolic');
-        place(content, makeLabel('Warns after 5 min on a distraction', 'perdana-island__settings-hint'),
-            halfWidth + columnGap, 549, halfWidth, 18);
-        heading('Water & prayer', 579);
-        settingButton(this._preferences.waterReminder ? 'Water on' : 'Water off',
-            this._preferences.waterReminder === true, 0, 601, halfWidth,
-            () => this._setPreference('waterReminder', !this._preferences.waterReminder),
-            'alarm-symbolic');
-        settingButton(this._preferences.prayerReminder ? 'Prayer on' : 'Prayer off',
-            this._preferences.prayerReminder === true, halfWidth + columnGap, 601, halfWidth,
-            () => this._setPreference('prayerReminder', !this._preferences.prayerReminder),
-            'x-office-calendar-symbolic');
-
-        const cityEntry = new St.Entry({
-            hint_text: 'City, Country',
-            text: this._preferences.prayerCity,
-            can_focus: true,
-            style_class: 'perdana-island__settings-entry',
-            accessible_name: 'Prayer city and country',
-        });
-        const applyCity = () => {
-            const value = cityEntry.get_text().trim();
-            if (!value) {
-                cityEntry.add_style_class_name('perdana-island__settings-entry--invalid');
-                return;
-            }
-            this._setPreference('prayerCity', value);
+            entry.clutter_text.connect('text-changed', () => onChanged(entry.get_text()));
+            place(content, entry, x, y, width, 30);
+            return entry;
         };
-        cityEntry.clutter_text.connect('text-changed', () =>
-            cityEntry.remove_style_class_name('perdana-island__settings-entry--invalid'));
-        cityEntry.clutter_text.connect('activate', applyCity);
-        place(content, cityEntry, 0, 635, 224, 30);
-        place(content, makeTextButton('Apply', 'Apply prayer city', applyCity,
-            'perdana-island__color-apply'), 230, 635, 60, 30);
 
-        const methodIndex = PRAYER_METHODS.findIndex(([method]) => method === this._preferences.prayerMethod);
-        const methodName = PRAYER_METHODS[Math.max(0, methodIndex)][1];
-        place(content, makeTextButton(methodName,
-            `Prayer calculation method, ${methodName}. Click to change`, () => {
-                const index = PRAYER_METHODS.findIndex(([method]) => method === this._preferences.prayerMethod);
-                const next = PRAYER_METHODS[(index + 1) % PRAYER_METHODS.length];
-                this._setPreference('prayerMethod', next[0]);
-            }, 'perdana-island__color-apply'), 296, 635, 150, 30);
+        if (this._settingsSection === 'island') {
+            heading('Theme', 0);
+            const themeGap = 7;
+            const themeWidth = (contentWidth - themeGap * 2) / 3;
+            THEMES.forEach((theme, index) => {
+                const row = Math.floor(index / 3);
+                const column = index % 3;
+                themeButton(theme, column * (themeWidth + themeGap), 22 + row * 34, themeWidth);
+            });
 
-        place(content, makeLabel(this._prayerStatusText(), 'perdana-island__settings-hint'),
-            0, 671, settingsWidth - 12, 18);
+            heading('Resting island', 94);
+            settingButton('Clock on hover', this._preferences.restingStyle === 'hover-clock',
+                0, 116, halfWidth, () => this._setPreference('restingStyle', 'hover-clock'), 'alarm-symbolic');
+            settingButton('Eyes + clock', this._preferences.restingStyle === 'eyes-clock',
+                halfWidth + columnGap, 116, halfWidth,
+                () => this._setPreference('restingStyle', 'eyes-clock'), 'preferences-system-symbolic');
+
+            heading('Appearance & notices', 152);
+            settingButton(this._preferences.glass ? 'Glass on' : 'Glass off', this._preferences.glass,
+                0, 174, halfWidth, () => this._setPreference('glass', !this._preferences.glass),
+                'preferences-desktop-appearance-symbolic');
+            settingButton(this._preferences.systemNotices ? 'Notices on' : 'Notices off',
+                this._preferences.systemNotices, halfWidth + columnGap, 174, halfWidth,
+                () => this._setPreference('systemNotices', !this._preferences.systemNotices),
+                'preferences-system-notifications-symbolic');
+
+            heading('Accent color · Navy is the default', 210);
+            const palette = [
+                ['Navy', '#5577B8'], ['Ocean', '#35A7C8'], ['Blue', '#4C83E2'],
+                ['Plum', '#A579D4'], ['Forest', '#43A778'], ['Bronze', '#D89651'], ['Slate', '#98A6B8'],
+            ];
+            palette.forEach(([name, color], index) => {
+                const selected = this._preferences.accentColor === color;
+                const swatch = new St.Button({
+                    child: selected ? new St.Icon({icon_name: 'object-select-symbolic'}) : null,
+                    can_focus: true,
+                    reactive: true,
+                    track_hover: true,
+                    style_class: 'perdana-button perdana-island__color-swatch',
+                    accessible_name: `${name} ${color}`,
+                });
+                swatch.set_style(`background-color: ${color}; border: 2px solid ${selected ? '#ffffff' : 'rgba(255,255,255,0.18)'}; border-radius: 10px; padding: 0;`);
+                swatch.connect('clicked', () => this._setPreference('accentColor', color));
+                place(content, swatch, index * 40, 232, 34, 32);
+            });
+            const colorEntry = new St.Entry({
+                hint_text: DEFAULT_ACCENT_COLOR,
+                can_focus: true,
+                style_class: 'perdana-island__color-entry',
+                accessible_name: 'Accent color hex code',
+            });
+            colorEntry.set_text(this._preferences.accentColor);
+            colorEntry.clutter_text.connect('text-changed', () =>
+                colorEntry.remove_style_class_name('perdana-island__color-entry--invalid'));
+            const applyColor = () => {
+                const color = normalizeHexColor(colorEntry.get_text());
+                if (color)
+                    this._setPreference('accentColor', color);
+                else
+                    colorEntry.add_style_class_name('perdana-island__color-entry--invalid');
+            };
+            colorEntry.clutter_text.connect('activate', applyColor);
+            place(content, colorEntry, 0, 271, 132, 32);
+            place(content, makeTextButton('Apply', 'Apply accent color', applyColor,
+                'perdana-island__color-apply'), 142, 271, 82, 32);
+        } else if (this._settingsSection === 'greeting') {
+            heading('Session greeting', 0);
+            settingButton(this._preferences.greetingEnabled ? 'Greeting on' : 'Greeting off',
+                this._preferences.greetingEnabled, 0, 22, contentWidth,
+                () => this._setPreference('greetingEnabled', !this._preferences.greetingEnabled),
+                'user-available-symbolic');
+            place(content, makeLabel('First use shows the welcome text; later sessions show the returning text.',
+                'perdana-island__settings-hint'), 0, 57, contentWidth, 30);
+
+            heading('Name to show', 88);
+            const nameSources = [
+                ['account', 'Linux user', 'system-users-symbolic'],
+                ['device', 'Device', 'computer-symbolic'],
+                ['custom', 'Custom', 'document-edit-symbolic'],
+            ];
+            const sourceGap = 7;
+            const sourceWidth = (contentWidth - sourceGap * 2) / 3;
+            nameSources.forEach(([key, label, icon], index) => {
+                settingButton(label, this._preferences.greetingNameSource === key,
+                    index * (sourceWidth + sourceGap), 110, sourceWidth,
+                    () => this._setPreference('greetingNameSource', key), icon);
+            });
+            if (this._preferences.greetingNameSource === 'custom') {
+                heading('Custom name', 148);
+                addEntry('Custom greeting name', this._preferences.greetingCustomName, 0, 170,
+                    contentWidth, value => this._setPreference('greetingCustomName',
+                        value.replace(/[\r\n]+/g, ' ').slice(0, 40), false), 'Your name');
+            } else {
+                const currentName = this._greetingName();
+                place(content, makeLabel(`Name preview · ${currentName}`,
+                    'perdana-island__settings-hint'), 0, 148, contentWidth, 20);
+            }
+
+            heading('Greeting text', 206);
+            place(content, makeLabel('First sign-in', 'perdana-island__settings-hint'), 0, 229, contentWidth, 16);
+            addEntry('First sign-in greeting', this._preferences.greetingWelcomeText, 0, 246,
+                contentWidth, value => this._setPreference('greetingWelcomeText',
+                    value.replace(/[\r\n]+/g, ' ').slice(0, 56), false), 'Hello, {name}');
+            place(content, makeLabel('Returning', 'perdana-island__settings-hint'), 0, 282, contentWidth, 16);
+            addEntry('Returning greeting', this._preferences.greetingReturnText, 0, 299,
+                contentWidth, value => this._setPreference('greetingReturnText',
+                    value.replace(/[\r\n]+/g, ' ').slice(0, 56), false), "You're back, {name}");
+            place(content, makeLabel('Use {name} to insert the selected name. Text is saved on this device.',
+                'perdana-island__settings-hint'), 0, 336, contentWidth, 28);
+            settingButton('Preview first sign-in', false, 0, 368, halfWidth,
+                () => this._previewGreeting(false), 'user-available-symbolic');
+            settingButton('Preview returning', false, halfWidth + columnGap, 368, halfWidth,
+                () => this._previewGreeting(true), 'user-available-symbolic');
+        } else if (this._settingsSection === 'reminders') {
+            heading('Daily agenda', 0);
+            settingButton('Morning 08:00', this._preferences.morningAgenda !== false,
+                0, 22, halfWidth,
+                () => this._setPreference('morningAgenda', this._preferences.morningAgenda === false),
+                'x-office-calendar-symbolic');
+            settingButton('Evening 17:00', this._preferences.eveningRecap !== false,
+                halfWidth + columnGap, 22, halfWidth,
+                () => this._setPreference('eveningRecap', this._preferences.eveningRecap === false),
+                'emblem-ok-symbolic');
+            heading('Focus guard', 60);
+            settingButton(this._preferences.focusGuard !== false ? 'Guard on' : 'Guard off',
+                this._preferences.focusGuard !== false, 0, 82, halfWidth,
+                () => this._setPreference('focusGuard', this._preferences.focusGuard === false),
+                'dialog-warning-symbolic');
+            place(content, makeLabel('Warns after 5 min on a distraction', 'perdana-island__settings-hint'),
+                halfWidth + columnGap, 88, halfWidth, 28);
+            heading('Water & prayer', 122);
+            settingButton(this._preferences.waterReminder ? 'Water on' : 'Water off',
+                this._preferences.waterReminder === true, 0, 144, halfWidth,
+                () => this._setPreference('waterReminder', !this._preferences.waterReminder), 'alarm-symbolic');
+            settingButton(this._preferences.prayerReminder ? 'Prayer on' : 'Prayer off',
+                this._preferences.prayerReminder === true, halfWidth + columnGap, 144, halfWidth,
+                () => this._setPreference('prayerReminder', !this._preferences.prayerReminder),
+                'x-office-calendar-symbolic');
+            heading('Prayer location', 184);
+            const cityEntry = new St.Entry({
+                hint_text: 'City, Country',
+                text: this._preferences.prayerCity,
+                can_focus: true,
+                style_class: 'perdana-island__settings-entry',
+                accessible_name: 'Prayer city and country',
+            });
+            const applyCity = () => {
+                const value = cityEntry.get_text().trim();
+                if (!value) {
+                    cityEntry.add_style_class_name('perdana-island__settings-entry--invalid');
+                    return;
+                }
+                this._setPreference('prayerCity', value);
+            };
+            cityEntry.clutter_text.connect('text-changed', () =>
+                cityEntry.remove_style_class_name('perdana-island__settings-entry--invalid'));
+            cityEntry.clutter_text.connect('activate', applyCity);
+            place(content, cityEntry, 0, 206, Math.max(0, contentWidth - 76), 30);
+            place(content, makeTextButton('Apply', 'Apply prayer city', applyCity,
+                'perdana-island__color-apply'), contentWidth - 68, 206, 68, 30);
+            const methodIndex = PRAYER_METHODS.findIndex(([method]) => method === this._preferences.prayerMethod);
+            const methodName = PRAYER_METHODS[Math.max(0, methodIndex)][1];
+            place(content, makeTextButton(methodName,
+                `Prayer calculation method, ${methodName}. Click to change`, () => {
+                    const index = PRAYER_METHODS.findIndex(([method]) => method === this._preferences.prayerMethod);
+                    const next = PRAYER_METHODS[(index + 1) % PRAYER_METHODS.length];
+                    this._setPreference('prayerMethod', next[0]);
+                }, 'perdana-island__color-apply'), 0, 244, contentWidth, 30);
+            place(content, makeLabel(this._prayerStatusText(), 'perdana-island__settings-hint'),
+                0, 280, contentWidth, 26);
+        } else {
+            heading('Visible tabs · Settings stays available', 0);
+            place(content, makeLabel('Hide or restore pages in the bottom tab bar.',
+                'perdana-island__settings-hint'), 0, 20, contentWidth, 18);
+            const pages = PAGES.filter(page => page.key !== 'settings');
+            const gap = 7;
+            const itemWidth = (contentWidth - gap * 3) / 4;
+            pages.forEach((page, index) => {
+                const row = Math.floor(index / 4);
+                const column = index % 4;
+                const label = page.key === 'notifications' ? 'Alerts' : page.label;
+                settingButton(label, this._preferences.visiblePages[page.key] !== false,
+                    column * (itemWidth + gap), 44 + row * 34, itemWidth, () =>
+                        this._setPageVisible(page.key, this._preferences.visiblePages[page.key] === false), page.icon);
+            });
+        }
+    }
+
+    _previewGreeting(returning) {
+        if (!this._preferences?.greetingEnabled)
+            return;
+        this._clearTimeout('_greetingSource');
+        const sessionId = this._sessionIdentifier();
+        if (sessionId) {
+            this._preferences.greetingLastSession = sessionId;
+            this._savePreferences();
+        }
+        if (this._expanded)
+            this._setExpanded(false);
+        this._clearTimeout('_greetingPreviewSource');
+        this._greetingPreviewSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 560, () => {
+            this._greetingPreviewSource = 0;
+            this._showSystemNotice('greeting', {
+                title: this._greetingMessage(returning),
+                subtitle: '',
+            });
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _paintFocusRing(area) {
@@ -6118,7 +6349,8 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _showSystemNotice(type, data) {
-        if (!this._enabled || !this._root || this._userHidden || this._expanded || !this._preferences.systemNotices)
+        if (!this._enabled || !this._root || this._userHidden || this._expanded
+            || (type === 'greeting' ? !this._preferences.greetingEnabled : !this._preferences.systemNotices))
             return false;
         const sameNotice = this._systemNoticeActive && this._systemNoticeType === type;
         this._clearTimeout('_noticeDismissSource');
@@ -6129,7 +6361,7 @@ export default class PerdanaIslandExtension extends Extension {
         const duration = type === 'volume' ? 2
             : ['agenda', 'recap', 'focus-guard'].includes(type) ? 7
                 : type === 'water' || type === 'prayer' ? 6
-                : type === 'focus' || type === 'application' ? 4 : 3;
+                : ['focus', 'application', 'greeting'].includes(type) ? 4 : 3;
         this._noticeDismissSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, duration, () => {
             this._noticeDismissSource = 0;
             this._dismissSystemNotice(true);
@@ -6224,6 +6456,13 @@ export default class PerdanaIslandExtension extends Extension {
                 });
                 this._noticeTitle = makeLabel('', 'perdana-island__notice-title');
                 this._noticeSubtitle = makeLabel('', 'perdana-island__notice-subtitle');
+                if (type === 'greeting') {
+                    this._noticeTitle.add_style_class_name('perdana-island__notice-title--greeting');
+                    this._noticeTitle.clutter_text.line_wrap = true;
+                    this._noticeTitle.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+                    this._noticeTitle.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+                    this._noticeSubtitle.hide();
+                }
                 this._noticeCopy.add_child(this._noticeTitle);
                 this._noticeCopy.add_child(this._noticeSubtitle);
                 this._noticeBanner.add_child(this._noticeCopy);
@@ -6240,7 +6479,7 @@ export default class PerdanaIslandExtension extends Extension {
                     });
                     this._noticeRight.add_child(makeLabel('View', 'perdana-island__notice-action'));
                     this._noticeBanner.add_child(this._noticeRight);
-                } else if (type !== 'application') {
+                } else if (!['application', 'greeting'].includes(type)) {
                     this._noticeRight = new St.BoxLayout({
                         orientation: Clutter.Orientation.VERTICAL,
                         y_align: Clutter.ActorAlign.CENTER,
@@ -6315,6 +6554,9 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticeVolumeIcon.fallback_gicon = data.notification.gicon
                     || data.source.icon || data.source.app?.get_icon?.()
                     || Gio.ThemedIcon.new('application-x-executable-symbolic');
+            } else if (type === 'greeting') {
+                this._noticeTitle.text = data.title;
+                this._noticeVolumeIcon.icon_name = 'avatar-default-symbolic';
             } else if (['agenda', 'recap', 'focus-guard', 'water', 'prayer'].includes(type)) {
                 this._noticeTitle.text = data.title;
                 this._noticeSubtitle.text = data.subtitle;

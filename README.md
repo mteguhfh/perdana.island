@@ -10,9 +10,9 @@ Perdana Island provides separate native packages for GNOME Shell and KDE Plasma.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
-## Latest release: v69
+## Current version: v70 candidate
 
-The GNOME package fixes clipboard previews for dotted email addresses, skips more labeled credential formats, and adds GNOME Shell 51 support. The KDE package records clipboard changes while the widget runs and skips KDE password-manager data. See the [v69 release notes](docs/releases/v69.md) for details.
+The GNOME extension adds a customizable session greeting and divides Settings into Island, Greeting, Reminders, and Tabs sections. Returning greetings are shown once per desktop login session. The KDE package is version-aligned at v70; its features are unchanged from v69. See the [v70 change notes](docs/releases/v70.md) for details.
 
 ## Feature previews
 
@@ -31,7 +31,7 @@ These images show representative UI states with sample media, files, notificatio
 | Clipboard | ![Clipboard history with masked email and link previews](assets/screenshots/clipboard.png) |
 | Today | ![Today calendar with processor, memory, disk, and battery indicators](assets/screenshots/today.png) |
 | Notifications | ![Recent notifications with Clear all and app activation controls](assets/screenshots/notifications.png) |
-| Settings | ![Settings for theme, resting style, glass, notices, accent color, and visible tabs](assets/screenshots/settings.png) |
+| Settings | ![Settings for appearance, greetings, reminders, and visible tabs](assets/screenshots/settings.png) |
 | Charging notice | ![Charging notice with battery level](assets/screenshots/notice-charging.png) |
 | Charger disconnected | ![Charger disconnected notice](assets/screenshots/notice-disconnected.png) |
 | Volume notice | ![Output volume notice](assets/screenshots/notice-volume.png) |
@@ -48,13 +48,14 @@ These images show representative UI states with sample media, files, notificatio
 - Clipboard keeps up to four recent text entries between sessions. It records changes while the extension is enabled, deduplicates repeated text and URLs, masks email addresses and links in previews, and skips explicitly identified credentials.
 - To-do also shows a daily summary: scheduled tasks with the next time, tasks completed today, focus minutes, and a Copy report action that puts a plain text report on the clipboard.
 - At 08:00 the island can show a morning agenda notice with today's scheduled tasks, and at 17:00 a recap of completed tasks and focus minutes. Clicking either notice opens the matching page. Both are toggled under Daily agenda in Settings.
-- Settings control the theme, resting style, glass effect, accent color, system notices, daily agenda notices, focus guard, water reminders, prayer reminders, and visible tabs.
+- Settings are split into **Island**, **Greeting**, **Reminders**, and **Tabs** side sections. They control themes, resting style, glass, accent color, notices, greeting text and name, reminders, and visible page tabs.
 - Themes change the island material without touching the layout. Midnight is the plain black island, Aero adds a blue gloss band with a hairline border, Aqua uses rounded translucent graphite, Yaru uses an aubergine tint, and Graphite uses flat grey with small corners. The choice persists between sessions, and translucent themes hide the solid corner ears so the glass edge stays clean.
 - Water reminders can show a short notice every hour between 08:00 and 21:00 while the island is idle.
 - Prayer reminders fetch the five daily times from the Aladhan API for a city, cache them per day, and show a notice at each time. The calculation method can be switched between Kemenag, MWL, ISNA, and Umm al-Qura. Times are converted from the city timezone to the local clock.
 - The Reminders page lists the five prayer times for today, marks the next one, dims the ones that have passed, and shows the water countdown with a Log glass action. Tapping a water or prayer notice opens the page. Refresh re-fetches the times when the city or the connection changes.
 - Today combines a local calendar with available CPU, memory, disk, and battery information.
 - Notifications lists recent desktop notifications, uses the source application's icon when available, and can activate or clear them.
+- Session greetings show a customizable first-use welcome and a returning greeting on later desktop login sessions. Choose the Linux account name, device name, or a custom name; edit both messages with `{name}` as the insertion token; preview either message from Settings. Greetings can be disabled independently of other system notices.
 - Charging, charger disconnect, output-volume changes, and completed focus sessions can show short notices.
 
 ## Architecture
@@ -95,10 +96,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
 
-- `Perdana-Island-GNOME-v69.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
-- `Perdana-Island-KDE-Plasma-v69.zip` for KDE Plasma 6.
+- `Perdana-Island-GNOME-v70.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
+- `Perdana-Island-KDE-Plasma-v70.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v69 archives locally, run `./scripts/package-release.sh v69`.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v70 archives locally, run `./scripts/package-release.sh v70`.
 
 ## Use
 
@@ -129,6 +130,27 @@ The GNOME extension is distributed under [GPL-3.0-or-later](LICENSE), a license 
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, tests, packaging, and version rules. Use the issue templates for bug reports and feature requests.
 
-## Contributors
+## Contributions and credits
 
-Thanks to [@mteguhfh](https://github.com/mteguhfh) for GNOME Shell 51 compatibility, clipboard improvements for GNOME and KDE, contribution guidance, and v69 release preparation.
+### [Perdana (@txtperdana)](https://github.com/txtperdana)
+
+- **GNOME foundation:** created the Shell extension lifecycle, top-attached island, resting and expanded states, responsive page widths, tab navigation, and transitions. Built Music controls over MPRIS, LRCLIB lyric lookup and sync, the focus timer, Shelf file handling, To-do, local clipboard history, Today metrics, desktop notices, and Settings.
+- **Persistence and migration:** added local storage for tasks and clipboard history, carried task and Shelf data forward from the former `pulo-island` data folder, and maintained settings across extension sessions.
+- **KDE port:** created the separate Plasma 6 widget, its supported Music, Focus, Tasks, and Clipboard pages, and KDE-specific installation, usage, and compatibility documentation. Kept GNOME and KDE code and archives separate while aligning their release versions.
+- **Project maintenance:** owns product direction, design reviews, release packaging, versioning, screenshots, README/PRD/how-to guides, and integration of community changes. Reviewed and merged contributor work while preserving attribution in this README.
+- **v70:** implemented first-session and returning-session greetings; added account, device, and custom display-name choices; editable welcome and return text with a `{name}` token; preview buttons; and once-per-login greeting state. Split Settings into Island, Greeting, Reminders, and Tabs side sections, with scroll-safe content in each section.
+
+### mteguhfh
+
+The following merged pull requests add the contributions below:
+
+- [PR #1 — Clipboard privacy](https://github.com/txtperdana/perdana.island/pull/1): masks dotted email addresses more completely and skips explicitly named API keys, access and refresh tokens, generic token fields, client secrets, authorization values, and private-key blocks. The checks target credential-shaped fields rather than treating ordinary copied text as a password.
+- [PR #2 — Contribution workflow](https://github.com/txtperdana/perdana.island/pull/2): adds the contributor guide, bug-report and feature-request templates, and pull-request template.
+- [PR #3 — KDE clipboard monitoring](https://github.com/txtperdana/perdana.island/pull/3): records clipboard changes while the widget is running even when its popup is closed; skips KDE password-manager MIME data; truncates long text safely; and moves a recopied item to the top of the history.
+- [PR #4 — GNOME Shell 51](https://github.com/txtperdana/perdana.island/pull/4): replaces the removed `St.BoxLayout.vertical` property with `Clutter.Orientation.VERTICAL`, supporting both declared GNOME Shell 50 and 51 versions.
+- [PR #5 — v69 packaging](https://github.com/txtperdana/perdana.island/pull/5): prepares the v69 release metadata and separate GNOME Shell and KDE Plasma archives with matching version numbers and documentation.
+- [PR #6 — GNOME themes](https://github.com/txtperdana/perdana.island/pull/6): adds Midnight, Aero, Aqua, Yaru, and Graphite materials, with theme-specific surface colors, gloss, borders, and corner treatments.
+- [PR #7 — Daily agenda and recap](https://github.com/txtperdana/perdana.island/pull/7): adds scheduled tasks, morning agenda and evening recap notices, completed-today counts, focus-minute totals, and a copyable daily report.
+- [PR #8 — Shelf capture and focus guard](https://github.com/txtperdana/perdana.island/pull/8): adds screenshot capture through the desktop portal and warns once after five minutes in a supported distraction app while a focus session is active.
+- [PR #9 — Water and prayer reminders](https://github.com/txtperdana/perdana.island/pull/9): adds hourly water reminders, configurable prayer-time reminders fetched from Aladhan, city and calculation-method settings, a Reminders page, and a daily cache.
+- [PR #10 — KDE feature parity](https://github.com/txtperdana/perdana.island/pull/10): brings daily agenda, water and prayer reminders, and the five themes to the Plasma widget, with KDE-native settings and notifications.

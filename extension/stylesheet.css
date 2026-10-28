@@ -944,6 +944,33 @@
   font-weight: 600;
 }
 
+.perdana-button.perdana-island__settings-tab {
+  min-width: 0;
+  min-height: 27px;
+  padding: 0 9px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.62);
+  background-color: rgba(255, 255, 255, 0.045);
+  text-align: left;
+  font-size: 10px;
+}
+
+.perdana-button.perdana-island__settings-tab:hover,
+.perdana-button.perdana-island__settings-tab:focus {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.perdana-button.perdana-island__settings-tab--active {
+  color: #ffffff;
+  background-color: rgba(85, 119, 184, 0.24);
+}
+
+.perdana-island__settings-tab-label {
+  color: currentColor;
+  font-size: 10px;
+}
+
 .perdana-island__settings-heading-label {
   color: rgba(255, 255, 255, 0.56);
   font-size: 10px;
@@ -1146,6 +1173,10 @@
   color: #ffffff;
   font-size: 18px;
   font-weight: 600;
+}
+
+.perdana-island__notice-title--greeting {
+  font-size: 16px;
 }
 
 .perdana-island__notice-subtitle {

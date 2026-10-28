@@ -33,7 +33,7 @@ The extension is for GNOME users who want quick media controls and short focus s
 - **Clipboard:** observe clipboard owner changes while the extension is enabled; skip explicit sensitive MIME types and recognizable credential formats; allow recopy and delete; persist up to four unique entries locally between sessions. Normalize repeated text and URL forms to prevent duplicate rows.
 - **Today:** local date plus available processor, memory, disk, and battery metrics.
 - **Notifications:** recent desktop notifications, activation of the originating notification, and clear action.
-- **Settings:** resting style, glass appearance, accent color, system notices, and visible page tabs.
+- **Settings:** side sections for Island appearance, session greetings, reminders, and visible page tabs. Greeting settings choose Linux account/device/custom name, editable welcome and returning text with a `{name}` token, preview actions, and a once-per-login greeting.
 - **System notices:** charger connect/disconnect and output-volume changes; each notice dismisses automatically.
 
 ## Data and upgrade behavior
@@ -42,6 +42,7 @@ The extension is for GNOME users who want quick media controls and short focus s
 - Reconcile tasks from both the Perdana and legacy Pulo data directories, then synchronize task changes to both locations for compatibility across extension UUIDs.
 - Copy files under `shelf/` from the former `pulo-island` data directory only when the corresponding destination does not exist.
 - Store recent clipboard text in the Perdana data directory with user-only permissions.
+- Store greeting preferences and the last greeted desktop session in the local preferences file. A returning-session notice should show at most once per login session and should retry after the island is hidden or expanded.
 - Observe clipboard changes while the extension is enabled, including while collapsed or on another page. Keep clipboard history local with user-only file permissions; do not transmit it to LRCLIB or another third party. Mask email addresses and URLs in displayed previews and prevent duplicate entries.
 
 ## Platform and architecture

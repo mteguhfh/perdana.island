@@ -12,7 +12,7 @@ Check the running Shell version:
 gnome-shell --version
 ```
 
-If the major version is not 50, this release is outside its declared compatibility range.
+If the major version is not 50 or 51, this release is outside its declared compatibility range.
 
 ## Build and install
 
@@ -58,7 +58,7 @@ The extension reconciles `tasks.json` with `~/.local/share/pulo-island/tasks.jso
 gnome-extensions info perdana.island@perdana
 ```
 
-After enabling, the output should show **Perdana Island**, version 69, and `State: ACTIVE`.
+After enabling, the output should show **Perdana Island**, version 70, and `State: ACTIVE`.
 
 ## Remove
 

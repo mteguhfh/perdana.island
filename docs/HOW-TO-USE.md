@@ -48,7 +48,14 @@ Open **Notifications** to review recent desktop notifications. Select a row to a
 
 ## Settings
 
-Use **Settings** to choose the resting eyes/clock style, enable the glass surface or system notices, set the accent color with a palette or hexadecimal value, and show or hide page tabs. Settings are saved locally.
+Settings are divided into four side sections:
+
+- **Island** chooses the material, resting clock style, glass appearance, system notices, and accent color. Enter a hex color or choose a swatch.
+- **Greeting** controls the one-time welcome and returning-session message. Choose the Linux account name, device name, or enter a custom name. Edit the first sign-in and returning text; use `{name}` wherever the selected name should appear. Select either preview and click **Show on island** to see it. Greeting text is stored locally. The welcome appears the first time the feature runs; later desktop login sessions use the returning text. A manual preview counts as the greeting for the current session, preventing a duplicate automatic banner.
+- **Reminders** controls morning agenda, evening recap, focus guard, water reminders, and prayer reminders, including city and calculation method.
+- **Tabs** shows or hides feature pages in the bottom navigation. Settings remains available.
+
+Each section scrolls independently if its controls exceed the available panel height. Settings and greeting preferences are saved locally.
 
 ## Data location
 
