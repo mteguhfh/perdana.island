@@ -1292,6 +1292,8 @@
 .perdana-island--theme-graphite .perdana-island__focus-custom-entry,
 .perdana-island--theme-graphite .perdana-button--focus-unit {
   background-color: rgba(255, 255, 255, 0.09);
+}
+
 .perdana-island__todo-report {
   min-height: 24px;
   padding: 0 8px;
@@ -1405,6 +1407,8 @@
 
 .perdana-island__task-add:hover {
   background-color: rgba(255, 255, 255, 0.24);
+}
+
 .perdana-island__notice-action {
   margin-left: 6px;
   padding: 4px 10px;
@@ -1417,4 +1421,22 @@
 .perdana-island__settings-hint {
   color: rgba(255, 255, 255, 0.55);
   font-size: 11px;
+}
+
+.perdana-island__settings-entry {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
+.perdana-island__settings-entry:focus {
+  border-color: rgba(255, 255, 255, 0.58);
+}
+
+.perdana-island__settings-entry--invalid {
+  border-color: #ff6b6b;
 }

@@ -48,6 +48,11 @@ const FOCUS_DISTRACTIONS = [
     ['twitter', 'X'],
 ];
 const FOCUS_GUARD_SECONDS = 5 * 60;
+const WATER_REMINDER_SECONDS = 60 * 60;
+const WATER_WINDOW_START = 8 * 60;
+const WATER_WINDOW_END = 21 * 60;
+const PRAYER_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+const PRAYER_METHODS = [[20, 'Kemenag'], [3, 'MWL'], [2, 'ISNA'], [4, 'Umm al-Qura']];
 const MAX_SHELF_ITEMS = 10;
 const MICROSECONDS_PER_SECOND = 1_000_000;
 const LEGACY_DATA_DIRECTORY = 'pulo-island';
@@ -167,6 +172,26 @@ function distractionLabel(identity) {
     return null;
 }
 
+function dateKey(date = new Date()) {
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function formatClockTime(minutes) {
+    const value = Math.max(0, Math.min(1439, Math.round(Number(minutes) || 0)));
+    return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+}
+
+function splitCity(value) {
+    const text = String(value || '').trim();
+    if (!text)
+        return ['', 'Indonesia'];
+    const [city, ...rest] = text.split(',');
+    const country = rest.join(',').trim();
+    return [city.trim(), country || 'Indonesia'];
+}
+
 function unpack(value) {
     return value instanceof GLib.Variant ? value.deep_unpack() : value;
 }
@@ -178,12 +203,6 @@ function formatTime(totalSeconds) {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-function dateKey(date = new Date()) {
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${date.getFullYear()}-${month}-${day}`;
-}
-
 function parseClockTime(value) {
     const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
     if (!match)
@@ -193,11 +212,6 @@ function parseClockTime(value) {
     if (hours > 23 || minutes > 59)
         return null;
     return hours * 60 + minutes;
-}
-
-function formatClockTime(minutes) {
-    const value = Math.max(0, Math.min(1439, Math.round(Number(minutes) || 0)));
-    return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
 }
 
 function normalizeHexColor(value) {
@@ -386,6 +400,12 @@ export default class PerdanaIslandExtension extends Extension {
         this._screenshotRequest = false;
         this._screenshotSubscription = 0;
         this._screenshotTimeout = 0;
+        this._prayerCache = null;
+        this._prayerSession = null;
+        this._prayerCancellable = null;
+        this._prayerFetching = false;
+        this._prayerError = null;
+        this._prayerRetryAt = 0;
         this._previousPageIndex = 0;
         this._focusRemaining = DEFAULT_FOCUS_SECONDS;
         this._focusDuration = DEFAULT_FOCUS_SECONDS;
@@ -436,6 +456,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._clipboardFile = GLib.build_filenamev([this._taskDirectory, 'clipboard.json']);
         this._preferencesFile = GLib.build_filenamev([this._taskDirectory, 'preferences.json']);
         this._focusLogFile = GLib.build_filenamev([this._taskDirectory, 'focus-log.json']);
+        this._prayerCacheFile = GLib.build_filenamev([this._taskDirectory, 'prayer-cache.json']);
         this._legacyTaskFile = GLib.build_filenamev([
             GLib.get_user_data_dir(),
             LEGACY_DATA_DIRECTORY,
@@ -448,6 +469,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._activePage = this._visiblePages()[0]?.key || 'settings';
         this._tasks = this._loadTasks();
         this._focusLog = this._loadFocusLog();
+        this._prayerCache = this._loadPrayerCache();
+        this._prayerCancellable = new Gio.Cancellable();
         this._clipboardItems = this._loadClipboardItems();
         this._shelfItems = this._loadShelfItems();
         this._shelfMonitorSignal = 0;
@@ -489,6 +512,7 @@ export default class PerdanaIslandExtension extends Extension {
                 return GLib.SOURCE_REMOVE;
             this._updateHeaderClock();
             this._checkAgendaNotices();
+            this._checkReminders();
             return GLib.SOURCE_CONTINUE;
         });
         this._chargingSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
@@ -531,6 +555,12 @@ export default class PerdanaIslandExtension extends Extension {
             lastAgendaBriefing: '',
             lastAgendaRecap: '',
             focusGuard: true,
+            waterReminder: false,
+            prayerReminder: false,
+            prayerCity: 'Jakarta, Indonesia',
+            prayerMethod: 20,
+            lastWaterAt: 0,
+            lastPrayerNotice: '',
             shelfView: 'grid',
             visiblePages,
         };
@@ -560,6 +590,18 @@ export default class PerdanaIslandExtension extends Extension {
             defaults.lastAgendaRecap = typeof stored.lastAgendaRecap === 'string'
                 ? stored.lastAgendaRecap : '';
             defaults.focusGuard = stored.focusGuard !== false;
+            defaults.waterReminder = stored.waterReminder === true;
+            defaults.prayerReminder = stored.prayerReminder === true;
+            defaults.prayerCity = typeof stored.prayerCity === 'string' && stored.prayerCity.trim()
+                ? stored.prayerCity
+                : defaults.prayerCity;
+            defaults.prayerMethod = PRAYER_METHODS.some(([method]) => method === stored.prayerMethod)
+                ? stored.prayerMethod
+                : 20;
+            defaults.lastWaterAt = Number.isFinite(stored.lastWaterAt) ? stored.lastWaterAt : 0;
+            defaults.lastPrayerNotice = typeof stored.lastPrayerNotice === 'string'
+                ? stored.lastPrayerNotice
+                : '';
             defaults.shelfView = ['grid', 'list'].includes(stored.shelfView)
                 ? stored.shelfView
                 : 'grid';
@@ -594,6 +636,12 @@ export default class PerdanaIslandExtension extends Extension {
         if (key === 'theme') {
             this._applyTheme();
             this._applyAccentStyles();
+        }
+        if (key === 'waterReminder' && value)
+            this._preferences.lastWaterAt = Math.floor(Date.now() / 1000);
+        if (key === 'prayerReminder' || key === 'prayerCity' || key === 'prayerMethod') {
+            this._prayerRetryAt = 0;
+            this._fetchPrayerTimes();
         }
         if (key === 'accentColor') {
             this._focusRing?.queue_repaint();
@@ -871,6 +919,11 @@ export default class PerdanaIslandExtension extends Extension {
             this._screenshotSubscription = 0;
         }
         this._screenshotRequest = false;
+        this._prayerCancellable?.cancel();
+        this._prayerCancellable = null;
+        this._prayerSession?.abort();
+        this._prayerSession = null;
+        this._prayerFetching = false;
         this._taskFocusSource && GLib.source_remove(this._taskFocusSource);
         this._taskFocusSource = 0;
         this._reportCopiedSource && GLib.source_remove(this._reportCopiedSource);
@@ -3952,6 +4005,50 @@ export default class PerdanaIslandExtension extends Extension {
             'dialog-warning-symbolic');
         place(content, makeLabel('Warns after 5 min on a distraction', 'perdana-island__settings-hint'),
             halfWidth + columnGap, 521, halfWidth, 18);
+
+        heading('Reminders', 559);
+        settingButton(this._preferences.waterReminder ? 'Water on' : 'Water off',
+            this._preferences.waterReminder === true, 0, 581, halfWidth,
+            () => this._setPreference('waterReminder', !this._preferences.waterReminder),
+            'alarm-symbolic');
+        settingButton(this._preferences.prayerReminder ? 'Prayer on' : 'Prayer off',
+            this._preferences.prayerReminder === true, halfWidth + columnGap, 581, halfWidth,
+            () => this._setPreference('prayerReminder', !this._preferences.prayerReminder),
+            'x-office-calendar-symbolic');
+
+        const cityEntry = new St.Entry({
+            hint_text: 'City, Country',
+            text: this._preferences.prayerCity,
+            can_focus: true,
+            style_class: 'perdana-island__settings-entry',
+            accessible_name: 'Prayer city and country',
+        });
+        const applyCity = () => {
+            const value = cityEntry.get_text().trim();
+            if (!value) {
+                cityEntry.add_style_class_name('perdana-island__settings-entry--invalid');
+                return;
+            }
+            this._setPreference('prayerCity', value);
+        };
+        cityEntry.clutter_text.connect('text-changed', () =>
+            cityEntry.remove_style_class_name('perdana-island__settings-entry--invalid'));
+        cityEntry.clutter_text.connect('activate', applyCity);
+        place(content, cityEntry, 0, 615, 224, 30);
+        place(content, makeTextButton('Apply', 'Apply prayer city', applyCity,
+            'perdana-island__color-apply'), 230, 615, 60, 30);
+
+        const methodIndex = PRAYER_METHODS.findIndex(([method]) => method === this._preferences.prayerMethod);
+        const methodName = PRAYER_METHODS[Math.max(0, methodIndex)][1];
+        place(content, makeTextButton(methodName,
+            `Prayer calculation method, ${methodName}. Click to change`, () => {
+                const index = PRAYER_METHODS.findIndex(([method]) => method === this._preferences.prayerMethod);
+                const next = PRAYER_METHODS[(index + 1) % PRAYER_METHODS.length];
+                this._setPreference('prayerMethod', next[0]);
+            }, 'perdana-island__color-apply'), 296, 615, 150, 30);
+
+        place(content, makeLabel(this._prayerStatusText(), 'perdana-island__settings-hint'),
+            0, 651, settingsWidth - 12, 18);
     }
 
     _paintFocusRing(area) {
@@ -5898,6 +5995,7 @@ export default class PerdanaIslandExtension extends Extension {
 
         const duration = type === 'volume' ? 2
             : type === 'agenda' || type === 'recap' || type === 'focus-guard' ? 7
+                : type === 'water' || type === 'prayer' ? 6
                 : type === 'focus' || type === 'application' ? 4 : 3;
         this._noticeDismissSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, duration, () => {
             this._noticeDismissSource = 0;
@@ -6015,7 +6113,8 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticePercent = null;
                 this._noticeVolumeTrack = null;
                 this._noticeVolumeFill = null;
-                if (type !== 'application' && type !== 'agenda' && type !== 'recap') {
+                if (type !== 'application' && type !== 'agenda' && type !== 'recap'
+                    && type !== 'focus-guard' && type !== 'water' && type !== 'prayer') {
                     this._noticeRight = new St.BoxLayout({
                         orientation: Clutter.Orientation.VERTICAL,
                         y_align: Clutter.ActorAlign.CENTER,
@@ -6097,12 +6196,15 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticeVolumeIcon.fallback_gicon = data.notification.gicon
                     || data.source.icon || data.source.app?.get_icon?.()
                     || Gio.ThemedIcon.new('application-x-executable-symbolic');
-            } else if (type === 'agenda' || type === 'recap' || type === 'focus-guard') {
+            } else if (type === 'agenda' || type === 'recap' || type === 'focus-guard'
+                || type === 'water' || type === 'prayer') {
                 this._noticeTitle.text = data.title;
                 this._noticeSubtitle.text = data.subtitle;
                 this._noticeVolumeIcon.icon_name = type === 'focus-guard'
                     ? 'dialog-warning-symbolic'
-                    : type === 'agenda' ? 'x-office-calendar-symbolic' : 'emblem-ok-symbolic';
+                    : type === 'water' ? 'alarm-symbolic'
+                        : type === 'prayer' ? 'x-office-calendar-symbolic'
+                            : type === 'agenda' ? 'x-office-calendar-symbolic' : 'emblem-ok-symbolic';
             } else {
                 this._noticeTitle.text = data.title;
                 this._noticeSubtitle.text = data.subtitle;
@@ -6473,6 +6575,207 @@ export default class PerdanaIslandExtension extends Extension {
     _saveTasks() {
         this._writeTasksToFile(this._taskFile, this._tasks);
         this._writeTasksToFile(this._legacyTaskFile, this._tasks);
+    }
+
+    _loadPrayerCache() {
+        try {
+            const parsed = JSON.parse(this._readText(this._prayerCacheFile) || '{}');
+            if (!parsed || typeof parsed !== 'object' || !parsed.times || typeof parsed.times !== 'object')
+                return null;
+            return parsed;
+        } catch (_error) {
+            return null;
+        }
+    }
+
+    _savePrayerCache() {
+        try {
+            GLib.mkdir_with_parents(this._taskDirectory, 0o755);
+            GLib.file_set_contents(this._prayerCacheFile, JSON.stringify(this._prayerCache, null, 2));
+        } catch (error) {
+            logError(error, 'Perdana Island could not save prayer times');
+        }
+    }
+
+    _parsePrayerPayload(body, now = new Date()) {
+        const payload = JSON.parse(body);
+        const timings = payload?.data?.timings;
+        if (!timings || typeof timings !== 'object')
+            throw new Error('Prayer timings missing');
+        const timezone = payload?.data?.meta?.timezone || null;
+        let zone = null;
+        if (timezone) {
+            try {
+                zone = GLib.TimeZone.new_identifier(timezone);
+            } catch (_error) {
+                zone = null;
+            }
+        }
+        const local = GLib.TimeZone.new_local();
+        const times = {};
+        for (const name of PRAYER_NAMES) {
+            const match = String(timings[name] || '').match(/^(\d{1,2}):(\d{2})/);
+            if (!match)
+                continue;
+            const hours = Number(match[1]);
+            const minutes = Number(match[2]);
+            let value = hours * 60 + minutes;
+            if (zone) {
+                const date = GLib.DateTime.new(zone, now.getFullYear(), now.getMonth() + 1,
+                    now.getDate(), hours, minutes, 0);
+                if (date) {
+                    const shifted = date.to_timezone(local);
+                    value = shifted.get_hour() * 60 + shifted.get_minute();
+                }
+            }
+            times[name] = value;
+        }
+        return times;
+    }
+
+    _prayerCacheValid() {
+        const cache = this._prayerCache;
+        if (!cache || cache.date !== dateKey())
+            return false;
+        const [city] = splitCity(this._preferences?.prayerCity);
+        return cache.city === city
+            && cache.method === this._preferences?.prayerMethod
+            && PRAYER_NAMES.every(name => Number.isInteger(cache.times?.[name]));
+    }
+
+    _prayerTimesForToday() {
+        return this._prayerCacheValid() ? this._prayerCache.times : null;
+    }
+
+    _fetchPrayerTimes() {
+        if (this._prayerFetching)
+            return;
+        const [city, country] = splitCity(this._preferences?.prayerCity);
+        if (!city) {
+            this._prayerError = 'Set a city for prayer times';
+            if (this._activePage === 'settings')
+                this._renderPanel();
+            return;
+        }
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const date = `${day}-${month}-${now.getFullYear()}`;
+        const url = 'https://api.aladhan.com/v1/timingsByCity/'
+            + `${date}?city=${encodeURIComponent(city)}`
+            + `&country=${encodeURIComponent(country)}`
+            + `&method=${this._preferences.prayerMethod}`;
+        const message = Soup.Message.new('GET', url);
+        if (!message) {
+            this._prayerError = 'Could not load prayer times';
+            return;
+        }
+        this._prayerFetching = true;
+        this._prayerError = null;
+        this._prayerSession ??= new Soup.Session();
+        this._prayerSession.send_and_read_async(
+            message,
+            GLib.PRIORITY_DEFAULT,
+            this._prayerCancellable,
+            (session, result) => {
+                this._prayerFetching = false;
+                try {
+                    const bytes = session.send_and_read_finish(result);
+                    if (message.get_status() !== Soup.Status.OK)
+                        throw new Error(`Prayer request failed with ${message.get_status()}`);
+                    const times = this._parsePrayerPayload(new TextDecoder().decode(bytes.get_data()), now);
+                    if (!PRAYER_NAMES.every(name => Number.isInteger(times[name])))
+                        throw new Error('Prayer times incomplete');
+                    this._prayerCache = {
+                        date: dateKey(now),
+                        city,
+                        country,
+                        method: this._preferences.prayerMethod,
+                        times,
+                    };
+                    this._savePrayerCache();
+                    this._prayerError = null;
+                    this._prayerRetryAt = 0;
+                } catch (error) {
+                    this._prayerError = 'Could not load prayer times';
+                    this._prayerRetryAt = Date.now() + 15 * 60 * 1000;
+                    logError(error, 'Perdana Island could not fetch prayer times');
+                }
+                if (this._activePage === 'settings')
+                    this._renderPanel();
+            }
+        );
+    }
+
+    _ensurePrayerTimes() {
+        if (!this._preferences?.prayerReminder || this._prayerFetching || this._prayerCacheValid())
+            return;
+        if (this._prayerRetryAt && Date.now() < this._prayerRetryAt)
+            return;
+        this._fetchPrayerTimes();
+    }
+
+    _prayerStatusText() {
+        if (!this._preferences?.prayerReminder)
+            return 'Prayer reminders are off';
+        if (this._prayerFetching)
+            return 'Loading prayer times...';
+        if (this._prayerError)
+            return this._prayerError;
+        const times = this._prayerTimesForToday();
+        if (!times)
+            return 'No prayer times for today yet';
+        const now = new Date();
+        const minutes = now.getHours() * 60 + now.getMinutes();
+        const next = PRAYER_NAMES
+            .map(name => [name, times[name]])
+            .find(([, value]) => value > minutes);
+        return next ? `Next: ${next[0]} ${formatClockTime(next[1])}` : 'All prayers passed for today';
+    }
+
+    _checkReminders(now = new Date()) {
+        if (!this._enabled || !this._preferences)
+            return;
+        const minutes = now.getHours() * 60 + now.getMinutes();
+        const today = dateKey(now);
+
+        if (this._preferences.waterReminder
+            && minutes >= WATER_WINDOW_START && minutes < WATER_WINDOW_END) {
+            const nowSeconds = Math.floor(now.getTime() / 1000);
+            if (nowSeconds - (Number(this._preferences.lastWaterAt) || 0) >= WATER_REMINDER_SECONDS) {
+                const shown = this._showSystemNotice('water', {
+                    title: 'Drink water',
+                    subtitle: 'Time for a glass of water',
+                });
+                if (shown) {
+                    this._preferences.lastWaterAt = nowSeconds;
+                    this._savePreferences();
+                }
+            }
+        }
+
+        if (!this._preferences.prayerReminder)
+            return;
+        this._ensurePrayerTimes();
+        const times = this._prayerTimesForToday();
+        if (!times)
+            return;
+        for (const name of PRAYER_NAMES) {
+            if (times[name] !== minutes)
+                continue;
+            const key = `${today}:${name}`;
+            if (this._preferences.lastPrayerNotice === key)
+                break;
+            const shown = this._showSystemNotice('prayer', {
+                title: `${name} ${formatClockTime(times[name])}`,
+                subtitle: 'Prayer time',
+            });
+            if (shown) {
+                this._preferences.lastPrayerNotice = key;
+                this._savePreferences();
+            }
+            break;
+        }
     }
 
     _clearTimeout(property) {

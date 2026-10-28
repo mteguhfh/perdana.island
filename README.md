@@ -50,6 +50,8 @@ These images show representative UI states with sample media, files, notificatio
 - Clipboard keeps up to four recent text entries between sessions. It records changes while the extension is enabled, deduplicates repeated text and URLs, masks email addresses and links in previews, and skips explicitly identified credentials.
 - Settings control the theme, resting style, glass effect, accent color, system notices, daily agenda notices, focus guard, and visible tabs.
 - Themes change the island material without touching the layout. Midnight is the plain black island, Aero adds a blue gloss band with a hairline border, Aqua uses rounded translucent graphite, Yaru uses an aubergine tint, and Graphite uses flat grey with small corners. The choice persists between sessions, and translucent themes hide the solid corner ears so the glass edge stays clean.
+- Water reminders can show a short notice every hour between 08:00 and 21:00 while the island is idle.
+- Prayer reminders fetch the five daily times from the Aladhan API for a city, cache them per day, and show a notice at each time. The calculation method can be switched between Kemenag, MWL, ISNA, and Umm al-Qura. Times are converted from the city timezone to the local clock.
 - Today combines a local calendar with available CPU, memory, disk, and battery information.
 - Notifications lists recent desktop notifications, uses the source application's icon when available, and can activate or clear them.
 - Charging, charger disconnect, output-volume changes, and completed focus sessions can show short notices.
