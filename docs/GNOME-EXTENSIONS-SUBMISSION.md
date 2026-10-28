@@ -1,6 +1,6 @@
 # GNOME Extensions submission
 
-Perdana Island's GNOME package targets GNOME Shell 50 and is prepared as a separate upload from the KDE Plasma widget. The ZIP contains the extension metadata, JavaScript, stylesheet, GSettings schema XML, and GPL license.
+Perdana Island's GNOME package targets GNOME Shell 50 and 51 and is prepared as a separate upload from the KDE Plasma widget. The ZIP contains the extension metadata, JavaScript, stylesheet, GSettings schema XML, and GPL license.
 
 ## Build and check the ZIP
 
@@ -26,7 +26,7 @@ Review every warning manually. Clipboard access is a core feature and is declare
 
 ## Upload
 
-Upload the GNOME ZIP through the [GNOME Extensions developer form](https://extensions.gnome.org/upload/). GNOME controls the submission `version`; `version-name` is the project's display label. The package declares only stable GNOME Shell 50 support and links to this repository for source and issue reports.
+Upload the GNOME ZIP through the [GNOME Extensions developer form](https://extensions.gnome.org/upload/). GNOME controls the submission `version`; `version-name` is the project's display label. The package declares stable GNOME Shell 50 and 51 support and links to this repository for source and issue reports.
 
 The site sends the review result by email. Local static checks do not guarantee approval; the final decision belongs to GNOME Extensions reviewers. Distributed extension content is also subject to the [GNOME Code of Conduct](https://conduct.gnome.org/).
 
@@ -34,5 +34,5 @@ The site sends the review result by email. Local static checks do not guarantee 
 
 - The extension is licensed under GPL-3.0-or-later, which is compatible with GNOME Shell's GPL-2.0-or-later terms.
 - The ZIP has no helper scripts, binaries, preview pages, or development-only folders.
-- The tested environment is Fedora Linux 44, GNOME Shell 50.6 on Wayland. Other GNOME Shell 50 distributions and X11 have not been independently runtime-tested.
+- The development environment is Fedora Linux 44, GNOME Shell 50.6 on Wayland. Ubuntu 26.10 with GNOME Shell 51.0 passed a headless Wayland smoke test covering enable/disable, every page, notices, and preferences. Other distributions and X11 have not been independently runtime-tested.
 - Shexli may report advisories for direct clipboard access (manual review), small synchronous reads of user data and Linux `/proc`/`sysfs`, and signal handlers attached to actors destroyed with the extension's root widget. Review these against the source before each upload.

@@ -1,12 +1,12 @@
 # Perdana Island
 
-[![GNOME Shell 50](https://img.shields.io/badge/GNOME%20Shell-50-4a86cf?logo=gnome&logoColor=white)](https://extensions.gnome.org/)
+[![GNOME Shell 50 and 51](https://img.shields.io/badge/GNOME%20Shell-50%20%7C%2051-4a86cf?logo=gnome&logoColor=white)](https://extensions.gnome.org/)
 [![GJS](https://img.shields.io/badge/runtime-GJS%20%2F%20JavaScript-f1e05a?logo=javascript&logoColor=111)](https://gjs.guide/)
 [![St and Clutter](https://img.shields.io/badge/UI-St%20%2B%20Clutter-5267a8)](https://gnome.pages.gitlab.gnome.org/gnome-shell/st/)
 [![MPRIS](https://img.shields.io/badge/media-MPRIS%20over%20D--Bus-383838)](https://specifications.freedesktop.org/mpris-spec/latest/)
 [![Fedora 44](https://img.shields.io/badge/validated-Fedora%2044-51a2da?logo=fedora&logoColor=white)](https://fedoraproject.org/)
 
-Perdana Island provides separate native packages for GNOME Shell and KDE Plasma. The GNOME Shell 50 extension places media controls, synced lyrics, a focus timer, a file shelf, tasks, recent clipboard text, notifications, settings, and system information in a compact island attached to the top edge of the desktop. The KDE Plasma 6 widget provides Music, Focus, Tasks, and Clipboard pages. Both packages live in this repository, in `extension/` and `plasma-widget/` respectively, and share the project release version while keeping their code and installation packages separate.
+Perdana Island provides separate native packages for GNOME Shell and KDE Plasma. The GNOME Shell 50 and 51 extension places media controls, synced lyrics, a focus timer, a file shelf, tasks, recent clipboard text, notifications, settings, and system information in a compact island attached to the top edge of the desktop. The KDE Plasma 6 widget provides Music, Focus, Tasks, and Clipboard pages. Both packages live in this repository, in `extension/` and `plasma-widget/` respectively, and share the project release version while keeping their code and installation packages separate.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
@@ -54,16 +54,17 @@ These images show representative UI states with sample content. Media, battery, 
 
 The extension runs inside GNOME Shell through the GJS `Extension` lifecycle. Its interface is built from Shell `St` actors and Clutter layouts/animations, attached to GNOME Shell's chrome layer. GLib and Gio provide timers, file access, and filesystem monitoring. Media metadata and playback controls use MPRIS on the session D-Bus; output volume uses GNOME's Gvc mixer API and Shell volume status module. CPU, memory, disk, and battery readings are collected from Linux system interfaces when available.
 
-The GNOME extension declares GNOME Shell **50.x** compatibility. This GNOME package does not run on KDE Plasma, Cinnamon, Xfce, or other desktop environments that do not use GNOME Shell. The separate KDE widget and its requirements are documented in [README-KDE.md](README-KDE.md).
+The GNOME extension declares GNOME Shell **50.x and 51.x** compatibility. This GNOME package does not run on KDE Plasma, Cinnamon, Xfce, or other desktop environments that do not use GNOME Shell. The separate KDE widget and its requirements are documented in [README-KDE.md](README-KDE.md).
 
 | Distribution / release | GNOME Shell | Support status |
 | --- | --- | --- |
 | Fedora Linux 44 | 50.6 on the development system | Runtime validated on Wayland |
 | Ubuntu 26.04 LTS | 50.1 package | Version checked; runtime not independently tested |
 | Debian testing (Forky) | 50.4 package | Version checked; runtime not independently tested |
-| Other Linux distributions | GNOME Shell 50.x required | Expected to work; not individually tested |
+| Ubuntu 26.10 | 51.0 on the test system | Enable/disable, every page, notices, and preferences smoke-tested in a headless Wayland session |
+| Other Linux distributions | GNOME Shell 50.x or 51.x required | Expected to work; not individually tested |
 
-GNOME Shell 49 and earlier, and 51 or later, are outside the compatibility range declared by this release. Wayland is the validated session; X11 has not been independently tested.
+GNOME Shell 49 and earlier, and 52 or later, are outside the compatibility range declared by this release. Wayland is the validated session; X11 has not been independently tested.
 
 ## Install
 

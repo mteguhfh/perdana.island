@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Linux with GNOME Shell **50.x**. This release declares Shell major version 50 only.
+- Linux with GNOME Shell **50.x or 51.x**.
 - The `gnome-extensions` command, normally installed with GNOME Shell.
 - A GNOME session. Wayland is the development-validated session; X11 has not been independently tested.
 
@@ -71,7 +71,7 @@ Removal leaves data in `~/.local/share/perdana.island/` and the legacy task back
 
 ## Troubleshooting
 
-- **Rejected as incompatible:** check `gnome-shell --version`; this release declares only GNOME Shell 50.x.
+- **Rejected as incompatible:** check `gnome-shell --version`; this release declares GNOME Shell 50.x and 51.x.
 - **Island does not appear:** enable **Perdana Island** and inspect `gnome-extensions info perdana.island@perdana`.
 - **Rebuild appears unchanged:** GNOME Shell may have cached JavaScript; reload the Shell session as described above.
 - **Music page is empty:** start a player that exports MPRIS metadata on the current user's session bus.
@@ -79,7 +79,7 @@ Removal leaves data in `~/.local/share/perdana.island/` and the legacy task back
 
 ## Prepare a GNOME Extensions submission
 
-The GNOME archive in a GitHub release is also the upload package for [extensions.gnome.org](https://extensions.gnome.org/upload/). It contains the extension source, metadata, stylesheet, and GPL license. The metadata declares GNOME Shell 50, links to this public repository, and describes the clipboard feature. Track title, artist, optional album, and duration are sent to LRCLIB when looking up lyrics; clipboard entries stay local.
+The GNOME archive in a GitHub release is also the upload package for [extensions.gnome.org](https://extensions.gnome.org/upload/). It contains the extension source, metadata, stylesheet, and GPL license. The metadata declares GNOME Shell 50 and 51, links to this public repository, and describes the clipboard feature. Track title, artist, optional album, and duration are sent to LRCLIB when looking up lyrics; clipboard entries stay local.
 
 Before upload, build and inspect the GNOME archive:
 

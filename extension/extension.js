@@ -2888,7 +2888,7 @@ export default class PerdanaIslandExtension extends Extension {
             'perdana-island__timer-subtitle'
         );
         const timer = new St.BoxLayout({
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'perdana-island__timer-block',
@@ -3073,7 +3073,7 @@ export default class PerdanaIslandExtension extends Extension {
         });
         scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
         const list = new St.BoxLayout({
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__task-list',
         });
         list.set_size(listWidth, listHeight);
@@ -3253,7 +3253,7 @@ export default class PerdanaIslandExtension extends Extension {
             });
             scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
             const content = new St.BoxLayout({
-                vertical: true,
+                orientation: Clutter.Orientation.VERTICAL,
                 style_class: `perdana-island__shelf-content--${view}`,
             });
             const itemHeight = view === 'grid' ? 96 : 34;
@@ -3498,7 +3498,7 @@ export default class PerdanaIslandExtension extends Extension {
             return;
         }
         const list = new St.BoxLayout({
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__notification-list',
         });
         list.set_size(cardWidth, this._notificationItems.length * 41 - 3);
@@ -3558,7 +3558,7 @@ export default class PerdanaIslandExtension extends Extension {
         });
         scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
         const scrollContent = new St.BoxLayout({
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__settings-scroll-content',
         });
         scrollContent.set_size(settingsWidth, 360);
@@ -5519,7 +5519,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticeBanner.add_child(this._noticeIcon);
 
                 this._noticeCopy = new St.BoxLayout({
-                    vertical: true,
+                    orientation: Clutter.Orientation.VERTICAL,
                     x_expand: true,
                     y_align: Clutter.ActorAlign.CENTER,
                     style_class: 'perdana-island__notice-copy',
@@ -5536,7 +5536,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticeVolumeFill = null;
                 if (type !== 'application') {
                     this._noticeRight = new St.BoxLayout({
-                        vertical: true,
+                        orientation: Clutter.Orientation.VERTICAL,
                         y_align: Clutter.ActorAlign.CENTER,
                         style_class: 'perdana-island__notice-right',
                     });
