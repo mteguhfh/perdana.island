@@ -48,7 +48,10 @@ These images show representative UI states with sample media, files, notificatio
 - Clipboard keeps up to four recent text entries between sessions. It records changes while the extension is enabled, deduplicates repeated text and URLs, masks email addresses and links in previews, and skips explicitly identified credentials.
 - To-do also shows a daily summary: scheduled tasks with the next time, tasks completed today, focus minutes, and a Copy report action that puts a plain text report on the clipboard.
 - At 08:00 the island can show a morning agenda notice with today's scheduled tasks, and at 17:00 a recap of completed tasks and focus minutes. Clicking either notice opens the matching page. Both are toggled under Daily agenda in Settings.
-- Settings control the resting style, glass effect, accent color, system notices, daily agenda notices, focus guard, and visible tabs.
+- Settings control the resting style, glass effect, accent color, system notices, daily agenda notices, focus guard, water reminders, prayer reminders, and visible tabs.
+- Water reminders can show a short notice every hour between 08:00 and 21:00 while the island is idle.
+- Prayer reminders fetch the five daily times from the Aladhan API for a city, cache them per day, and show a notice at each time. The calculation method can be switched between Kemenag, MWL, ISNA, and Umm al-Qura. Times are converted from the city timezone to the local clock.
+- The Reminders page lists the five prayer times for today, marks the next one, dims the ones that have passed, and shows the water countdown with a Log glass action. Tapping a water or prayer notice opens the page. Refresh re-fetches the times when the city or the connection changes.
 - Today combines a local calendar with available CPU, memory, disk, and battery information.
 - Notifications lists recent desktop notifications, uses the source application's icon when available, and can activate or clear them.
 - Charging, charger disconnect, output-volume changes, and completed focus sessions can show short notices.
