@@ -12,7 +12,7 @@ This is the KDE Plasma 6 implementation of Perdana Island. It is a native Plasma
 - **Music** reads the active player's MPRIS metadata and provides playback, previous/next, and seeking controls.
 - **Focus** offers Focus, Short, Long, and custom timers in seconds or minutes. A finished session appears in the island and sends a Plasma notification.
 - **Tasks** supports adding, completing, and deleting tasks. The list is saved in the widget configuration.
-- **Clipboard** keeps up to four recent plain-text entries. Entries can be copied again or deleted. A small heuristic skips text that resembles common labeled secrets or private-key blocks; it is not a complete secret detector.
+- **Clipboard** keeps up to four recent plain-text entries while the widget is running. Entries can be copied again or deleted. A small heuristic skips text that resembles common labeled secrets or private-key blocks; it is not a complete secret detector.
 - **Resting capsule** blinks and shows the clock when hovered.
 
 The widget uses a compact panel representation and an expanded Plasma popup. It does not create the GNOME version's separate, centered top-edge overlay. It also does not follow the global pointer, auto-open when media starts, or include Shelf, system metrics, battery notices, or volume notices. Those features are not part of this KDE port yet.
@@ -93,9 +93,9 @@ Open **Tasks**, type into **Add a task**, then press **Enter** or click **Add**.
 
 ### Clipboard
 
-Open **Clipboard** before copying text. While this page is open, newly copied plain text is added to the recent list; opening the page also checks the current plain-text clipboard. The widget keeps up to four entries, each of which can be copied again or deleted with its row buttons.
+Newly copied plain text is recorded while the widget is running, including when the popup is closed. Open **Clipboard** to review the recent list. The widget keeps up to four entries, each of which can be copied again or deleted with its row buttons.
 
-Clipboard history is limited to plain text up to 1,200 characters. A simple pattern check skips text that resembles labeled passwords, secrets, tokens, API keys, authorization values, or private-key blocks. This is only a precaution, not a complete secret detector, so do not use the history for sensitive information.
+Clipboard history is plain text truncated to 1,200 characters. Text tagged with KDE's password-manager hint is skipped. A simple pattern check also skips text that resembles labeled passwords, secrets, tokens, API keys, authorization values, or private-key blocks. This is only a precaution, not a complete secret detector, so do not use the history for sensitive information.
 
 ### Saved data
 
