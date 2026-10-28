@@ -1440,3 +1440,63 @@
 .perdana-island__settings-entry--invalid {
   border-color: #ff6b6b;
 }
+
+/* Reminders page. Prayer rows are static text; the water side updates in
+   place on the clock tick so the countdown does not rebuild the page. */
+.perdana-island__reminder-heading {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.perdana-island__reminder-caption {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+}
+
+.perdana-island__reminder-subtitle {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+}
+
+.perdana-button.perdana-island__reminder-action {
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 8px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+}
+
+.perdana-button.perdana-island__reminder-action:hover {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+.perdana-island__prayer-name,
+.perdana-island__prayer-time {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__prayer-name--next,
+.perdana-island__prayer-time--next {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.perdana-island__prayer-name--passed,
+.perdana-island__prayer-time--passed {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.perdana-island__water-value {
+  color: #ffffff;
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__reminder-divider {
+  background-color: rgba(255, 255, 255, 0.09);
+}
