@@ -54,6 +54,7 @@ const PAGE_WIDTHS = {
     tasks: 600,
     clipboard: 600,
     today: 900,
+    reminders: 600,
     notifications: 560,
     settings: 640,
 };
@@ -72,6 +73,7 @@ const PAGES = [
     {key: 'tasks', label: 'To-do', icon: 'view-list-symbolic'},
     {key: 'clipboard', label: 'Clipboard', icon: 'edit-copy-symbolic'},
     {key: 'today', label: 'Today', icon: 'x-office-calendar-symbolic'},
+    {key: 'reminders', label: 'Reminders', icon: 'appointment-soon-symbolic'},
     {key: 'notifications', label: 'Notifications', icon: 'preferences-system-notifications-symbolic'},
     {key: 'settings', label: 'Settings', icon: 'preferences-system-symbolic'},
 ];
@@ -389,6 +391,8 @@ export default class PerdanaIslandExtension extends Extension {
                 return GLib.SOURCE_REMOVE;
             this._updateHeaderClock();
             this._checkReminders();
+            if (this._activePage === 'reminders')
+                this._updateReminderPage();
             return GLib.SOURCE_CONTINUE;
         });
         this._chargingSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
@@ -1931,6 +1935,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._renderClipboardPage(body);
         else if (this._activePage === 'today')
             this._renderTodayPage(body);
+        else if (this._activePage === 'reminders')
+            this._renderRemindersPage(body);
         else
             this._renderInfoPage(body, this._activePage);
         this._pageBody = body;
@@ -3048,6 +3054,135 @@ export default class PerdanaIslandExtension extends Extension {
         place(body, scroll, rightX, 4, rightWidth, this._bodyHeight() - 8);
     }
 
+    _renderRemindersPage(body) {
+        this._ensurePrayerTimes();
+        const now = new Date();
+        const pageWidth = this._pageWidth();
+        const scale = Math.min(1, pageWidth / 600);
+        const columnGap = Math.round(26 * scale);
+        const leftWidth = Math.round((pageWidth - columnGap) * 0.56);
+        const rightX = leftWidth + columnGap;
+        const rightWidth = pageWidth - rightX;
+        const prayerOn = this._preferences.prayerReminder === true;
+        const [city] = splitCity(this._preferences.prayerCity);
+        const method = PRAYER_METHODS.find(([value]) => value === this._preferences.prayerMethod);
+
+        place(body, makeLabel('Prayer', 'perdana-island__reminder-heading'), 0, 0, 90, 16);
+        place(body, makeLabel(this._prayerPageSubtitle(city, method ? method[1] : 'Kemenag'),
+            'perdana-island__reminder-subtitle'), 0, 18, Math.max(0, leftWidth - 72), 16);
+        if (prayerOn)
+            place(body, makeTextButton('Refresh', 'Fetch prayer times again', () => {
+                this._prayerRetryAt = 0;
+                this._prayerError = null;
+                this._fetchPrayerTimes();
+                this._renderPanel();
+            }, 'perdana-island__reminder-action'), leftWidth - 64, 10, 64, 24);
+
+        const times = prayerOn ? this._prayerTimesForToday() : null;
+        this._reminderRows = [];
+        PRAYER_NAMES.forEach((name, index) => {
+            const y = 42 + index * 24;
+            const nameLabel = makeLabel(name, 'perdana-island__prayer-name');
+            const timeLabel = makeLabel(times ? formatClockTime(times[name]) : '—',
+                'perdana-island__prayer-time');
+            timeLabel.clutter_text.x_align = Clutter.ActorAlign.END;
+            place(body, nameLabel, 0, y, Math.round(leftWidth * 0.5), 20);
+            place(body, timeLabel, 0, y, leftWidth, 20);
+            this._reminderRows.push({name, nameLabel, timeLabel});
+        });
+
+        place(body, new St.Widget({style_class: 'perdana-island__reminder-divider'}),
+            leftWidth + Math.round(columnGap / 2), 0, 1, 158);
+
+        const summary = this._waterSummary(now);
+        place(body, makeLabel('Water', 'perdana-island__reminder-heading'), rightX, 0, rightWidth, 16);
+        this._reminderWaterCaption = place(body, makeLabel(summary.caption,
+            'perdana-island__reminder-caption'), rightX, 20, rightWidth, 16);
+        this._reminderWaterValue = place(body, makeLabel(summary.value,
+            'perdana-island__water-value'), rightX, 36, rightWidth, 34);
+        this._reminderWaterDetail = place(body, makeLabel(summary.detail,
+            'perdana-island__reminder-subtitle'), rightX, 72, rightWidth, 16);
+        place(body, makeTextButton('Log glass', 'Log a glass of water', () => {
+            this._preferences.lastWaterAt = Math.floor(Date.now() / 1000);
+            this._savePreferences();
+            this._renderPanel();
+        }, 'perdana-island__color-apply'), rightX, 96, 104, 30);
+        place(body, makeLabel('Every hour, 08:00-21:00', 'perdana-island__reminder-caption'),
+            rightX, 136, rightWidth, 16);
+
+        this._updateReminderPage(now);
+    }
+
+    _prayerPageSubtitle(city, methodLabel) {
+        if (!this._preferences?.prayerReminder)
+            return 'Prayer reminders are off';
+        if (this._prayerFetching)
+            return 'Loading prayer times...';
+        if (this._prayerError)
+            return this._prayerError;
+        if (!this._prayerTimesForToday())
+            return 'No prayer times yet';
+        return `${city || 'No city'} · ${methodLabel}`;
+    }
+
+    _waterSummary(now = new Date()) {
+        if (!this._preferences?.waterReminder)
+            return {caption: 'Reminder', value: 'Off', detail: 'Turn on in Settings'};
+        const minutes = now.getHours() * 60 + now.getMinutes();
+        if (minutes < WATER_WINDOW_START)
+            return {caption: 'Next glass', value: '08:00', detail: 'Quiet hours until then'};
+        if (minutes >= WATER_WINDOW_END)
+            return {caption: 'Next glass', value: '08:00', detail: 'Resumes tomorrow'};
+        const last = Number(this._preferences.lastWaterAt) || 0;
+        if (!last)
+            return {caption: 'Next glass', value: 'Now', detail: 'No glass logged yet'};
+        const lastDate = new Date(last * 1000);
+        const lastLabel = formatClockTime(lastDate.getHours() * 60 + lastDate.getMinutes());
+        const remaining = Math.min(WATER_REMINDER_SECONDS,
+            Math.max(0, last + WATER_REMINDER_SECONDS - Math.floor(now.getTime() / 1000)));
+        return {
+            caption: 'Next glass',
+            value: remaining <= 0 ? 'Now' : `${Math.ceil(remaining / 60)} min`,
+            detail: `Last glass ${lastLabel}`,
+        };
+    }
+
+    _updateReminderPage(now = new Date()) {
+        if (!this._reminderRows && !this._reminderWaterValue)
+            return;
+        const minutes = now.getHours() * 60 + now.getMinutes();
+        const times = this._preferences?.prayerReminder ? this._prayerTimesForToday() : null;
+        const next = times
+            ? PRAYER_NAMES.find(name => times[name] > minutes) || null
+            : null;
+        for (const row of this._reminderRows || []) {
+            const state = !times ? null
+                : next === row.name ? 'next'
+                    : times[row.name] <= minutes ? 'passed' : null;
+            this._stylePrayerLabel(row.nameLabel, 'perdana-island__prayer-name', state);
+            this._stylePrayerLabel(row.timeLabel, 'perdana-island__prayer-time', state);
+            if (times)
+                row.timeLabel.text = formatClockTime(times[row.name]);
+        }
+        const summary = this._waterSummary(now);
+        if (this._reminderWaterCaption)
+            this._reminderWaterCaption.text = summary.caption;
+        if (this._reminderWaterValue)
+            this._reminderWaterValue.text = summary.value;
+        if (this._reminderWaterDetail)
+            this._reminderWaterDetail.text = summary.detail;
+    }
+
+    _stylePrayerLabel(label, base, state) {
+        for (const suffix of ['next', 'passed']) {
+            const name = `${base}--${suffix}`;
+            if (state === suffix)
+                label.add_style_class_name(name);
+            else
+                label.remove_style_class_name(name);
+        }
+    }
+
     _renderInfoPage(body, key) {
         if (key === 'shelf')
             this._renderShelfPage(body);
@@ -3615,7 +3750,7 @@ export default class PerdanaIslandExtension extends Extension {
                     this._setPageVisible(page.key, this._preferences.visiblePages[page.key] === false), page.icon);
         });
 
-        heading('Reminders', 343);
+        heading('Water & prayer', 343);
         settingButton(this._preferences.waterReminder ? 'Water on' : 'Water off',
             this._preferences.waterReminder === true, 0, 365, halfWidth,
             () => this._setPreference('waterReminder', !this._preferences.waterReminder),
@@ -3730,6 +3865,12 @@ export default class PerdanaIslandExtension extends Extension {
         });
         this._renderPanel();
         this._updateCollapsedLabel();
+    }
+
+    _openPage(key) {
+        this._pinned = true;
+        this._setExpanded(true);
+        this._selectPage(key);
     }
 
     _setFocusDuration(seconds, mode = null) {
@@ -5450,7 +5591,11 @@ export default class PerdanaIslandExtension extends Extension {
                 this._content.hide();
                 this._noticeBanner = new St.BoxLayout({
                     style_class: 'perdana-island__notice-banner',
-                    reactive: type === 'application',
+                    reactive: type === 'application' || type === 'water' || type === 'prayer',
+                    can_focus: type === 'water' || type === 'prayer',
+                    track_hover: type === 'water' || type === 'prayer',
+                    accessible_name: type === 'water' || type === 'prayer'
+                        ? 'Open the reminders page' : null,
                 });
                 this._noticeBanner.set_position(0, 0);
                 this._noticeBanner.set_size(394, 76);
@@ -5466,6 +5611,23 @@ export default class PerdanaIslandExtension extends Extension {
                             item.source.open();
                         }
                         this._dismissSystemNotice(true);
+                        return Clutter.EVENT_STOP;
+                    });
+                } else if (type === 'water' || type === 'prayer') {
+                    const openRemindersPage = () => {
+                        this._dismissSystemNotice(true);
+                        this._openPage('reminders');
+                    };
+                    this._noticeBanner.connect('button-release-event', () => {
+                        openRemindersPage();
+                        return Clutter.EVENT_STOP;
+                    });
+                    this._noticeBanner.connect('key-press-event', (_actor, event) => {
+                        const symbol = event.get_key_symbol();
+                        if (symbol !== Clutter.KEY_Return && symbol !== Clutter.KEY_KP_Enter
+                            && symbol !== Clutter.KEY_space)
+                            return Clutter.EVENT_PROPAGATE;
+                        openRemindersPage();
                         return Clutter.EVENT_STOP;
                     });
                 }
@@ -5513,7 +5675,15 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticePercent = null;
                 this._noticeVolumeTrack = null;
                 this._noticeVolumeFill = null;
-                if (type !== 'application' && type !== 'water' && type !== 'prayer') {
+                if (type === 'water' || type === 'prayer') {
+                    this._noticeRight = new St.BoxLayout({
+                        orientation: Clutter.Orientation.VERTICAL,
+                        y_align: Clutter.ActorAlign.CENTER,
+                        style_class: 'perdana-island__notice-right',
+                    });
+                    this._noticeRight.add_child(makeLabel('View', 'perdana-island__notice-action'));
+                    this._noticeBanner.add_child(this._noticeRight);
+                } else if (type !== 'application') {
                     this._noticeRight = new St.BoxLayout({
                         orientation: Clutter.Orientation.VERTICAL,
                         y_align: Clutter.ActorAlign.CENTER,
@@ -5838,7 +6008,7 @@ export default class PerdanaIslandExtension extends Extension {
         const [city, country] = splitCity(this._preferences?.prayerCity);
         if (!city) {
             this._prayerError = 'Set a city for prayer times';
-            if (this._activePage === 'settings')
+            if (['settings', 'reminders'].includes(this._activePage))
                 this._renderPanel();
             return;
         }
@@ -5886,7 +6056,7 @@ export default class PerdanaIslandExtension extends Extension {
                     this._prayerRetryAt = Date.now() + 15 * 60 * 1000;
                     logError(error, 'Perdana Island could not fetch prayer times');
                 }
-                if (this._activePage === 'settings')
+                if (['settings', 'reminders'].includes(this._activePage))
                     this._renderPanel();
             }
         );
