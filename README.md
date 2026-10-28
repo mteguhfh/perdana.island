@@ -106,8 +106,13 @@ plasma-widget/             KDE Plasma 6 widget source and package metadata
 assets/screenshots/        Feature preview images
 docs/                      Product requirements, usage, and installation guides
 README-KDE.md              KDE Plasma 6 widget guide
-.github/workflows/         Release workflow that publishes both platform archives
-scripts/                   Local release packaging script
+CONTRIBUTING.md            Development setup, tests, and contribution rules
+.github/workflows/         Validation and release workflows
+scripts/                   Local validation and release packaging scripts
 ```
 
 The GNOME extension is distributed under [GPL-3.0-or-later](LICENSE), a license compatible with GNOME Shell's GPL-2.0-or-later terms. For the EGO package and submission checklist, see [GNOME Extensions submission](docs/GNOME-EXTENSIONS-SUBMISSION.md).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, tests, packaging, and version rules. Use the issue templates for bug reports and feature requests.
