@@ -54,6 +54,12 @@ const PRAYER_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
 const PRAYER_METHODS = [[20, 'Kemenag'], [3, 'MWL'], [2, 'ISNA'], [4, 'Umm al-Qura']];
 const DEFAULT_THEME = 'midnight';
 const MAX_SHELF_ITEMS = 10;
+const MAX_NOTES = 60;
+const NOTE_MAX_CHARS = 12000;
+const NOTE_AUTOSAVE_MS = 600;
+const NOTE_UNDO_MS = 7000;
+// Idle (8) and suspend (4) inhibitors from org.gnome.SessionManager.
+const KEEP_AWAKE_FLAGS = 12;
 const MICROSECONDS_PER_SECOND = 1_000_000;
 const LEGACY_DATA_DIRECTORY = 'pulo-island';
 const COLLAPSED_WIDTH = 150;
@@ -69,6 +75,7 @@ const PAGE_WIDTHS = {
     focus: 680,
     shelf: 640,
     tasks: 600,
+    notes: 720,
     clipboard: 600,
     today: 900,
     reminders: 600,
@@ -88,6 +95,7 @@ const PAGES = [
     {key: 'focus', label: 'Focus', icon: 'alarm-symbolic'},
     {key: 'shelf', label: 'Shelf', icon: 'folder-symbolic'},
     {key: 'tasks', label: 'To-do', icon: 'view-list-symbolic'},
+    {key: 'notes', label: 'Notes', icon: 'accessories-text-editor-symbolic'},
     {key: 'clipboard', label: 'Clipboard', icon: 'edit-copy-symbolic'},
     {key: 'today', label: 'Today', icon: 'x-office-calendar-symbolic'},
     {key: 'reminders', label: 'Reminders', icon: 'appointment-soon-symbolic'},
@@ -462,6 +470,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._preferencesFile = GLib.build_filenamev([this._taskDirectory, 'preferences.json']);
         this._focusLogFile = GLib.build_filenamev([this._taskDirectory, 'focus-log.json']);
         this._prayerCacheFile = GLib.build_filenamev([this._taskDirectory, 'prayer-cache.json']);
+        this._notesFile = GLib.build_filenamev([this._taskDirectory, 'notes.json']);
         this._legacyTaskFile = GLib.build_filenamev([
             GLib.get_user_data_dir(),
             LEGACY_DATA_DIRECTORY,
@@ -478,6 +487,14 @@ export default class PerdanaIslandExtension extends Extension {
         this._prayerCancellable = new Gio.Cancellable();
         this._clipboardItems = this._loadClipboardItems();
         this._shelfItems = this._loadShelfItems();
+        this._notes = this._loadNotes();
+        this._notesSelectedId = this._notes[0]?.id || null;
+        this._notesStatusValue = '';
+        this._notesSaveSource = 0;
+        this._notesUndoSource = 0;
+        this._notesFocusSource = 0;
+        this._notesUndo = null;
+        this._keepAwakeCookie = 0;
         this._shelfMonitorSignal = 0;
         this._shelfMonitor = this._monitorShelfDirectory();
         this._shelfRefreshSource = 0;
@@ -496,6 +513,7 @@ export default class PerdanaIslandExtension extends Extension {
         );
         this._applyTheme();
         this._applyGlassPreference();
+        this._applyKeepAwake();
         this._monitorSignal = Main.layoutManager.connect('monitors-changed', () => {
             if (this._expanded)
                 this._root.set_size(this._expandedWidth(), this._expandedHeight());
@@ -563,6 +581,7 @@ export default class PerdanaIslandExtension extends Extension {
             lastAgendaBriefing: '',
             lastAgendaRecap: '',
             focusGuard: true,
+            keepAwake: false,
             waterReminder: false,
             prayerReminder: false,
             prayerCity: 'Jakarta, Indonesia',
@@ -605,6 +624,7 @@ export default class PerdanaIslandExtension extends Extension {
             defaults.lastAgendaRecap = typeof stored.lastAgendaRecap === 'string'
                 ? stored.lastAgendaRecap : '';
             defaults.focusGuard = stored.focusGuard !== false;
+            defaults.keepAwake = stored.keepAwake === true;
             defaults.waterReminder = stored.waterReminder === true;
             defaults.prayerReminder = stored.prayerReminder === true;
             defaults.prayerCity = typeof stored.prayerCity === 'string' && stored.prayerCity.trim()
@@ -679,6 +699,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._applyTheme();
             this._applyAccentStyles();
         }
+        if (key === 'keepAwake')
+            this._applyKeepAwake();
         if (key === 'accentColor') {
             this._focusRing?.queue_repaint();
             this._applyAccentStyles();
@@ -977,6 +999,14 @@ export default class PerdanaIslandExtension extends Extension {
     disable() {
         this._enabled = false;
         this._uiActorsAlive = false;
+        this._dropEmptyNotes();
+        this._flushNotesSave();
+        this._clearTimeout('_notesSaveSource');
+        this._clearTimeout('_notesUndoSource');
+        this._clearTimeout('_notesFocusSource');
+        this._clearTimeout('_notesResizeSource');
+        this._notesUndo = null;
+        this._releaseKeepAwake();
         Main.wm.removeKeybinding('toggle-island-visibility');
         this._keybindingSettings = null;
         if (this._stageSignal) {
@@ -1812,6 +1842,8 @@ export default class PerdanaIslandExtension extends Extension {
             return;
         }
 
+        if (!expanded && this._activePage === 'notes')
+            this._leaveNotes();
         this._expanded = expanded;
         this._closing = !expanded;
         if (expanded) {
@@ -1964,6 +1996,8 @@ export default class PerdanaIslandExtension extends Extension {
             return;
         if (this._activePage === key)
             return;
+        if (this._activePage === 'notes')
+            this._leaveNotes();
         const pages = this._visiblePages();
         const previousIndex = pages.findIndex(page => page.key === this._activePage);
         const nextIndex = pages.findIndex(page => page.key === key);
@@ -2127,20 +2161,30 @@ export default class PerdanaIslandExtension extends Extension {
         if (!this._pageButtons)
             return;
         const pages = this._visiblePages();
-        const inactiveWidth = 34;
         const buttonHeight = 30;
         const inset = 8;
-        const gap = 4;
-        const widths = pages.map(page => {
-            const entry = this._pageButtons.get(page.key);
-            if (page.key !== this._activePage || !entry)
-                return inactiveWidth;
-            const naturalWidth = entry.label.get_preferred_width(-1)[1];
-            const labelWidth = Math.ceil(Math.max(naturalWidth, page.label.length * 7));
-            return labelWidth + 18 + 6 + inset * 2;
-        });
+        const available = Math.max(0, width - 8);
+        const activePage = pages.find(page => page.key === this._activePage);
+        const activeEntry = this._pageButtons.get(this._activePage);
+        let activeWidth = 34;
+        if (activePage && activeEntry) {
+            const naturalWidth = activeEntry.label.get_preferred_width(-1)[1];
+            const labelWidth = Math.ceil(Math.max(naturalWidth, activePage.label.length * 7));
+            activeWidth = Math.min(labelWidth + 18 + 6 + inset * 2, Math.max(34, available));
+        }
+        // Eleven pages no longer fit the narrowest island, so inactive buttons
+        // and gaps tighten before the selected label can clip.
+        const slots = Math.max(1, pages.length - 1);
+        let gap = 4;
+        let inactiveWidth = 34;
+        if (activeWidth + inactiveWidth * slots + gap * slots > available) {
+            gap = 3;
+            inactiveWidth = Math.max(22,
+                Math.floor((available - activeWidth - gap * slots) / slots));
+        }
+        const widths = pages.map(page => page.key === this._activePage ? activeWidth : inactiveWidth);
         const totalWidth = widths.reduce((total, item) => total + item, 0) + gap * (pages.length - 1);
-        let x = Math.round((width - totalWidth) / 2);
+        let x = Math.max(0, Math.round((width - totalWidth) / 2));
         for (const page of PAGES) {
             const entry = this._pageButtons.get(page.key);
             if (!entry)
@@ -2218,6 +2262,13 @@ export default class PerdanaIslandExtension extends Extension {
         this._lyricsRestingToggle = null;
         this._lyricsDisplayedIndex = -1;
         this._lyricsDisplayGap = false;
+        this._notesEditorEntry = null;
+        this._notesEditorScroll = null;
+        this._notesEditorBox = null;
+        this._notesEditorWidth = 0;
+        this._notesSaveLabel = null;
+        this._notesUndoBanner = null;
+        this._notesRowLabels = null;
         const previous = this._pageBody;
         const body = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
@@ -2233,6 +2284,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._renderFocusPage(body);
         else if (this._activePage === 'tasks')
             this._renderTasksPage(body);
+        else if (this._activePage === 'notes')
+            this._renderNotesPage(body);
         else if (this._activePage === 'shelf')
             this._renderShelfPage(body);
         else if (this._activePage === 'clipboard')
@@ -3483,6 +3536,156 @@ export default class PerdanaIslandExtension extends Extension {
         place(body, scroll, rightX, 4, rightWidth, this._bodyHeight() - 8);
     }
 
+    _renderNotesPage(body) {
+        const pageWidth = this._pageWidth();
+        const height = this._bodyHeight();
+        const listWidth = Math.min(250, Math.max(196, Math.round(pageWidth * 0.36)));
+        const columnGap = 18;
+        const editorX = listWidth + columnGap;
+        const editorWidth = Math.max(1, pageWidth - editorX);
+        const notes = [...this._notes].sort((first, second) => second.updatedAt - first.updatedAt);
+        const listContentWidth = Math.max(1, listWidth - 14);
+        const undoVisible = Boolean(this._notesUndo);
+        const listTop = 28;
+        const listHeight = Math.max(1, height - listTop - (undoVisible ? 32 : 0));
+        const statusState = this._notesSaveSource ? 'Saving…' : 'Saved locally';
+        this._notesStatusValue = statusState;
+        this._notesRowLabels = new Map();
+
+        place(body, makeLabel(notes.length ? `Notes · ${notes.length}` : 'Notes',
+            'perdana-island__notes-heading'), 0, 2, listWidth - 32, 22);
+        place(body, makeIconButton('list-add-symbolic', 'New note', () => this._addNote(),
+            'perdana-island__notes-add'), listWidth - 28, 0, 28, 24);
+
+        if (!this._notes.some(note => note.id === this._notesSelectedId))
+            this._notesSelectedId = notes[0]?.id || null;
+
+        if (!notes.length) {
+            place(body, makeLabel('No notes yet · tap + to start', 'perdana-island__notes-empty'),
+                0, listTop + 12, listWidth, 22);
+        } else {
+            const rowHeight = 44;
+            const rowGap = 6;
+            const listHeightContent = notes.length * (rowHeight + rowGap) - rowGap;
+            const scroll = new St.ScrollView({
+                overlay_scrollbars: false,
+                style_class: 'perdana-island__notes-scroll',
+            });
+            scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+            const list = new St.BoxLayout({
+                orientation: Clutter.Orientation.VERTICAL,
+                style_class: 'perdana-island__note-list',
+            });
+            list.set_size(listContentWidth, listHeightContent);
+            notes.forEach(note => {
+                const selected = note.id === this._notesSelectedId;
+                const rowBox = new St.BoxLayout({
+                    orientation: Clutter.Orientation.VERTICAL,
+                    style_class: 'perdana-island__note-row-content',
+                });
+                rowBox.set_size(listContentWidth - 18, 32);
+                const topRow = new St.BoxLayout({style_class: 'perdana-island__note-row-top'});
+                topRow.set_size(listContentWidth - 18, 16);
+                const title = makeLabel(this._noteTitle(note), 'perdana-island__note-title');
+                title.x_expand = true;
+                title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                const date = makeLabel(this._noteDateText(note.updatedAt),
+                    'perdana-island__note-date');
+                date.x_align = Clutter.ActorAlign.END;
+                topRow.add_child(title);
+                topRow.add_child(date);
+                const preview = makeLabel(this._notePreview(note), 'perdana-island__note-preview');
+                preview.x_expand = true;
+                preview.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                preview.set_size(listContentWidth - 18, 14);
+                rowBox.add_child(topRow);
+                rowBox.add_child(preview);
+                const button = new St.Button({
+                    child: rowBox,
+                    can_focus: true,
+                    reactive: true,
+                    track_hover: true,
+                    style_class: selected
+                        ? 'perdana-button perdana-island__note-row perdana-island__note-row--active'
+                        : 'perdana-button perdana-island__note-row',
+                    accessible_name: `Note: ${this._noteTitle(note)}`,
+                });
+                button.connect('clicked', () => this._selectNote(note.id));
+                button.set_size(listContentWidth, rowHeight);
+                this._notesRowLabels.set(note.id, {title, preview, date});
+                list.add_child(button);
+            });
+            scroll.add_child(list);
+            place(body, scroll, 0, listTop, listWidth, listHeight);
+        }
+
+        if (undoVisible) {
+            const banner = new St.BoxLayout({style_class: 'perdana-island__notes-undo'});
+            const text = makeLabel('Note deleted', 'perdana-island__notes-undo-label');
+            text.x_expand = true;
+            banner.add_child(text);
+            banner.add_child(makeTextButton('Undo', 'Restore the deleted note',
+                () => this._undoNoteDelete(), 'perdana-island__notes-undo-button'));
+            place(body, banner, 0, height - 28, listWidth, 24);
+            this._notesUndoBanner = banner;
+        }
+
+        const note = this._notes.find(item => item.id === this._notesSelectedId);
+        if (!note) {
+            place(body, makeLabel('Select a note, or create a new one', 'perdana-island__notes-empty'),
+                editorX, 66, editorWidth, 24);
+            this._notesSaveLabel = place(body, makeLabel('', 'perdana-island__note-status'),
+                editorX, height - 16, editorWidth, 14);
+            return;
+        }
+
+        place(body, makeLabel(`Updated ${this._noteDateText(note.updatedAt)}`,
+            'perdana-island__note-meta'), editorX, 2, Math.max(1, editorWidth - 32), 18);
+        place(body, makeIconButton('user-trash-symbolic', 'Delete note',
+            () => this._deleteNote(note.id), 'perdana-button--note-delete'),
+            editorX + editorWidth - 26, 0, 26, 22);
+
+        const scroll = new St.ScrollView({
+            overlay_scrollbars: true,
+            style_class: 'perdana-island__notes-scroll',
+        });
+        scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        const editorBox = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            style_class: 'perdana-island__notes-editor-box',
+        });
+        const entry = new St.Entry({
+            hint_text: 'Write a note',
+            text: note.text,
+            can_focus: true,
+            style_class: 'perdana-island__notes-editor',
+            accessible_name: 'Note text',
+        });
+        entry.clutter_text.set_single_line_mode(false);
+        entry.clutter_text.set_line_wrap(true);
+        entry.clutter_text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
+        entry.clutter_text.connect('text-changed', () => this._onNoteTextChanged(entry, note.id));
+        entry.clutter_text.connect('key-press-event', (_actor, event) => {
+            if (event.get_key_symbol() !== Clutter.KEY_Escape)
+                return Clutter.EVENT_PROPAGATE;
+            this._flushNotesSave();
+            global.stage.set_key_focus(null);
+            return Clutter.EVENT_STOP;
+        });
+        editorBox.add_child(entry);
+        scroll.add_child(editorBox);
+        place(body, scroll, editorX, 26, editorWidth, Math.max(1, height - 44));
+        this._notesEditorScroll = scroll;
+        this._notesEditorBox = editorBox;
+        this._notesEditorEntry = entry;
+        this._notesEditorWidth = editorWidth;
+        this._resizeNotesEditor();
+        this._scheduleNotesResize();
+        this._notesSaveLabel = place(body,
+            makeLabel(this._notesStatusLine(statusState), 'perdana-island__note-status'),
+            editorX, height - 16, editorWidth, 14);
+    }
+
     _renderRemindersPage(body) {
         this._ensurePrayerTimes();
         const now = new Date();
@@ -4104,7 +4307,7 @@ export default class PerdanaIslandExtension extends Extension {
             place(body, button, 0, 31 + index * 32, navWidth, 27);
         });
 
-        const contentHeights = {island: 310, greeting: 402, reminders: 310, tabs: 158};
+        const contentHeights = {island: 372, greeting: 402, reminders: 310, tabs: 158};
         const contentHeight = contentHeights[this._settingsSection];
         const scroll = new St.ScrollView({
             overlay_scrollbars: false,
@@ -4270,6 +4473,14 @@ export default class PerdanaIslandExtension extends Extension {
             place(content, colorEntry, 0, 271, 132, 32);
             place(content, makeTextButton('Apply', 'Apply accent color', applyColor,
                 'perdana-island__color-apply'), 142, 271, 82, 32);
+
+            heading('Session', 310);
+            settingButton(this._preferences.keepAwake ? 'Keep awake on' : 'Keep awake off',
+                this._preferences.keepAwake === true, 0, 332, halfWidth,
+                () => this._setPreference('keepAwake', this._preferences.keepAwake !== true),
+                'preferences-desktop-screensaver-symbolic');
+            place(content, makeLabel(this._keepAwakeStatusText(), 'perdana-island__settings-hint'),
+                halfWidth + columnGap, 337, halfWidth, 30);
         } else if (this._settingsSection === 'greeting') {
             heading('Session greeting', 0);
             settingButton(this._preferences.greetingEnabled ? 'Greeting on' : 'Greeting off',
@@ -6935,6 +7146,336 @@ export default class PerdanaIslandExtension extends Extension {
     _saveTasks() {
         this._writeTasksToFile(this._taskFile, this._tasks);
         this._writeTasksToFile(this._legacyTaskFile, this._tasks);
+    }
+
+    _loadNotes() {
+        try {
+            const parsed = JSON.parse(this._readText(this._notesFile) || '[]');
+            if (!Array.isArray(parsed))
+                return [];
+            return parsed
+                .filter(note => note && typeof note.id === 'string' && typeof note.text === 'string')
+                .map(note => ({
+                    id: note.id,
+                    text: note.text.slice(0, NOTE_MAX_CHARS),
+                    updatedAt: Number.isFinite(note.updatedAt) ? note.updatedAt : Date.now(),
+                }))
+                .sort((first, second) => second.updatedAt - first.updatedAt)
+                .slice(0, MAX_NOTES);
+        } catch (_error) {
+            return [];
+        }
+    }
+
+    _saveNotes() {
+        try {
+            GLib.mkdir_with_parents(this._taskDirectory, 0o755);
+            GLib.file_set_contents(this._notesFile, JSON.stringify(this._notes, null, 2));
+        } catch (error) {
+            logError(error, 'Perdana Island could not save the notes');
+        }
+    }
+
+    _noteTitle(note) {
+        const line = note.text.split('\n').map(item => item.trim()).find(item => item.length);
+        if (!line)
+            return 'Empty note';
+        return line.length > 64 ? `${line.slice(0, 63)}…` : line;
+    }
+
+    _notePreview(note) {
+        const lines = note.text.split('\n').map(item => item.trim()).filter(item => item.length);
+        if (!lines.length)
+            return 'No text yet';
+        const rest = lines.slice(1).join(' ');
+        if (!rest)
+            return 'Single line';
+        return rest.length > 80 ? `${rest.slice(0, 79)}…` : rest;
+    }
+
+    _noteDateText(updatedAt) {
+        const date = new Date(Number(updatedAt) || Date.now());
+        if (dateKey(date) === dateKey())
+            return new Intl.DateTimeFormat('en-GB', {hour: '2-digit', minute: '2-digit'}).format(date);
+        return new Intl.DateTimeFormat('en-GB', {day: '2-digit', month: 'short'}).format(date);
+    }
+
+    _noteWordCount(text) {
+        const trimmed = String(text || '').trim();
+        return trimmed ? trimmed.split(/\s+/).length : 0;
+    }
+
+    _notesStatusLine(state) {
+        const note = this._notes.find(item => item.id === this._notesSelectedId);
+        if (!note)
+            return state;
+        const words = this._noteWordCount(note.text);
+        return `${state} · ${words} ${words === 1 ? 'word' : 'words'}`;
+    }
+
+    _setNotesStatus(state) {
+        this._notesStatusValue = state;
+        this._notesSaveLabel?.set_text(this._notesStatusLine(state));
+    }
+
+    _onNoteTextChanged(entry, id) {
+        const note = this._notes.find(item => item.id === id);
+        if (!note)
+            return;
+        const text = entry.get_text().slice(0, NOTE_MAX_CHARS);
+        if (text === note.text)
+            return;
+        note.text = text;
+        note.updatedAt = Date.now();
+        const labels = this._notesRowLabels?.get(id);
+        if (labels) {
+            labels.title.set_text(this._noteTitle(note));
+            labels.preview.set_text(this._notePreview(note));
+            labels.date.set_text(this._noteDateText(note.updatedAt));
+        }
+        this._setNotesStatus('Saving…');
+        this._clearTimeout('_notesSaveSource');
+        this._notesSaveSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, NOTE_AUTOSAVE_MS, () => {
+            this._notesSaveSource = 0;
+            this._flushNotesSave();
+            return GLib.SOURCE_REMOVE;
+        });
+        this._resizeNotesEditor();
+        this._scheduleNotesResize();
+        this._keepNotesCursorVisible();
+    }
+
+    _resizeNotesEditor() {
+        const entry = this._notesEditorEntry;
+        const box = this._notesEditorBox;
+        if (!entry || !box)
+            return;
+        const width = Math.max(1, Math.round(this._notesEditorWidth || box.width || 0));
+        // The entry reports a fixed preferred height once one is set, so drop
+        // the explicit height before measuring the wrapped text again.
+        entry.set_height(-1);
+        const [, naturalHeight] = entry.get_preferred_height(width);
+        const height = Math.max(124, Math.round(naturalHeight));
+        entry.set_size(width, height);
+        box.set_size(width, height);
+    }
+
+    _scheduleNotesResize() {
+        this._clearTimeout('_notesResizeSource');
+        this._notesResizeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
+            this._notesResizeSource = 0;
+            this._resizeNotesEditor();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _flushNotesSave() {
+        this._clearTimeout('_notesSaveSource');
+        if (!this._notes || !this._notesFile)
+            return;
+        this._saveNotes();
+        this._setNotesStatus('Saved locally');
+    }
+
+    _dropEmptyNotes() {
+        if (!this._notes)
+            return;
+        const notes = this._notes.filter(note => note.text.trim() !== '');
+        if (notes.length === this._notes.length)
+            return;
+        this._notes = notes;
+        if (!this._notes.some(note => note.id === this._notesSelectedId))
+            this._notesSelectedId = [...this._notes]
+                .sort((first, second) => second.updatedAt - first.updatedAt)[0]?.id || null;
+    }
+
+    _leaveNotes() {
+        this._dropEmptyNotes();
+        this._flushNotesSave();
+    }
+
+    _selectNote(id) {
+        if (id === this._notesSelectedId)
+            return;
+        this._flushNotesSave();
+        this._dropEmptyNotes();
+        if (!this._notes.some(note => note.id === id))
+            return;
+        this._notesSelectedId = id;
+        this._renderPanel();
+        this._focusNotesEditor();
+    }
+
+    _addNote() {
+        this._flushNotesSave();
+        this._dropEmptyNotes();
+        const note = {
+            id: `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+            text: '',
+            updatedAt: Date.now(),
+        };
+        this._notes.push(note);
+        this._notesSelectedId = note.id;
+        this._renderPanel();
+        this._focusNotesEditor();
+    }
+
+    _deleteNote(id) {
+        this._flushNotesSave();
+        const index = this._notes.findIndex(note => note.id === id);
+        if (index < 0)
+            return;
+        const ordered = [...this._notes].sort((first, second) => second.updatedAt - first.updatedAt);
+        const position = ordered.findIndex(note => note.id === id);
+        const [note] = this._notes.splice(index, 1);
+        const next = ordered[position + 1] || ordered[position - 1] || null;
+        this._notesSelectedId = next && next.id !== id ? next.id : null;
+        this._notesUndo = {note, index};
+        this._saveNotes();
+        this._startNotesUndoTimer();
+        this._renderPanel();
+    }
+
+    _startNotesUndoTimer() {
+        this._clearTimeout('_notesUndoSource');
+        this._notesUndoSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, NOTE_UNDO_MS, () => {
+            this._notesUndoSource = 0;
+            this._notesUndo = null;
+            this._notesUndoBanner?.hide();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _undoNoteDelete() {
+        if (!this._notesUndo)
+            return;
+        this._clearTimeout('_notesUndoSource');
+        this._notesUndoSource = 0;
+        const {note, index} = this._notesUndo;
+        this._notesUndo = null;
+        this._notes.splice(Math.min(index, this._notes.length), 0, note);
+        this._notesSelectedId = note.id;
+        this._saveNotes();
+        this._renderPanel();
+        this._focusNotesEditor();
+    }
+
+    _focusNotesEditor() {
+        this._clearTimeout('_notesFocusSource');
+        this._notesFocusSource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._notesFocusSource = 0;
+            if (this._notesEditorEntry?.get_stage())
+                this._notesEditorEntry.grab_key_focus();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _keepNotesCursorVisible() {
+        const scroll = this._notesEditorScroll;
+        const entry = this._notesEditorEntry;
+        if (!scroll || !entry || !entry.clutter_text?.has_key_focus?.())
+            return;
+        const adjustment = scroll.get_vadjustment?.();
+        if (!adjustment || adjustment.page_size <= 0)
+            return;
+        try {
+            const position = entry.clutter_text.get_cursor_position();
+            const [_x, y, _line, lineHeight] = entry.clutter_text.position_to_coords(position);
+            const top = adjustment.value;
+            const bottom = top + adjustment.page_size;
+            if (y + lineHeight > bottom)
+                adjustment.value = Math.min(adjustment.upper - adjustment.page_size,
+                    y + lineHeight - adjustment.page_size + 8);
+            else if (y < top)
+                adjustment.value = Math.max(0, y - 8);
+        } catch (_error) {
+            // Cursor coordinates are only needed when the text outgrows the box.
+        }
+    }
+
+    _applyKeepAwake() {
+        this._releaseKeepAwake();
+        if (this._preferences?.keepAwake !== true)
+            return;
+        try {
+            Gio.DBus.session.call(
+                'org.gnome.SessionManager',
+                '/org/gnome/SessionManager',
+                'org.gnome.SessionManager',
+                'Inhibit',
+                new GLib.Variant('(susu)', [
+                    'perdana.island',
+                    0,
+                    'Perdana Island keeps the screen awake',
+                    KEEP_AWAKE_FLAGS,
+                ]),
+                new GLib.VariantType('(u)'),
+                Gio.DBusCallFlags.NONE,
+                -1,
+                null,
+                (connection, result) => this._onKeepAwakeInhibited(connection, result)
+            );
+        } catch (error) {
+            logError(error, 'Perdana Island could not keep the screen awake');
+        }
+        this._refreshKeepAwakeStatus();
+    }
+
+    _onKeepAwakeInhibited(connection, result) {
+        let cookie = 0;
+        try {
+            [cookie] = connection.call_finish(result).deep_unpack();
+        } catch (error) {
+            logError(error, 'Perdana Island could not keep the screen awake');
+        }
+        if (!this._enabled || this._preferences?.keepAwake !== true) {
+            if (cookie)
+                this._uninhibitSession(cookie);
+            this._refreshKeepAwakeStatus();
+            return;
+        }
+        this._keepAwakeCookie = cookie || 0;
+        this._refreshKeepAwakeStatus();
+    }
+
+    _releaseKeepAwake() {
+        const cookie = this._keepAwakeCookie;
+        this._keepAwakeCookie = 0;
+        if (cookie)
+            this._uninhibitSession(cookie);
+    }
+
+    _uninhibitSession(cookie) {
+        try {
+            Gio.DBus.session.call(
+                'org.gnome.SessionManager',
+                '/org/gnome/SessionManager',
+                'org.gnome.SessionManager',
+                'Uninhibit',
+                new GLib.Variant('(u)', [cookie]),
+                null,
+                Gio.DBusCallFlags.NONE,
+                -1,
+                null,
+                null
+            );
+        } catch (error) {
+            logError(error, 'Perdana Island could not release the sleep inhibitor');
+        }
+    }
+
+    _keepAwakeStatusText() {
+        if (this._preferences?.keepAwake !== true)
+            return 'The screen can sleep normally';
+        if (this._keepAwakeCookie)
+            return 'Idle and suspend are blocked until turned off';
+        return 'Waiting for the session manager';
+    }
+
+    _refreshKeepAwakeStatus() {
+        if (this._activePage === 'settings' && this._settingsSection === 'island'
+            && this._pageViewport)
+            this._renderPanel();
     }
 
     _loadPrayerCache() {
