@@ -21,11 +21,17 @@ These images show representative UI states with sample media, files, notificatio
 | Feature | Preview |
 | --- | --- |
 | Resting island | ![Resting island with pointer eyes](assets/screenshots/resting.png) |
+| Resting lyrics | ![Optional synced lyric in the compact resting island](assets/screenshots/resting-lyrics.png) |
 | Music controls | ![Music page with cover art, playback controls, and track progress](assets/screenshots/music.png) |
+| Lyrics | ![Lyrics page with track details, transport controls, and the active synced line](assets/screenshots/lyrics.png) |
 | Focus timer | ![Focus page with presets and custom timer controls](assets/screenshots/focus.png) |
-| Shelf | ![Shelf page with files and Add files control](assets/screenshots/shelf.png) |
+| Shelf grid | ![Shelf Grid view with file thumbnails](assets/screenshots/shelf.png) |
+| Shelf list | ![Shelf List view with filenames](assets/screenshots/shelf-list.png) |
 | To-do | ![To-do page with task completion and editing controls](assets/screenshots/todo.png) |
-| Today | ![Today page with processor, memory, disk, and battery indicators](assets/screenshots/today.png) |
+| Clipboard | ![Clipboard history with masked email and link previews](assets/screenshots/clipboard.png) |
+| Today | ![Today calendar with processor, memory, disk, and battery indicators](assets/screenshots/today.png) |
+| Notifications | ![Recent notifications with Clear all and app activation controls](assets/screenshots/notifications.png) |
+| Settings | ![Settings for resting style, glass, notices, accent color, and visible tabs](assets/screenshots/settings.png) |
 | Charging notice | ![Charging notice with battery level](assets/screenshots/notice-charging.png) |
 | Charger disconnected | ![Charger disconnected notice](assets/screenshots/notice-disconnected.png) |
 | Volume notice | ![Output volume notice](assets/screenshots/notice-volume.png) |
