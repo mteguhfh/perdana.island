@@ -31,6 +31,18 @@ const MPRIS_PLAYER_IFACE = 'org.mpris.MediaPlayer2.Player';
 const DEFAULT_FOCUS_SECONDS = 25 * 60;
 const DEFAULT_BREAK_SECONDS = 5 * 60;
 const DEFAULT_ACCENT_COLOR = '#5577B8';
+const FOCUS_DISTRACTIONS = [
+    ['youtube', 'YouTube'],
+    ['netflix', 'Netflix'],
+    ['twitch', 'Twitch'],
+    ['tiktok', 'TikTok'],
+    ['instagram', 'Instagram'],
+    ['facebook', 'Facebook'],
+    ['reddit', 'Reddit'],
+    ['x.com', 'X'],
+    ['twitter', 'X'],
+];
+const FOCUS_GUARD_SECONDS = 5 * 60;
 const MAX_SHELF_ITEMS = 10;
 const MICROSECONDS_PER_SECOND = 1_000_000;
 const LEGACY_DATA_DIRECTORY = 'pulo-island';
@@ -70,6 +82,22 @@ const PAGES = [
     {key: 'notifications', label: 'Notifications', icon: 'preferences-system-notifications-symbolic'},
     {key: 'settings', label: 'Settings', icon: 'preferences-system-symbolic'},
 ];
+
+function distractionLabel(identity) {
+    const text = String(identity || '').toLowerCase();
+    if (!text)
+        return null;
+    for (const [needle, label] of FOCUS_DISTRACTIONS) {
+        if (needle.includes('.')) {
+            const pattern = new RegExp(`(^|[^a-z0-9])${needle.replace(/\./g, '\\.')}($|[^a-z0-9])`);
+            if (pattern.test(text))
+                return label;
+        } else if (text.includes(needle)) {
+            return label;
+        }
+    }
+    return null;
+}
 
 function unpack(value) {
     return value instanceof GLib.Variant ? value.deep_unpack() : value;
@@ -258,6 +286,9 @@ export default class PerdanaIslandExtension extends Extension {
         this._shelfItems = [];
         this._shelfNotice = null;
         this._shelfNoticeSource = 0;
+        this._screenshotRequest = false;
+        this._screenshotSubscription = 0;
+        this._screenshotTimeout = 0;
         this._previousPageIndex = 0;
         this._focusRemaining = DEFAULT_FOCUS_SECONDS;
         this._focusDuration = DEFAULT_FOCUS_SECONDS;
@@ -271,6 +302,9 @@ export default class PerdanaIslandExtension extends Extension {
         this._focusDeadline = 0;
         this._focusSource = 0;
         this._focusNoticeSource = 0;
+        this._focusGuardSeconds = 0;
+        this._focusGuardNotified = false;
+        this._focusGuardTick = 0;
         this._focusCustomEntry = null;
         this._focusCustomUnitButton = null;
         this._focusCustomUnitLabel = null;
@@ -390,6 +424,7 @@ export default class PerdanaIslandExtension extends Extension {
             restingStyle: 'hover-clock',
             showRestingLyrics: false,
             systemNotices: true,
+            focusGuard: true,
             shelfView: 'grid',
             visiblePages,
         };
@@ -409,6 +444,7 @@ export default class PerdanaIslandExtension extends Extension {
                 : 'hover-clock';
             defaults.showRestingLyrics = stored.showRestingLyrics === true;
             defaults.systemNotices = stored.systemNotices !== false;
+            defaults.focusGuard = stored.focusGuard !== false;
             defaults.shelfView = ['grid', 'list'].includes(stored.shelfView)
                 ? stored.shelfView
                 : 'grid';
@@ -687,6 +723,15 @@ export default class PerdanaIslandExtension extends Extension {
         this._shelfRefreshSource = 0;
         this._shelfNoticeSource && GLib.source_remove(this._shelfNoticeSource);
         this._shelfNoticeSource = 0;
+        if (this._screenshotTimeout) {
+            GLib.source_remove(this._screenshotTimeout);
+            this._screenshotTimeout = 0;
+        }
+        if (this._screenshotSubscription) {
+            Gio.DBus.session.signal_unsubscribe(this._screenshotSubscription);
+            this._screenshotSubscription = 0;
+        }
+        this._screenshotRequest = false;
         this._taskFocusSource && GLib.source_remove(this._taskFocusSource);
         this._taskFocusSource = 0;
         this._disconnectNotifications();
@@ -3047,10 +3092,13 @@ export default class PerdanaIslandExtension extends Extension {
         );
         const addWidth = compactControls ? 72 : 86;
         const folderWidth = 30;
+        const captureWidth = 30;
         const viewWidth = compactControls ? 84 : 140;
         const buttonGap = 6;
         const addX = cardWidth - 10 - addWidth;
-        const folderX = addX - buttonGap - folderWidth;
+        const folderX = compactControls
+            ? addX - buttonGap - folderWidth
+            : addX - buttonGap - captureWidth - buttonGap - folderWidth;
         const viewX = folderX - buttonGap - viewWidth;
         const titleWidth = Math.max(0, Math.min(130, viewX - 18));
         place(card, shelfTitle, 12, 12, titleWidth, 22);
@@ -3088,6 +3136,16 @@ export default class PerdanaIslandExtension extends Extension {
             viewGroup.add_child(button);
         }
         place(card, viewGroup, viewX, 8, viewWidth, 30);
+
+        if (!compactControls) {
+            const captureButton = makeIconButton(
+                'camera-photo-symbolic',
+                'Save a screenshot to Shelf',
+                () => this._captureScreenshotToShelf(),
+                'perdana-button--shelf-folder'
+            );
+            place(card, captureButton, addX - buttonGap - captureWidth, 8, captureWidth, 30);
+        }
 
         const folderButton = makeIconButton(
             'folder-open-symbolic',
@@ -3430,12 +3488,12 @@ export default class PerdanaIslandExtension extends Extension {
             orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__settings-scroll-content',
         });
-        scrollContent.set_size(settingsWidth, 360);
+        scrollContent.set_size(settingsWidth, 410);
         const content = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
             style_class: 'perdana-island__settings-content',
         });
-        content.set_size(settingsWidth, 360);
+        content.set_size(settingsWidth, 410);
         scrollContent.add_child(content);
         scroll.set_child(scrollContent);
         place(body, scroll, 0, 0, this._pageWidth(), this._bodyHeight());
@@ -3550,6 +3608,14 @@ export default class PerdanaIslandExtension extends Extension {
                 column * (itemWidth + gap), 265 + row * 34, itemWidth, () =>
                     this._setPageVisible(page.key, this._preferences.visiblePages[page.key] === false), page.icon);
         });
+
+        heading('Focus guard', 343);
+        settingButton(this._preferences.focusGuard !== false ? 'Guard on' : 'Guard off',
+            this._preferences.focusGuard !== false, 0, 365, halfWidth,
+            () => this._setPreference('focusGuard', this._preferences.focusGuard === false),
+            'dialog-warning-symbolic');
+        place(content, makeLabel('Warns after 5 min on a distraction', 'perdana-island__settings-hint'),
+            halfWidth + columnGap, 371, halfWidth, 18);
     }
 
     _paintFocusRing(area) {
@@ -3590,6 +3656,7 @@ export default class PerdanaIslandExtension extends Extension {
             );
             this._clearTimeout('_focusSource');
             this._focusDeadline = 0;
+            this._resetFocusGuard();
             this._renderPanel();
             this._updateCollapsedLabel();
             return;
@@ -3599,6 +3666,7 @@ export default class PerdanaIslandExtension extends Extension {
             this._focusRemaining = this._focusDuration;
         }
         this._focusWasStarted = true;
+        this._resetFocusGuard();
         this._focusDeadline = GLib.get_monotonic_time() / MICROSECONDS_PER_SECOND + this._focusRemaining;
         this._focusSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
             const remaining = Math.ceil(this._focusDeadline - GLib.get_monotonic_time() / MICROSECONDS_PER_SECOND);
@@ -3610,6 +3678,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._focusRemaining = 0;
                 this._focusDeadline = 0;
                 this._focusSource = 0;
+                this._resetFocusGuard();
                 if (this._activePage === 'focus')
                     this._renderPanel();
                 this._updateCollapsedLabel();
@@ -3618,15 +3687,63 @@ export default class PerdanaIslandExtension extends Extension {
             }
             this._updateFocusPage(remaining);
             this._updateCollapsedLabel();
+            if (remaining % 15 === 0)
+                this._trackFocusDistraction();
             return GLib.SOURCE_CONTINUE;
         });
         this._renderPanel();
         this._updateCollapsedLabel();
     }
 
+    _resetFocusGuard() {
+        this._focusGuardSeconds = 0;
+        this._focusGuardNotified = false;
+        this._focusGuardTick = GLib.get_monotonic_time() / MICROSECONDS_PER_SECOND;
+    }
+
+    _focusDistractionLabel() {
+        try {
+            const window = global.display.get_focus_window();
+            if (!window)
+                return null;
+            return distractionLabel(`${window.get_wm_class?.() || ''} ${window.get_title?.() || ''}`);
+        } catch (_error) {
+            return null;
+        }
+    }
+
+    _trackFocusDistraction() {
+        if (!this._preferences?.focusGuard || !this._focusSource)
+            return;
+        const now = GLib.get_monotonic_time() / MICROSECONDS_PER_SECOND;
+        const last = this._focusGuardTick || now;
+        this._focusGuardTick = now;
+        const delta = Math.max(0, Math.min(30, now - last));
+        const label = this._focusDistractionLabel();
+        if (!label) {
+            this._focusGuardSeconds = Math.max(0, this._focusGuardSeconds - delta);
+            return;
+        }
+        this._focusGuardSeconds += delta;
+        if (this._focusGuardSeconds < FOCUS_GUARD_SECONDS || this._focusGuardNotified)
+            return;
+        const shown = this._showSystemNotice('focus-guard', {
+            title: `5 min on ${label}`,
+            subtitle: 'Focus session is still running',
+        });
+        this._focusGuardNotified = shown;
+    }
+
+    _openPage(key) {
+        this._pinned = true;
+        this._setExpanded(true);
+        this._selectPage(key);
+    }
+
     _setFocusDuration(seconds, mode = null) {
         this._clearTimeout('_focusSource');
         this._focusDeadline = 0;
+        this._resetFocusGuard();
         this._focusDuration = seconds;
         this._focusMode = mode || (seconds === DEFAULT_FOCUS_SECONDS
             ? 'focus'
@@ -5112,6 +5229,122 @@ export default class PerdanaIslandExtension extends Extension {
         }
     }
 
+    _setShelfNotice(text) {
+        this._shelfNotice = text;
+        this._clearTimeout('_shelfNoticeSource');
+        this._shelfNoticeSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            this._shelfNoticeSource = 0;
+            this._shelfNotice = null;
+            if (this._activePage === 'shelf')
+                this._renderPanel();
+            return GLib.SOURCE_REMOVE;
+        });
+        if (this._activePage === 'shelf')
+            this._renderPanel();
+    }
+
+    _captureScreenshotToShelf() {
+        if (this._screenshotRequest)
+            return;
+        this._screenshotRequest = true;
+        const token = `perdana_${Date.now()}`;
+        const sender = Gio.DBus.session.get_unique_name()?.slice(1).replace(/\./g, '_') || '';
+        const requestPath = `/org/freedesktop/portal/desktop/request/${sender}/${token}`;
+        const stamp = GLib.DateTime.new_now_local().format('%Y-%m-%d %H-%M-%S');
+        const destination = GLib.build_filenamev([this._shelfDirectory, `Screenshot ${stamp}.png`]);
+        let done = false;
+
+        const finish = uri => {
+            if (done)
+                return;
+            done = true;
+            if (this._screenshotTimeout) {
+                GLib.source_remove(this._screenshotTimeout);
+                this._screenshotTimeout = 0;
+            }
+            if (this._screenshotSubscription) {
+                Gio.DBus.session.signal_unsubscribe(this._screenshotSubscription);
+                this._screenshotSubscription = 0;
+            }
+            this._screenshotRequest = false;
+            if (!this._enabled)
+                return;
+            if (!uri) {
+                this._setShelfNotice('Screenshot failed');
+                return;
+            }
+            try {
+                GLib.mkdir_with_parents(this._shelfDirectory, 0o755);
+                const source = Gio.File.new_for_uri(uri);
+                const target = Gio.File.new_for_path(destination);
+                try {
+                    source.move(target, Gio.FileCopyFlags.OVERWRITE, null, null);
+                } catch (_moveError) {
+                    // Pictures and the data directory can live on different filesystems.
+                    source.copy(target, Gio.FileCopyFlags.OVERWRITE, null, null);
+                    source.delete(null);
+                }
+                this._shelfItems = this._loadShelfItems();
+                this._setShelfNotice('Screenshot saved');
+            } catch (error) {
+                logError(error, 'Perdana Island could not store the screenshot in the Shelf');
+                this._setShelfNotice('Screenshot failed');
+            }
+        };
+
+        this._screenshotSubscription = Gio.DBus.session.signal_subscribe(
+            'org.freedesktop.portal.Desktop',
+            'org.freedesktop.portal.Request',
+            'Response',
+            requestPath,
+            null,
+            Gio.DBusSignalFlags.NONE,
+            (_connection, _senderName, _objectPath, _interface, _signal, parameters) => {
+                try {
+                    const [code, results] = parameters.deep_unpack();
+                    const uri = results?.uri?.deep_unpack?.() ?? results?.uri ?? null;
+                    finish(code === 0 && uri ? uri : null);
+                } catch (_error) {
+                    finish(null);
+                }
+            }
+        );
+        this._screenshotTimeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 10, () => {
+            this._screenshotTimeout = 0;
+            finish(null);
+            return GLib.SOURCE_REMOVE;
+        });
+
+        try {
+            Gio.DBus.session.call(
+                'org.freedesktop.portal.Desktop',
+                '/org/freedesktop/portal/desktop',
+                'org.freedesktop.portal.Screenshot',
+                'Screenshot',
+                new GLib.Variant('(sa{sv})', ['', {
+                    interactive: new GLib.Variant('b', false),
+                    modal: new GLib.Variant('b', false),
+                    handle_token: new GLib.Variant('s', token),
+                }]),
+                new GLib.VariantType('(o)'),
+                Gio.DBusCallFlags.NONE,
+                -1,
+                null,
+                (connection, result) => {
+                    try {
+                        connection.call_finish(result);
+                    } catch (error) {
+                        logError(error, 'Perdana Island could not request a screenshot');
+                        finish(null);
+                    }
+                }
+            );
+        } catch (error) {
+            logError(error, 'Perdana Island could not request a screenshot');
+            finish(null);
+        }
+    }
+
     _readText(path) {
         try {
             const [success, contents] = GLib.file_get_contents(path);
@@ -5318,14 +5551,16 @@ export default class PerdanaIslandExtension extends Extension {
 
     _showSystemNotice(type, data) {
         if (!this._enabled || !this._root || this._userHidden || this._expanded || !this._preferences.systemNotices)
-            return;
+            return false;
         const sameNotice = this._systemNoticeActive && this._systemNoticeType === type;
         this._clearTimeout('_noticeDismissSource');
         this._systemNoticeActive = true;
         this._systemNoticeType = type;
         this._noticeNotificationItem = type === 'application' ? data : null;
 
-        const duration = type === 'volume' ? 2 : type === 'focus' || type === 'application' ? 4 : 3;
+        const duration = type === 'volume' ? 2
+            : type === 'focus-guard' ? 7
+                : type === 'focus' || type === 'application' ? 4 : 3;
         this._noticeDismissSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, duration, () => {
             this._noticeDismissSource = 0;
             this._dismissSystemNotice(true);
@@ -5334,13 +5569,17 @@ export default class PerdanaIslandExtension extends Extension {
 
         try {
             if (!sameNotice) {
+                const actionable = type === 'application' || type === 'focus-guard';
                 this._noticeBanner?.destroy();
                 this._root.remove_all_transitions();
                 this._root.add_style_class_name('perdana-island--notice');
                 this._content.hide();
                 this._noticeBanner = new St.BoxLayout({
                     style_class: 'perdana-island__notice-banner',
-                    reactive: type === 'application',
+                    reactive: actionable,
+                    can_focus: actionable,
+                    track_hover: actionable,
+                    accessible_name: actionable ? 'Open the matching page' : null,
                 });
                 this._noticeBanner.set_position(0, 0);
                 this._noticeBanner.set_size(394, 76);
@@ -5356,6 +5595,23 @@ export default class PerdanaIslandExtension extends Extension {
                             item.source.open();
                         }
                         this._dismissSystemNotice(true);
+                        return Clutter.EVENT_STOP;
+                    });
+                } else if (type === 'focus-guard') {
+                    const openFocusPage = () => {
+                        this._dismissSystemNotice(true);
+                        this._openPage('focus');
+                    };
+                    this._noticeBanner.connect('button-release-event', () => {
+                        openFocusPage();
+                        return Clutter.EVENT_STOP;
+                    });
+                    this._noticeBanner.connect('key-press-event', (_actor, event) => {
+                        const symbol = event.get_key_symbol();
+                        if (symbol !== Clutter.KEY_Return && symbol !== Clutter.KEY_KP_Enter
+                            && symbol !== Clutter.KEY_space)
+                            return Clutter.EVENT_PROPAGATE;
+                        openFocusPage();
                         return Clutter.EVENT_STOP;
                     });
                 }
@@ -5423,6 +5679,13 @@ export default class PerdanaIslandExtension extends Extension {
                         this._noticeRight.add_child(this._noticeVolumeTrack);
                     }
                     this._noticeBanner.add_child(this._noticeRight);
+                } else if (type === 'focus-guard') {
+                    this._noticeRight = new St.BoxLayout({
+                        y_align: Clutter.ActorAlign.CENTER,
+                        style_class: 'perdana-island__notice-right',
+                    });
+                    this._noticeRight.add_child(makeLabel('View', 'perdana-island__notice-action'));
+                    this._noticeBanner.add_child(this._noticeRight);
                 }
 
                 this._root.add_child(this._noticeBanner);
@@ -5478,6 +5741,10 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticeVolumeIcon.fallback_gicon = data.notification.gicon
                     || data.source.icon || data.source.app?.get_icon?.()
                     || Gio.ThemedIcon.new('application-x-executable-symbolic');
+            } else if (type === 'focus-guard') {
+                this._noticeTitle.text = data.title;
+                this._noticeSubtitle.text = data.subtitle;
+                this._noticeVolumeIcon.icon_name = 'dialog-warning-symbolic';
             } else {
                 this._noticeTitle.text = data.title;
                 this._noticeSubtitle.text = data.subtitle;
@@ -5485,8 +5752,10 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticePercent.add_style_class_name('perdana-island__notice-time');
                 this._noticeVolumeIcon.icon_name = 'alarm-symbolic';
             }
+            return true;
         } catch (error) {
             logError(error, 'Perdana Island could not render a system notice');
+            return false;
         }
     }
 

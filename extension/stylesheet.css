@@ -1172,3 +1172,17 @@
   animation: none;
   transform: scaleY(0.35);
 }
+
+.perdana-island__notice-action {
+  margin-left: 6px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+}
+
+.perdana-island__settings-hint {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+}
