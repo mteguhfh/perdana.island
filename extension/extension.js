@@ -32,6 +32,10 @@ const DEFAULT_FOCUS_SECONDS = 25 * 60;
 const DEFAULT_BREAK_SECONDS = 5 * 60;
 const DEFAULT_ACCENT_COLOR = '#5577B8';
 const DEFAULT_THEME = 'midnight';
+const AGENDA_BRIEFING_MINUTES = 8 * 60;
+const AGENDA_RECAP_MINUTES = 17 * 60;
+const TASK_PRIORITIES = ['high', 'medium', 'low'];
+const TASK_PRIORITY_LABELS = {high: 'High', medium: 'Med', low: 'Low'};
 const MAX_SHELF_ITEMS = 10;
 const MICROSECONDS_PER_SECOND = 1_000_000;
 const LEGACY_DATA_DIRECTORY = 'pulo-island';
@@ -129,6 +133,12 @@ const THEMES = [
     },
 ];
 
+function taskScheduleKey(task) {
+    return Number.isInteger(task?.due) && task?.dueDate
+        ? `${task.dueDate} ${String(task.due).padStart(4, '0')}`
+        : '9999-99-99 9999';
+}
+
 function unpack(value) {
     return value instanceof GLib.Variant ? value.deep_unpack() : value;
 }
@@ -138,6 +148,28 @@ function formatTime(totalSeconds) {
     const minutes = Math.floor(safeSeconds / 60);
     const seconds = safeSeconds % 60;
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function dateKey(date = new Date()) {
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function parseClockTime(value) {
+    const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
+    if (!match)
+        return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59)
+        return null;
+    return hours * 60 + minutes;
+}
+
+function formatClockTime(minutes) {
+    const value = Math.max(0, Math.min(1439, Math.round(Number(minutes) || 0)));
+    return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
 }
 
 function normalizeHexColor(value) {
@@ -316,6 +348,13 @@ export default class PerdanaIslandExtension extends Extension {
         this._shelfItems = [];
         this._shelfNotice = null;
         this._shelfNoticeSource = 0;
+        this._taskTextEntry = null;
+        this._taskTimeEntry = null;
+        this._taskDraftText = '';
+        this._taskDraftDueText = '';
+        this._taskDraftPriority = null;
+        this._reportCopied = false;
+        this._reportCopiedSource = 0;
         this._previousPageIndex = 0;
         this._focusRemaining = DEFAULT_FOCUS_SECONDS;
         this._focusDuration = DEFAULT_FOCUS_SECONDS;
@@ -362,6 +401,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._taskFile = GLib.build_filenamev([this._taskDirectory, 'tasks.json']);
         this._clipboardFile = GLib.build_filenamev([this._taskDirectory, 'clipboard.json']);
         this._preferencesFile = GLib.build_filenamev([this._taskDirectory, 'preferences.json']);
+        this._focusLogFile = GLib.build_filenamev([this._taskDirectory, 'focus-log.json']);
         this._legacyTaskFile = GLib.build_filenamev([
             GLib.get_user_data_dir(),
             LEGACY_DATA_DIRECTORY,
@@ -373,6 +413,7 @@ export default class PerdanaIslandExtension extends Extension {
         if (!this._visiblePages().some(page => page.key === this._activePage))
             this._activePage = this._visiblePages()[0]?.key || 'settings';
         this._tasks = this._loadTasks();
+        this._focusLog = this._loadFocusLog();
         this._clipboardItems = this._loadClipboardItems();
         this._shelfItems = this._loadShelfItems();
         this._shelfMonitorSignal = 0;
@@ -413,6 +454,7 @@ export default class PerdanaIslandExtension extends Extension {
             if (!this._enabled)
                 return GLib.SOURCE_REMOVE;
             this._updateHeaderClock();
+            this._checkAgendaNotices();
             return GLib.SOURCE_CONTINUE;
         });
         this._chargingSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
@@ -450,6 +492,10 @@ export default class PerdanaIslandExtension extends Extension {
             restingStyle: 'hover-clock',
             showRestingLyrics: false,
             systemNotices: true,
+            morningAgenda: true,
+            eveningRecap: true,
+            lastAgendaBriefing: '',
+            lastAgendaRecap: '',
             shelfView: 'grid',
             visiblePages,
         };
@@ -472,6 +518,12 @@ export default class PerdanaIslandExtension extends Extension {
                 : 'hover-clock';
             defaults.showRestingLyrics = stored.showRestingLyrics === true;
             defaults.systemNotices = stored.systemNotices !== false;
+            defaults.morningAgenda = stored.morningAgenda !== false;
+            defaults.eveningRecap = stored.eveningRecap !== false;
+            defaults.lastAgendaBriefing = typeof stored.lastAgendaBriefing === 'string'
+                ? stored.lastAgendaBriefing : '';
+            defaults.lastAgendaRecap = typeof stored.lastAgendaRecap === 'string'
+                ? stored.lastAgendaRecap : '';
             defaults.shelfView = ['grid', 'list'].includes(stored.shelfView)
                 ? stored.shelfView
                 : 'grid';
@@ -776,6 +828,8 @@ export default class PerdanaIslandExtension extends Extension {
         this._shelfNoticeSource = 0;
         this._taskFocusSource && GLib.source_remove(this._taskFocusSource);
         this._taskFocusSource = 0;
+        this._reportCopiedSource && GLib.source_remove(this._reportCopiedSource);
+        this._reportCopiedSource = 0;
         this._disconnectNotifications();
         this._lyricsCancellable?.cancel();
         this._lyricsCancellable = null;
@@ -2986,31 +3040,85 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _renderTasksPage(body) {
-        const done = this._tasks.filter(task => task.done).length;
-        const open = this._tasks.filter(task => !task.done);
+        this._taskTextEntry = null;
+        this._taskTimeEntry = null;
+        const todayKey = dateKey();
+        const agenda = this._agendaTasks(todayKey);
+        const open = this._tasks.filter(task => !task.done)
+            .sort((first, second) => taskScheduleKey(first).localeCompare(taskScheduleKey(second)));
         const completed = this._tasks.filter(task => task.done);
         const ordered = [...open, ...completed];
+        const doneToday = this._tasksDoneToday().length;
+        const focusMinutes = Math.round(this._focusSecondsToday() / 60);
         const rightX = 190;
         const rightWidth = this._pageWidth() - rightX;
-        place(body, makeLabel('To-do', 'perdana-island__todo-heading'), 0, 8, 160, 22);
-        place(body, makeLabel(done + '/' + this._tasks.length, 'perdana-island__todo-count'), 0, 34, 160, 48);
-        place(body, makeLabel('Task done today', 'perdana-island__todo-subtitle'), 2, 82, 170, 20);
+
+        place(body, makeLabel('To-do', 'perdana-island__todo-heading'), 0, 4, 160, 22);
+        place(body, makeLabel(String(open.length), 'perdana-island__todo-count'), 0, 26, 120, 44);
+        place(body, makeLabel(
+            agenda.length
+                ? `${agenda.length} scheduled today · next ${formatClockTime(agenda[0].due)}`
+                : 'No timed tasks today',
+            'perdana-island__todo-subtitle'
+        ), 2, 72, 184, 17);
+        place(body, makeLabel(`${doneToday} done today · ${focusMinutes} min focus`,
+            'perdana-island__todo-subtitle'), 2, 90, 184, 17);
 
         if (this._taskAdding) {
             const entry = new St.Entry({
                 hint_text: 'Add a task',
+                text: this._taskDraftText || '',
                 can_focus: true,
                 style_class: 'perdana-island__task-entry',
+                accessible_name: 'Task text',
             });
-            entry.clutter_text.connect('activate', () => {
-                const text = entry.get_text();
+            const timeEntry = new St.Entry({
+                hint_text: '09:00',
+                text: this._taskDraftDueText || '',
+                can_focus: true,
+                style_class: 'perdana-island__task-time-entry',
+                accessible_name: 'Task time, 24 hour HH:MM',
+            });
+            const priorityLabel = this._taskDraftPriority
+                ? TASK_PRIORITY_LABELS[this._taskDraftPriority] : 'Priority';
+            const priorityButton = makeTextButton(
+                priorityLabel,
+                'Cycle task priority',
+                () => this._cycleTaskDraftPriority(),
+                `perdana-island__task-priority-button${this._taskDraftPriority
+                    ? ` perdana-island__task-priority-button--${this._taskDraftPriority}` : ''}`
+            );
+            const addButton = makeTextButton('Add', 'Add task', () => this._submitTaskDraft(),
+                'perdana-island__task-add');
+            const cancelDraft = () => {
                 this._taskAdding = false;
-                if (text.trim())
-                    this._addTask(text);
-                else
-                    this._renderPanel();
+                this._taskDraftText = '';
+                this._taskDraftDueText = '';
+                this._taskDraftPriority = null;
+                this._renderPanel();
+            };
+            entry.clutter_text.connect('activate', () => this._submitTaskDraft());
+            entry.clutter_text.connect('key-press-event', (_actor, event) => {
+                if (event.get_key_symbol() === Clutter.KEY_Escape) {
+                    cancelDraft();
+                    return Clutter.EVENT_STOP;
+                }
+                return Clutter.EVENT_PROPAGATE;
             });
-            place(body, entry, 0, 116, 178, 30);
+            timeEntry.clutter_text.connect('activate', () => this._submitTaskDraft());
+            timeEntry.clutter_text.connect('key-press-event', (_actor, event) => {
+                if (event.get_key_symbol() === Clutter.KEY_Escape) {
+                    cancelDraft();
+                    return Clutter.EVENT_STOP;
+                }
+                return Clutter.EVENT_PROPAGATE;
+            });
+            place(body, entry, 0, 110, 180, 26);
+            place(body, timeEntry, 0, 140, 52, 26);
+            place(body, priorityButton, 56, 140, 64, 26);
+            place(body, addButton, 124, 140, 56, 26);
+            this._taskTextEntry = entry;
+            this._taskTimeEntry = timeEntry;
             this._taskFocusSource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                 this._taskFocusSource = 0;
                 if (entry.get_stage())
@@ -3022,6 +3130,9 @@ export default class PerdanaIslandExtension extends Extension {
             actions.add_child(makeActionButton(
                 'list-add-symbolic', 'Add task', 'Add a task', () => {
                     this._taskAdding = true;
+                    this._taskDraftText = '';
+                    this._taskDraftDueText = '';
+                    this._taskDraftPriority = null;
                     this._renderPanel();
                 }, 'perdana-action--todo'
             ));
@@ -3035,7 +3146,10 @@ export default class PerdanaIslandExtension extends Extension {
                 },
                 'perdana-action--todo'
             ));
-            place(body, actions, 0, 119, 180, 30);
+            place(body, actions, 0, 108, 180, 30);
+            place(body, makeTextButton(this._reportCopied ? 'Copied' : 'Copy report',
+                'Copy today report', () => this._copyDailyReport(),
+                'perdana-island__todo-report'), 0, 142, 180, 24);
         }
 
         if (!ordered.length) {
@@ -3084,11 +3198,76 @@ export default class PerdanaIslandExtension extends Extension {
                 task.text,
                 task.done ? 'perdana-island__task-text perdana-island__task-text--done' : 'perdana-island__task-text'
             );
-            label.clutter_text.max_width = listWidth - (this._taskEditing ? 84 : 56);
             label.x_expand = true;
             row.add_child(label);
-            if (this._taskEditing)
-                row.add_child(makeIconButton('user-trash-symbolic', 'Delete ' + task.text, () => this._removeTask(task.id), 'perdana-button--task-delete'));
+
+            const timed = Number.isInteger(task.due) && task.dueDate;
+            const late = timed && !task.done && task.dueDate < todayKey;
+            const dateText = timed && task.dueDate !== todayKey
+                ? new Intl.DateTimeFormat('en-GB', {day: '2-digit', month: 'short'})
+                    .format(new Date(`${task.dueDate}T00:00:00`)) + ' '
+                : '';
+            const chipWidth = timed
+                ? (task.dueDate !== todayKey ? 88 : late ? 62 : 44)
+                : 0;
+            const priorityWidth = task.priority ? 42 : 0;
+
+            if (this._taskEditing) {
+                const timeEntry = new St.Entry({
+                    text: timed ? formatClockTime(task.due) : '',
+                    hint_text: '--:--',
+                    can_focus: true,
+                    style_class: 'perdana-island__task-time-entry',
+                    accessible_name: 'Time for ' + task.text,
+                });
+                timeEntry.clutter_text.connect('activate', () => {
+                    const value = timeEntry.get_text().trim();
+                    if (!value) {
+                        this._setTaskTime(task.id, null);
+                        return;
+                    }
+                    const minutes = parseClockTime(value);
+                    if (minutes === null) {
+                        timeEntry.add_style_class_name('perdana-island__task-entry--invalid');
+                        return;
+                    }
+                    this._setTaskTime(task.id, minutes);
+                });
+                timeEntry.clutter_text.connect('key-press-event', (_actor, event) => {
+                    if (event.get_key_symbol() !== Clutter.KEY_Escape)
+                        return Clutter.EVENT_PROPAGATE;
+                    timeEntry.set_text(timed ? formatClockTime(task.due) : '');
+                    return Clutter.EVENT_STOP;
+                });
+                row.add_child(timeEntry);
+                const priorityButton = makeTextButton(
+                    task.priority ? TASK_PRIORITY_LABELS[task.priority] : 'Prio',
+                    'Cycle priority for ' + task.text,
+                    () => this._cycleTaskPriority(task.id),
+                    `perdana-island__task-priority-button${task.priority
+                        ? ` perdana-island__task-priority-button--${task.priority}` : ''}`
+                );
+                row.add_child(priorityButton);
+                row.add_child(makeIconButton('user-trash-symbolic', 'Delete ' + task.text,
+                    () => this._removeTask(task.id), 'perdana-button--task-delete'));
+                label.clutter_text.max_width = Math.max(60, listWidth - 24 - 7 - 52 - 44 - 18 - 14);
+            } else {
+                if (timed) {
+                    const timeLabel = makeLabel(
+                        `${late ? 'Late ' : dateText}${formatClockTime(task.due)}`,
+                        `perdana-island__task-time${late ? ' perdana-island__task-time--late' : ''}`
+                    );
+                    timeLabel.x_align = Clutter.ActorAlign.CENTER;
+                    row.add_child(timeLabel);
+                }
+                if (task.priority) {
+                    const priorityLabel = makeLabel(TASK_PRIORITY_LABELS[task.priority],
+                        `perdana-island__task-priority perdana-island__task-priority--${task.priority}`);
+                    priorityLabel.x_align = Clutter.ActorAlign.CENTER;
+                    row.add_child(priorityLabel);
+                }
+                label.clutter_text.max_width = Math.max(60, listWidth - 24 - 7 - chipWidth - priorityWidth - 12);
+            }
             list.add_child(row);
         });
         scroll.add_child(list);
@@ -3541,12 +3720,12 @@ export default class PerdanaIslandExtension extends Extension {
             orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__settings-scroll-content',
         });
-        scrollContent.set_size(settingsWidth, 460);
+        scrollContent.set_size(settingsWidth, 680);
         const content = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
             style_class: 'perdana-island__settings-content',
         });
-        content.set_size(settingsWidth, 460);
+        content.set_size(settingsWidth, 680);
         scrollContent.add_child(content);
         scroll.set_child(scrollContent);
         place(body, scroll, 0, 0, this._pageWidth(), this._bodyHeight());
@@ -3699,6 +3878,14 @@ export default class PerdanaIslandExtension extends Extension {
                 column * (itemWidth + gap), 349 + row * 34, itemWidth, () =>
                     this._setPageVisible(page.key, this._preferences.visiblePages[page.key] === false), page.icon);
         });
+
+        heading('Daily agenda', 427);
+        settingButton('Morning 08:00', this._preferences.morningAgenda !== false, 0, 449, halfWidth,
+            () => this._setPreference('morningAgenda', this._preferences.morningAgenda === false),
+            'x-office-calendar-symbolic');
+        settingButton('Evening 17:00', this._preferences.eveningRecap !== false, halfWidth + columnGap, 449, halfWidth,
+            () => this._setPreference('eveningRecap', this._preferences.eveningRecap === false),
+            'emblem-ok-symbolic');
     }
 
     _paintFocusRing(area) {
@@ -3754,8 +3941,10 @@ export default class PerdanaIslandExtension extends Extension {
             if (remaining <= 0) {
                 const completedMode = this._focusMode;
                 const completedDuration = this._focusDuration;
-                if (completedMode === 'focus' || completedMode === 'custom')
+                if (completedMode === 'focus' || completedMode === 'custom') {
                     this._focusSessionsToday++;
+                    this._recordFocusSeconds(completedDuration);
+                }
                 this._focusRemaining = 0;
                 this._focusDeadline = 0;
                 this._focusSource = 0;
@@ -5467,14 +5656,16 @@ export default class PerdanaIslandExtension extends Extension {
 
     _showSystemNotice(type, data) {
         if (!this._enabled || !this._root || this._userHidden || this._expanded || !this._preferences.systemNotices)
-            return;
+            return false;
         const sameNotice = this._systemNoticeActive && this._systemNoticeType === type;
         this._clearTimeout('_noticeDismissSource');
         this._systemNoticeActive = true;
         this._systemNoticeType = type;
         this._noticeNotificationItem = type === 'application' ? data : null;
 
-        const duration = type === 'volume' ? 2 : type === 'focus' || type === 'application' ? 4 : 3;
+        const duration = type === 'volume' ? 2
+            : type === 'agenda' || type === 'recap' ? 7
+                : type === 'focus' || type === 'application' ? 4 : 3;
         this._noticeDismissSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, duration, () => {
             this._noticeDismissSource = 0;
             this._dismissSystemNotice(true);
@@ -5483,13 +5674,14 @@ export default class PerdanaIslandExtension extends Extension {
 
         try {
             if (!sameNotice) {
+                const actionable = type === 'application' || type === 'agenda' || type === 'recap';
                 this._noticeBanner?.destroy();
                 this._root.remove_all_transitions();
                 this._root.add_style_class_name('perdana-island--notice');
                 this._content.hide();
                 this._noticeBanner = new St.BoxLayout({
                     style_class: 'perdana-island__notice-banner',
-                    reactive: type === 'application',
+                    reactive: actionable,
                 });
                 this._noticeBanner.set_position(0, 0);
                 this._noticeBanner.set_size(394, 76);
@@ -5505,6 +5697,12 @@ export default class PerdanaIslandExtension extends Extension {
                             item.source.open();
                         }
                         this._dismissSystemNotice(true);
+                        return Clutter.EVENT_STOP;
+                    });
+                } else if (type === 'agenda' || type === 'recap') {
+                    this._noticeBanner.connect('button-release-event', () => {
+                        this._dismissSystemNotice(true);
+                        this._openPage(type === 'agenda' ? 'tasks' : 'today');
                         return Clutter.EVENT_STOP;
                     });
                 }
@@ -5552,7 +5750,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticePercent = null;
                 this._noticeVolumeTrack = null;
                 this._noticeVolumeFill = null;
-                if (type !== 'application') {
+                if (type !== 'application' && type !== 'agenda' && type !== 'recap') {
                     this._noticeRight = new St.BoxLayout({
                         orientation: Clutter.Orientation.VERTICAL,
                         y_align: Clutter.ActorAlign.CENTER,
@@ -5571,6 +5769,13 @@ export default class PerdanaIslandExtension extends Extension {
                         place(this._noticeVolumeTrack, this._noticeVolumeFill, 0, 0, 0, 4);
                         this._noticeRight.add_child(this._noticeVolumeTrack);
                     }
+                    this._noticeBanner.add_child(this._noticeRight);
+                } else if (type === 'agenda' || type === 'recap') {
+                    this._noticeRight = new St.BoxLayout({
+                        y_align: Clutter.ActorAlign.CENTER,
+                        style_class: 'perdana-island__notice-right',
+                    });
+                    this._noticeRight.add_child(makeLabel('View', 'perdana-island__notice-action'));
                     this._noticeBanner.add_child(this._noticeRight);
                 }
 
@@ -5627,6 +5832,11 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticeVolumeIcon.fallback_gicon = data.notification.gicon
                     || data.source.icon || data.source.app?.get_icon?.()
                     || Gio.ThemedIcon.new('application-x-executable-symbolic');
+            } else if (type === 'agenda' || type === 'recap') {
+                this._noticeTitle.text = data.title;
+                this._noticeSubtitle.text = data.subtitle;
+                this._noticeVolumeIcon.icon_name = type === 'agenda'
+                    ? 'x-office-calendar-symbolic' : 'emblem-ok-symbolic';
             } else {
                 this._noticeTitle.text = data.title;
                 this._noticeSubtitle.text = data.subtitle;
@@ -5634,8 +5844,10 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticePercent.add_style_class_name('perdana-island__notice-time');
                 this._noticeVolumeIcon.icon_name = 'alarm-symbolic';
             }
+            return true;
         } catch (error) {
             logError(error, 'Perdana Island could not render a system notice');
+            return false;
         }
     }
 
@@ -5762,21 +5974,216 @@ export default class PerdanaIslandExtension extends Extension {
         this._renderPanel();
     }
 
-    _addTask(text) {
+    _addTask(text, due = null, priority = null) {
         const trimmed = text.trim().slice(0, 120);
         if (!trimmed)
             return;
-        this._tasks.push({id: GLib.uuid_string_random(), text: trimmed, done: false});
+        this._tasks.push({
+            id: GLib.uuid_string_random(),
+            text: trimmed,
+            done: false,
+            doneAt: null,
+            due: Number.isInteger(due) ? due : null,
+            dueDate: Number.isInteger(due) ? dateKey() : null,
+            priority: TASK_PRIORITIES.includes(priority) ? priority : null,
+        });
         this._saveTasks();
         this._renderPanel();
     }
 
     _toggleTask(id) {
+        const now = new Date();
         this._tasks = this._tasks.map(task => task.id === id
-            ? {...task, done: !task.done}
+            ? {...task, done: !task.done, doneAt: task.done ? null : now.toISOString()}
             : task);
         this._saveTasks();
         this._renderPanel();
+    }
+
+    _setTaskTime(id, minutes) {
+        this._tasks = this._tasks.map(task => task.id === id
+            ? {
+                ...task,
+                due: Number.isInteger(minutes) ? minutes : null,
+                dueDate: Number.isInteger(minutes) ? dateKey() : null,
+            }
+            : task);
+        this._saveTasks();
+        this._renderPanel();
+    }
+
+    _cycleTaskPriority(id) {
+        this._tasks = this._tasks.map(task => {
+            if (task.id !== id)
+                return task;
+            const order = [null, ...TASK_PRIORITIES];
+            const index = order.indexOf(task.priority ?? null);
+            return {...task, priority: order[(index + 1) % order.length]};
+        });
+        this._saveTasks();
+        this._renderPanel();
+    }
+
+    _cycleTaskDraftPriority() {
+        this._taskDraftText = this._taskTextEntry?.get_text() ?? this._taskDraftText ?? '';
+        this._taskDraftDueText = this._taskTimeEntry?.get_text() ?? this._taskDraftDueText ?? '';
+        const order = [null, ...TASK_PRIORITIES];
+        const index = order.indexOf(this._taskDraftPriority ?? null);
+        this._taskDraftPriority = order[(index + 1) % order.length];
+        this._renderPanel();
+    }
+
+    _submitTaskDraft() {
+        const text = this._taskTextEntry?.get_text() ?? this._taskDraftText ?? '';
+        const dueText = (this._taskTimeEntry?.get_text() ?? this._taskDraftDueText ?? '').trim();
+        const due = parseClockTime(dueText);
+        if (dueText && due === null) {
+            this._taskTimeEntry?.add_style_class_name('perdana-island__task-entry--invalid');
+            return;
+        }
+        const priority = this._taskDraftPriority ?? null;
+        this._taskAdding = false;
+        this._taskDraftText = '';
+        this._taskDraftDueText = '';
+        this._taskDraftPriority = null;
+        if (text.trim())
+            this._addTask(text, due, priority);
+        else
+            this._renderPanel();
+    }
+
+    _agendaTasks(key = dateKey()) {
+        return this._tasks
+            .filter(task => !task.done && task.dueDate === key && Number.isInteger(task.due))
+            .sort((first, second) => first.due - second.due);
+    }
+
+    _tasksDoneToday() {
+        const today = dateKey();
+        return this._tasks.filter(task => task.done && task.doneAt
+            && dateKey(new Date(task.doneAt)) === today);
+    }
+
+    _focusSecondsToday() {
+        return Number(this._focusLog?.[dateKey()]) || 0;
+    }
+
+    _dailyReportText() {
+        const now = new Date();
+        const formatted = new Intl.DateTimeFormat('en-GB', {
+            day: '2-digit', month: 'short', year: 'numeric',
+        }).format(now);
+        const agenda = this._agendaTasks();
+        const done = this._tasksDoneToday().length;
+        const open = this._tasks.filter(task => !task.done).length;
+        const focus = Math.round(this._focusSecondsToday() / 60);
+        const lines = [
+            `Perdana Island · ${formatted}`,
+            `Tasks done: ${done}`,
+            `Open tasks: ${open}`,
+        ];
+        if (agenda.length) {
+            lines.push(`Scheduled: ${agenda
+                .map(task => `${formatClockTime(task.due)} ${task.text}`)
+                .join(', ')}`);
+        }
+        lines.push(`Focus: ${focus} min`);
+        return lines.join('\n');
+    }
+
+    _copyDailyReport() {
+        St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, this._dailyReportText());
+        this._reportCopied = true;
+        this._renderPanel();
+        this._clearTimeout('_reportCopiedSource');
+        this._reportCopiedSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            this._reportCopiedSource = 0;
+            this._reportCopied = false;
+            if (this._activePage === 'tasks' && !this._taskAdding)
+                this._renderPanel();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _openPage(key) {
+        this._pinned = true;
+        this._setExpanded(true);
+        this._selectPage(key);
+    }
+
+    _checkAgendaNotices(now = new Date()) {
+        if (!this._enabled || !this._preferences || !this._uiActorsAlive)
+            return;
+        const minutes = now.getHours() * 60 + now.getMinutes();
+        const today = dateKey(now);
+        const preferences = this._preferences;
+
+        if (preferences.morningAgenda !== false && preferences.lastAgendaBriefing !== today
+            && minutes >= AGENDA_BRIEFING_MINUTES && minutes < 12 * 60) {
+            const agenda = this._agendaTasks(today);
+            if (agenda.length) {
+                const shown = this._showSystemNotice('agenda', {
+                    title: `${agenda.length} ${agenda.length === 1 ? 'task' : 'tasks'} today`,
+                    subtitle: agenda.slice(0, 2)
+                        .map(task => `${formatClockTime(task.due)} ${task.text}`)
+                        .join(' · '),
+                });
+                if (!shown)
+                    return;
+            }
+            preferences.lastAgendaBriefing = today;
+            this._savePreferences();
+        }
+
+        if (preferences.eveningRecap === false || preferences.lastAgendaRecap === today
+            || minutes < AGENDA_RECAP_MINUTES || minutes >= 21 * 60)
+            return;
+        const done = this._tasksDoneToday().length;
+        const focusMinutes = Math.round(this._focusSecondsToday() / 60);
+        if (done || focusMinutes) {
+            const shown = this._showSystemNotice('recap', {
+                title: 'Day recap',
+                subtitle: `${done} ${done === 1 ? 'task' : 'tasks'} done · ${focusMinutes} min focus`,
+            });
+            if (!shown)
+                return;
+        }
+        preferences.lastAgendaRecap = today;
+        this._savePreferences();
+    }
+
+    _loadFocusLog() {
+        try {
+            const parsed = JSON.parse(this._readText(this._focusLogFile) || '{}');
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch (_error) {
+            return {};
+        }
+    }
+
+    _saveFocusLog() {
+        try {
+            GLib.mkdir_with_parents(this._taskDirectory, 0o755);
+            GLib.file_set_contents(this._focusLogFile, JSON.stringify(this._focusLog, null, 2));
+        } catch (error) {
+            logError(error, 'Perdana Island could not save the focus log');
+        }
+    }
+
+    _recordFocusSeconds(seconds) {
+        const amount = Math.max(0, Math.round(Number(seconds) || 0));
+        if (!amount)
+            return;
+        const today = dateKey();
+        this._focusLog[today] = (Number(this._focusLog[today]) || 0) + amount;
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 60);
+        const oldest = dateKey(cutoff);
+        for (const key of Object.keys(this._focusLog)) {
+            if (key < oldest)
+                delete this._focusLog[key];
+        }
+        this._saveFocusLog();
     }
 
     _removeTask(id) {
@@ -5786,7 +6193,15 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _loadTasks() {
-        return this._readTasksFromFile(this._taskFile) ?? [];
+        const tasks = this._readTasksFromFile(this._taskFile) ?? [];
+        return tasks.map(task => ({
+            ...task,
+            done: Boolean(task.done),
+            doneAt: typeof task.doneAt === 'string' ? task.doneAt : null,
+            due: Number.isInteger(task.due) ? task.due : null,
+            dueDate: typeof task.dueDate === 'string' ? task.dueDate : null,
+            priority: TASK_PRIORITIES.includes(task.priority) ? task.priority : null,
+        }));
     }
 
     _saveTasks() {

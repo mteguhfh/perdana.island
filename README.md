@@ -44,9 +44,11 @@ These images show representative UI states with sample media, files, notificatio
 - Lyrics follow playback timestamps. When a player does not provide synced lyrics, the extension looks up track metadata with LRCLIB. The Lyrics page includes playback controls and a toggle to show the current lyric in the resting island; long lines wrap inside the fixed layout.
 - Focus offers Focus, Short, Long, and custom durations in seconds or minutes. Completion shows a temporary notice.
 - Shelf offers Grid and List views, image thumbnails, a scrollable list capped at 10 visible items, and a local folder that refreshes when files change.
-- To-do supports adding, completing, editing, and deleting tasks. Tasks persist between sessions.
+- To-do supports adding, completing, editing, and deleting tasks. Tasks persist between sessions. A task can carry a time (24 hour) and a priority (High, Med, Low); timed tasks sort to the top, and the list marks tasks whose day has passed as late.
 - Clipboard keeps up to four recent text entries between sessions. It records changes while the extension is enabled, deduplicates repeated text and URLs, masks email addresses and links in previews, and skips explicitly identified credentials.
-- Settings control the theme, resting style, glass effect, accent color, system notices, and visible tabs.
+- To-do also shows a daily summary: scheduled tasks with the next time, tasks completed today, focus minutes, and a Copy report action that puts a plain text report on the clipboard.
+- At 08:00 the island can show a morning agenda notice with today's scheduled tasks, and at 17:00 a recap of completed tasks and focus minutes. Clicking either notice opens the matching page. Both are toggled under Daily agenda in Settings.
+- Settings control the theme, resting style, glass effect, accent color, system notices, daily agenda notices, and visible tabs.
 - Themes change the island material without touching the layout. Midnight is the plain black island, Aero adds a blue gloss band with a hairline border, Aqua uses rounded translucent graphite, Yaru uses an aubergine tint, and Graphite uses flat grey with small corners. The choice persists between sessions, and translucent themes hide the solid corner ears so the glass edge stays clean.
 - Today combines a local calendar with available CPU, memory, disk, and battery information.
 - Notifications lists recent desktop notifications, uses the source application's icon when available, and can activate or clear them.
@@ -68,7 +70,7 @@ The GNOME extension declares GNOME Shell **50.x and 51.x** compatibility. This G
 | Fedora Linux 44 | 50.6 on the development system | Runtime validated on Wayland |
 | Ubuntu 26.04 LTS | 50.1 package | Version checked; runtime not independently tested |
 | Debian testing (Forky) | 50.4 package | Version checked; runtime not independently tested |
-| Ubuntu 26.10 | 51.0 on the test system | Enable/disable, every page, notices, theme switching, and preferences smoke-tested in a headless Wayland session |
+| Ubuntu 26.10 | 51.0 on the test system | Enable/disable, every page, notices, agenda notices, theme switching, and preferences smoke-tested in a headless Wayland session |
 | Other Linux distributions | GNOME Shell 50.x or 51.x required | Expected to work; not individually tested |
 
 GNOME Shell 49 and earlier, and 52 or later, are outside the compatibility range declared by this release. Wayland is the validated session; X11 has not been independently tested.
