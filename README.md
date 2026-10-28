@@ -74,7 +74,7 @@ Quick install from this repository:
 
 ```sh
 mkdir -p dist
-gnome-extensions pack ./extension --extra-source=../LICENSE --out-dir ./dist
+gnome-extensions pack ./extension --extra-source=../LICENSE --extra-source=clipboard-utils.js --out-dir ./dist
 gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.zip
 gnome-extensions enable perdana.island@perdana
 ```
