@@ -116,3 +116,7 @@ The GNOME extension is distributed under [GPL-3.0-or-later](LICENSE), a license 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, tests, packaging, and version rules. Use the issue templates for bug reports and feature requests.
+
+## Contributors
+
+Thanks to [@mteguhfh](https://github.com/mteguhfh) for GNOME Shell 51 compatibility, clipboard improvements for GNOME and KDE, contribution guidance, and v69 release preparation.
