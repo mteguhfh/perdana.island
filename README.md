@@ -6,7 +6,7 @@
 [![MPRIS](https://img.shields.io/badge/media-MPRIS%20over%20D--Bus-383838)](https://specifications.freedesktop.org/mpris-spec/latest/)
 [![Fedora 44](https://img.shields.io/badge/validated-Fedora%2044-51a2da?logo=fedora&logoColor=white)](https://fedoraproject.org/)
 
-Perdana Island provides separate native packages for GNOME Shell and KDE Plasma. The GNOME Shell 50 and 51 extension places media controls, synced lyrics, a focus timer, a file shelf, tasks, recent clipboard text, notifications, settings, and system information in a compact island attached to the top edge of the desktop. The KDE Plasma 6 widget provides Music, Focus, Tasks, and Clipboard pages. Both packages live in this repository, in `extension/` and `plasma-widget/` respectively, and share the project release version while keeping their code and installation packages separate.
+Perdana Island provides separate native packages for GNOME Shell and KDE Plasma. The GNOME Shell 50 and 51 extension places media controls, synced lyrics, a focus timer, a file shelf, tasks, recent clipboard text, notifications, settings, and system information in a compact island attached to the top edge of the desktop. The KDE Plasma 6 widget provides Music, Focus, Tasks, and Clipboard pages. Both packages live in this repository, in `extension/` and `plasma-widget/` respectively, and share the project release version while keeping their code and installation packages separate. On GNOME, **Ctrl+Alt+X** hides or shows the island.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
@@ -16,34 +16,34 @@ The GNOME package fixes clipboard previews for dotted email addresses, skips mor
 
 ## Feature previews
 
-These images show representative UI states with sample content. Media, battery, and system values in a running extension come from the current desktop session.
+These images show representative UI states with sample media, files, notifications, and system values. A running extension reads those values from the current desktop session; the screenshots are not runtime captures.
 
 | Feature | Preview |
 | --- | --- |
 | Resting island | ![Resting island with pointer eyes](assets/screenshots/resting.png) |
 | Music controls | ![Music page with cover art, playback controls, and track progress](assets/screenshots/music.png) |
-| Focus timer | ![Focus page with a custom 30 second timer](assets/screenshots/focus.png) |
+| Focus timer | ![Focus page with presets and custom timer controls](assets/screenshots/focus.png) |
 | Shelf | ![Shelf page with files and Add files control](assets/screenshots/shelf.png) |
-| To-do | ![To-do page with completion states and task actions](assets/screenshots/todo.png) |
-| Clipboard | ![Clipboard history with copy and delete controls](assets/screenshots/clipboard.png) |
-| Today | ![Today page with CPU, memory, disk, and battery indicators](assets/screenshots/today.png) |
+| To-do | ![To-do page with task completion and editing controls](assets/screenshots/todo.png) |
+| Today | ![Today page with processor, memory, disk, and battery indicators](assets/screenshots/today.png) |
 | Charging notice | ![Charging notice with battery level](assets/screenshots/notice-charging.png) |
 | Charger disconnected | ![Charger disconnected notice](assets/screenshots/notice-disconnected.png) |
 | Volume notice | ![Output volume notice](assets/screenshots/notice-volume.png) |
 
 ## Features
 
-- Resting eyes react to the pointer; hovering also reveals the clock.
+- Resting eyes react to the pointer; settings choose between a clock on hover and eyes beside a visible clock. **Ctrl+Alt+X** hides or shows the island.
 - Playing media and a running focus timer appear in compact form. Hovering opens the matching page.
 - Music uses MPRIS metadata and supports seeking, previous, play/pause, and next when the player exposes those controls.
-- Lyrics follow playback timestamps. When a player does not provide synced lyrics, the extension looks up track metadata with LRCLIB.
+- Lyrics follow playback timestamps. When a player does not provide synced lyrics, the extension looks up track metadata with LRCLIB. The Lyrics page includes playback controls and a toggle to show the current lyric in the resting island; long lines wrap inside the fixed layout.
 - Focus offers Focus, Short, Long, and custom durations in seconds or minutes. Completion shows a temporary notice.
 - Shelf offers Grid and List views, image thumbnails, a scrollable list capped at 10 visible items, and a local folder that refreshes when files change.
 - To-do supports adding, completing, editing, and deleting tasks. Tasks persist between sessions.
 - Clipboard keeps up to four recent text entries between sessions. It records changes while the extension is enabled, deduplicates repeated text and URLs, masks email addresses and links in previews, and skips explicitly identified credentials.
-- Notifications can be cleared or activated to open their originating application. Settings control the resting style, glass effect, accent color, notices, and visible tabs.
-- Today shows available CPU, memory, disk, and battery information.
-- Charging, charger disconnect, and output-volume changes show short notices.
+- Settings control the resting style, glass effect, accent color, system notices, and visible tabs.
+- Today combines a local calendar with available CPU, memory, disk, and battery information.
+- Notifications lists recent desktop notifications, uses the source application's icon when available, and can activate or clear them.
+- Charging, charger disconnect, output-volume changes, and completed focus sessions can show short notices.
 
 ## Architecture
 
