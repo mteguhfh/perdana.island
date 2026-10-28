@@ -31,7 +31,7 @@ These images show representative UI states with sample media, files, notificatio
 | Clipboard | ![Clipboard history with masked email and link previews](assets/screenshots/clipboard.png) |
 | Today | ![Today calendar with processor, memory, disk, and battery indicators](assets/screenshots/today.png) |
 | Notifications | ![Recent notifications with Clear all and app activation controls](assets/screenshots/notifications.png) |
-| Settings | ![Settings for resting style, glass, notices, accent color, and visible tabs](assets/screenshots/settings.png) |
+| Settings | ![Settings for theme, resting style, glass, notices, accent color, and visible tabs](assets/screenshots/settings.png) |
 | Charging notice | ![Charging notice with battery level](assets/screenshots/notice-charging.png) |
 | Charger disconnected | ![Charger disconnected notice](assets/screenshots/notice-disconnected.png) |
 | Volume notice | ![Output volume notice](assets/screenshots/notice-volume.png) |
@@ -46,7 +46,8 @@ These images show representative UI states with sample media, files, notificatio
 - Shelf offers Grid and List views, image thumbnails, a scrollable list capped at 10 visible items, and a local folder that refreshes when files change.
 - To-do supports adding, completing, editing, and deleting tasks. Tasks persist between sessions.
 - Clipboard keeps up to four recent text entries between sessions. It records changes while the extension is enabled, deduplicates repeated text and URLs, masks email addresses and links in previews, and skips explicitly identified credentials.
-- Settings control the resting style, glass effect, accent color, system notices, and visible tabs.
+- Settings control the theme, resting style, glass effect, accent color, system notices, and visible tabs.
+- Themes change the island material without touching the layout. Midnight is the plain black island, Aero adds a blue gloss band with a hairline border, Aqua uses rounded translucent graphite, Yaru uses an aubergine tint, and Graphite uses flat grey with small corners. The choice persists between sessions, and translucent themes hide the solid corner ears so the glass edge stays clean.
 - Today combines a local calendar with available CPU, memory, disk, and battery information.
 - Notifications lists recent desktop notifications, uses the source application's icon when available, and can activate or clear them.
 - Charging, charger disconnect, output-volume changes, and completed focus sessions can show short notices.
@@ -67,7 +68,7 @@ The GNOME extension declares GNOME Shell **50.x and 51.x** compatibility. This G
 | Fedora Linux 44 | 50.6 on the development system | Runtime validated on Wayland |
 | Ubuntu 26.04 LTS | 50.1 package | Version checked; runtime not independently tested |
 | Debian testing (Forky) | 50.4 package | Version checked; runtime not independently tested |
-| Ubuntu 26.10 | 51.0 on the test system | Enable/disable, every page, notices, and preferences smoke-tested in a headless Wayland session |
+| Ubuntu 26.10 | 51.0 on the test system | Enable/disable, every page, notices, theme switching, and preferences smoke-tested in a headless Wayland session |
 | Other Linux distributions | GNOME Shell 50.x or 51.x required | Expected to work; not individually tested |
 
 GNOME Shell 49 and earlier, and 52 or later, are outside the compatibility range declared by this release. Wayland is the validated session; X11 has not been independently tested.
