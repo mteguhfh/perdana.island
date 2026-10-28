@@ -12,7 +12,7 @@ The extension is for GNOME users who want quick media controls and short focus s
 2. Keep page content inside the rounded island as it changes between states.
 3. Make media and focus controls usable directly from the island.
 4. Store tasks and Shelf files locally and migrate previous user data safely.
-5. Run on GNOME Shell 50.x across Linux distributions that package that Shell version.
+5. Run on GNOME Shell 50.x and 51.x across Linux distributions that package those Shell versions.
 
 ## Scope
 
@@ -46,11 +46,12 @@ The extension is for GNOME users who want quick media controls and short focus s
 
 ## Platform and architecture
 
-- GNOME Shell 50.x, GJS, St, Clutter, Gio, GLib, Pango, Gvc, and GNOME Shell volume status integration.
+- GNOME Shell 50.x and 51.x, GJS, St, Clutter, Gio, GLib, Pango, Gvc, and GNOME Shell volume status integration.
 - MPRIS on the current user's session D-Bus for media controls.
 - Development runtime validated on Fedora Linux 44, GNOME Shell 50.6, Wayland.
+- Ubuntu 26.10, GNOME Shell 51.0, Wayland: headless smoke test covering enable/disable, every page, notices, and preferences.
 - Ubuntu 26.04 LTS and Debian testing (Forky) have GNOME Shell 50.x packages; runtime validation on those systems remains outstanding.
-- Non-GNOME desktops and GNOME Shell versions outside 50.x are out of scope for this release.
+- Non-GNOME desktops and GNOME Shell versions outside 50.x and 51.x are out of scope for this release.
 
 ## Constraints
 
