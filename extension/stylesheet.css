@@ -1172,3 +1172,26 @@
   animation: none;
   transform: scaleY(0.35);
 }
+
+.perdana-island__settings-hint {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+}
+
+.perdana-island__settings-entry {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
+.perdana-island__settings-entry:focus {
+  border-color: rgba(255, 255, 255, 0.58);
+}
+
+.perdana-island__settings-entry--invalid {
+  border-color: #ff6b6b;
+}

@@ -47,6 +47,8 @@ These images show representative UI states with sample media, files, notificatio
 - To-do supports adding, completing, editing, and deleting tasks. Tasks persist between sessions.
 - Clipboard keeps up to four recent text entries between sessions. It records changes while the extension is enabled, deduplicates repeated text and URLs, masks email addresses and links in previews, and skips explicitly identified credentials.
 - Settings control the resting style, glass effect, accent color, system notices, and visible tabs.
+- Water reminders can show a short notice every hour between 08:00 and 21:00 while the island is idle.
+- Prayer reminders fetch the five daily times from the Aladhan API for a city, cache them per day, and show a notice at each time. The calculation method can be switched between Kemenag, MWL, ISNA, and Umm al-Qura. Times are converted from the city timezone to the local clock.
 - Today combines a local calendar with available CPU, memory, disk, and battery information.
 - Notifications lists recent desktop notifications, uses the source application's icon when available, and can activate or clear them.
 - Charging, charger disconnect, output-volume changes, and completed focus sessions can show short notices.
