@@ -10,9 +10,9 @@ Perdana Island provides separate native packages for GNOME Shell and KDE Plasma.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
-## Latest release: v68
+## Latest release: v69
 
-The GNOME package records clipboard changes while the extension is enabled, avoids duplicate history entries, narrows password detection to explicit sensitive markers, and fixes rounded album artwork in Glass mode. The KDE package is version-aligned with the shared release; its widget code did not change in v68. See the [v68 release notes](docs/releases/v68.md) for details.
+The GNOME package fixes clipboard previews for dotted email addresses, skips more labeled credential formats, and adds GNOME Shell 51 support. The KDE package records clipboard changes while the widget runs and skips KDE password-manager data. See the [v69 release notes](docs/releases/v69.md) for details.
 
 ## Feature previews
 
@@ -83,10 +83,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
 
-- `Perdana-Island-GNOME-v68.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
-- `Perdana-Island-KDE-Plasma-v68.zip` for KDE Plasma 6.
+- `Perdana-Island-GNOME-v69.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
+- `Perdana-Island-KDE-Plasma-v69.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v68 archives locally, run `./scripts/package-release.sh v68`.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v69 archives locally, run `./scripts/package-release.sh v69`.
 
 ## Use
 
