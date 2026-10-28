@@ -7,10 +7,13 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.private.mpris as Mpris
 import org.kde.kirigami as Kirigami
+import org.kde.kquickcontrolsaddons as KQuickControlsAddons
 import org.kde.notification
 
 PlasmoidItem {
     id: root
+
+    signal clipboardHistoryChanged()
 
     Layout.preferredWidth: 152
     Layout.preferredHeight: 34
@@ -103,14 +106,32 @@ PlasmoidItem {
 
     function addClipboardText(text) {
         const value = String(text || "").trim();
-        if (!value || value.length > 1200)
+        if (!value)
             return;
-        if (/(?:password|passwd|secret|token|api[_-]?key|authorization)\s*[:=]/i.test(value)
-                || /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(value))
+        if (/(?:password|passwd|pwd|passphrase|secret|client[ _-]?secret|(?:api|access|refresh)[ _-]?(?:key|token)|token|authorization|private[ _-]?key)\s*[:=]/i.test(value)
+                || /-----BEGIN [A-Z ]*PRIVATE KEY-----/i.test(value))
             return;
-        const items = readClipboardHistory().filter(item => item.text !== value);
-        items.unshift({ text: value, copiedAt: Date.now() });
+        const entry = value.slice(0, 1200);
+        const items = readClipboardHistory().filter(item => item.text !== entry);
+        items.unshift({ text: entry, copiedAt: Date.now() });
         saveClipboardHistory(items);
+    }
+
+    function copyClipboardText(text) {
+        systemClipboard.content = String(text || "");
+    }
+
+    function captureClipboardText() {
+        const availableFormats = systemClipboard.formats || [];
+        const isPasswordManager = availableFormats.some(format =>
+            String(format).toLowerCase() === "application/x-kde-passwordmanagerhint");
+        if (isPasswordManager || availableFormats.indexOf("text/plain") < 0)
+            return;
+        const copied = String(systemClipboard.content || "").trim();
+        if (!copied)
+            return;
+        addClipboardText(copied);
+        clipboardHistoryChanged();
     }
 
     function focusRemainingSeconds() {
@@ -151,6 +172,11 @@ PlasmoidItem {
 
     Mpris.Mpris2Model {
         id: mprisModel
+    }
+
+    KQuickControlsAddons.Clipboard {
+        id: systemClipboard
+        onContentChanged: root.captureClipboardText()
     }
 
     Notification {

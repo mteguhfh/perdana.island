@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
-import org.kde.kquickcontrolsaddons as KQuickControlsAddons
 import "../components" as Island
 
 Item {
@@ -25,20 +24,13 @@ Item {
     Component.onCompleted: reload()
     onIslandChanged: {
         reload();
-        if (island && systemClipboard.formats.indexOf("text/plain") >= 0) {
-            island.addClipboardText(String(systemClipboard.content || ""));
-            reload();
-        }
+        if (island)
+            island.captureClipboardText();
     }
 
-    KQuickControlsAddons.Clipboard {
-        id: systemClipboard
-        onContentChanged: {
-            if (page.island && formats.indexOf("text/plain") >= 0) {
-                island.addClipboardText(String(content || ""));
-                page.reload();
-            }
-        }
+    Connections {
+        target: page.island
+        function onClipboardHistoryChanged() { page.reload(); }
     }
 
     ColumnLayout {
@@ -105,7 +97,7 @@ Item {
                         Layout.preferredHeight: 28
                         icon.name: "edit-copy"
                         icon.color: "#aeb0b7"
-                        onClicked: systemClipboard.content = modelData.text
+                        onClicked: page.island.copyClipboardText(modelData.text)
                         Accessible.name: "Copy text again"
                     }
 
@@ -123,7 +115,7 @@ Item {
             Text {
                 anchors.centerIn: parent
                 visible: page.items.length === 0
-                text: "Copy plain text while this page is open."
+                text: "Copy plain text while the widget is running."
                 color: "#92939a"
                 font.pixelSize: 12
             }
