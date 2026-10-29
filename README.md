@@ -28,6 +28,7 @@ These images show representative UI states with sample media, files, notificatio
 | Shelf grid | ![Shelf Grid view with file thumbnails](assets/screenshots/shelf.png) |
 | Shelf list | ![Shelf List view with filenames](assets/screenshots/shelf-list.png) |
 | To-do | ![To-do page with task completion and editing controls](assets/screenshots/todo.png) |
+| Notes | ![Notes page with a note list and a wrapping editor](assets/screenshots/notes.png) |
 | Clipboard | ![Clipboard history with masked email and link previews](assets/screenshots/clipboard.png) |
 | Today | ![Today calendar with processor, memory, disk, and battery indicators](assets/screenshots/today.png) |
 | Notifications | ![Recent notifications with Clear all and app activation controls](assets/screenshots/notifications.png) |

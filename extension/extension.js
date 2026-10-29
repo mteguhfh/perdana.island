@@ -3546,7 +3546,7 @@ export default class PerdanaIslandExtension extends Extension {
         const notes = [...this._notes].sort((first, second) => second.updatedAt - first.updatedAt);
         const listContentWidth = Math.max(1, listWidth - 14);
         const undoVisible = Boolean(this._notesUndo);
-        const listTop = 28;
+        const listTop = 24;
         const listHeight = Math.max(1, height - listTop - (undoVisible ? 32 : 0));
         const statusState = this._notesSaveSource ? 'Saving…' : 'Saved locally';
         this._notesStatusValue = statusState;
@@ -4326,7 +4326,7 @@ export default class PerdanaIslandExtension extends Extension {
         content.set_size(contentWidth, contentHeight);
         scrollContent.add_child(content);
         scroll.add_child(scrollContent);
-        place(body, scroll, panelX, 29, contentWidth, Math.max(0, this._bodyHeight() - 29));
+        place(body, scroll, panelX, 29, panelWidth, Math.max(0, this._bodyHeight() - 29));
 
         const heading = (label, y) => {
             const text = makeLabel(label, 'perdana-island__settings-heading-label');
@@ -7468,7 +7468,7 @@ export default class PerdanaIslandExtension extends Extension {
         if (this._preferences?.keepAwake !== true)
             return 'The screen can sleep normally';
         if (this._keepAwakeCookie)
-            return 'Idle and suspend are blocked until turned off';
+            return 'Idle and suspend blocked';
         return 'Waiting for the session manager';
     }
 
