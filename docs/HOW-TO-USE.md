@@ -34,6 +34,10 @@ GNOME Shell does not expose the desktop's dragged file list to the island actors
 
 Use **Add task** to create an item. Select its check control to mark it complete or incomplete. Select **Edit** to show task deletion controls. The list is saved to `~/.local/share/perdana.island/tasks.json`.
 
+## Notes
+
+Notes is a quick scratchpad. Select **+** to create a note, then write in the editor on the right; the first line becomes the title in the list. Press **Enter** for a new line and **Escape** to leave the editor. Text saves to `~/.local/share/perdana.island/notes.json` about half a second after you stop typing. Use the trash control to delete a note; an **Undo** row stays available for seven seconds. Notes that are still empty when you leave the page are discarded.
+
 ## Clipboard
 
 Clipboard records text changes while the extension is enabled, even when the island is collapsed or another page is selected. Open the Clipboard page to review up to four recent entries. Recopying an item already in the list moves that entry to the top instead of adding a duplicate. Repeated URLs are compared without differences in scheme/host capitalization, default ports, or a final root slash creating another row. Select a row to copy its original text again; use its delete control to remove it. Email addresses and links are masked in the preview, and clipboard data stays on this device. Explicitly marked password-manager MIME data and text matching credential patterns are skipped.
@@ -50,7 +54,7 @@ Open **Notifications** to review recent desktop notifications. Select a row to a
 
 Settings are divided into four side sections:
 
-- **Island** chooses the material, resting clock style, glass appearance, system notices, and accent color. Enter a hex color or choose a swatch.
+- **Island** chooses the material, resting clock style, glass appearance, system notices, accent color, and keep awake. Enter a hex color or choose a swatch. **Keep awake** asks the session manager to block idle and suspend until you turn it off; the inhibitor is released when the extension is disabled.
 - **Greeting** controls the one-time welcome and returning-session message. Choose the Linux account name, device name, or enter a custom name. Edit the first sign-in and returning text; use `{name}` wherever the selected name should appear. Select either preview and click **Show on island** to see it. Greeting text is stored locally. The welcome appears the first time the feature runs; later desktop login sessions use the returning text. A manual preview counts as the greeting for the current session, preventing a duplicate automatic banner.
 - **Reminders** controls morning agenda, evening recap, focus guard, water reminders, and prayer reminders, including city and calculation method.
 - **Tabs** shows or hides feature pages in the bottom navigation. Settings remains available.
@@ -59,6 +63,6 @@ Each section scrolls independently if its controls exceed the available panel he
 
 ## Data location
 
-Tasks, clipboard history, and Shelf files are in `~/.local/share/perdana.island/`. Task changes are also synchronized to `~/.local/share/pulo-island/tasks.json` for compatibility with the previous extension UUID. Task data from either location is reconciled on enable; Shelf files are copied from the previous location when a matching file is not already present.
+Tasks, notes, clipboard history, and Shelf files are in `~/.local/share/perdana.island/`. Task changes are also synchronized to `~/.local/share/pulo-island/tasks.json` for compatibility with the previous extension UUID. Task data from either location is reconciled on enable; Shelf files are copied from the previous location when a matching file is not already present.
 
 Clipboard history is local and never sent to LRCLIB. Lyrics lookup sends the active track's title, artist, optional album, and duration to `lrclib.net`.

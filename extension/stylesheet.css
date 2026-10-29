@@ -1360,6 +1360,142 @@
   border-color: #ff6b6b;
 }
 
+/* Notes page. The editor is a wrapping St.Entry inside a scroll view so long
+   notes grow the text actor instead of clipping the last line. */
+.perdana-island__notes-heading {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.perdana-island__notes-add {
+  min-width: 28px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 12px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.perdana-island__notes-add:hover {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+.perdana-island__notes-scroll {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.perdana-island__note-list {
+  spacing: 6px;
+}
+
+.perdana-button.perdana-island__note-row {
+  min-height: 44px;
+  min-width: 0;
+  padding: 6px 9px;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.075);
+}
+
+.perdana-button.perdana-island__note-row:hover,
+.perdana-button.perdana-island__note-row:focus {
+  background-color: rgba(255, 255, 255, 0.13);
+}
+
+.perdana-button.perdana-island__note-row--active {
+  background-color: rgba(85, 119, 184, 0.26);
+}
+
+.perdana-island__note-row-top {
+  spacing: 6px;
+}
+
+.perdana-island__note-title {
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.perdana-island__note-date {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.perdana-island__note-preview {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 10px;
+  text-align: left;
+}
+
+.perdana-island__note-meta {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 10px;
+}
+
+.perdana-island__notes-editor {
+  min-height: 108px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.07);
+  font-size: 12px;
+}
+
+.perdana-island__notes-editor:focus {
+  border-color: rgba(255, 255, 255, 0.42);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.perdana-island__note-status {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+}
+
+.perdana-island__notes-empty {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+
+.perdana-island__notes-undo {
+  spacing: 6px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.perdana-island__notes-undo-label {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 10px;
+}
+
+.perdana-button.perdana-island__notes-undo-button {
+  min-height: 20px;
+  min-width: 0;
+  padding: 0 8px;
+  border-radius: 10px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.14);
+  font-size: 10px;
+}
+
+.perdana-island__notes-undo-button:hover {
+  background-color: rgba(255, 255, 255, 0.24);
+}
+
+.perdana-button--note-delete {
+  min-width: 24px;
+  min-height: 22px;
+  padding: 0;
+}
+
 /* Reminders page. Prayer rows are static text; the water side updates in
    place on the clock tick so the countdown does not rebuild the page. */
 .perdana-island__reminder-heading {
@@ -1440,7 +1576,9 @@
 .perdana-island--theme-aero .perdana-island__color-entry,
 .perdana-island--theme-aero .perdana-island__color-apply,
 .perdana-island--theme-aero .perdana-button--focus-unit,
-.perdana-island--theme-aero .perdana-island__focus-custom-entry {
+.perdana-island--theme-aero .perdana-island__focus-custom-entry,
+.perdana-island--theme-aero .perdana-island__notes-editor,
+.perdana-island--theme-aero .perdana-island__note-row {
   border-radius: 5px;
 }
 
@@ -1467,7 +1605,9 @@
 .perdana-island--theme-aqua .perdana-island__color-entry,
 .perdana-island--theme-aqua .perdana-island__color-apply,
 .perdana-island--theme-aqua .perdana-button--focus-unit,
-.perdana-island--theme-aqua .perdana-island__focus-custom-entry {
+.perdana-island--theme-aqua .perdana-island__focus-custom-entry,
+.perdana-island--theme-aqua .perdana-island__notes-editor,
+.perdana-island--theme-aqua .perdana-island__note-row {
   border-radius: 10px;
 }
 
@@ -1500,7 +1640,9 @@
 .perdana-island--theme-yaru .perdana-island__color-entry,
 .perdana-island--theme-yaru .perdana-island__color-apply,
 .perdana-island--theme-yaru .perdana-button--focus-unit,
-.perdana-island--theme-yaru .perdana-island__focus-custom-entry {
+.perdana-island--theme-yaru .perdana-island__focus-custom-entry,
+.perdana-island--theme-yaru .perdana-island__notes-editor,
+.perdana-island--theme-yaru .perdana-island__note-row {
   border-radius: 9px;
 }
 
@@ -1523,7 +1665,9 @@
 .perdana-island--theme-graphite .perdana-island__color-entry,
 .perdana-island--theme-graphite .perdana-island__color-apply,
 .perdana-island--theme-graphite .perdana-button--focus-unit,
-.perdana-island--theme-graphite .perdana-island__focus-custom-entry {
+.perdana-island--theme-graphite .perdana-island__focus-custom-entry,
+.perdana-island--theme-graphite .perdana-island__notes-editor,
+.perdana-island--theme-graphite .perdana-island__note-row {
   border-radius: 6px;
 }
 
