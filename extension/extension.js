@@ -3665,6 +3665,7 @@ export default class PerdanaIslandExtension extends Extension {
         entry.clutter_text.set_line_wrap(true);
         entry.clutter_text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
         entry.clutter_text.connect('text-changed', () => this._onNoteTextChanged(entry, note.id));
+        entry.clutter_text.connect('activate', () => this._insertNoteLineBreak(entry, note.id));
         entry.clutter_text.connect('key-press-event', (_actor, event) => {
             if (event.get_key_symbol() !== Clutter.KEY_Escape)
                 return Clutter.EVENT_PROPAGATE;
@@ -7245,6 +7246,50 @@ export default class PerdanaIslandExtension extends Extension {
         this._keepNotesCursorVisible();
     }
 
+    _insertNoteLineBreak(entry, id) {
+        // ClutterText binds Return to activate before it can insert a line
+        // break, so a multiline entry needs the newline added here.
+        const textActor = entry.clutter_text;
+        const text = entry.get_text();
+        let cursor = text.length;
+        try {
+            cursor = textActor.get_cursor_position();
+        } catch (_error) {
+            cursor = text.length;
+        }
+        if (cursor < 0)
+            cursor = text.length;
+        cursor = Math.max(0, Math.min(text.length, cursor));
+        let selectionBound = cursor;
+        try {
+            selectionBound = textActor.get_selection_bound();
+        } catch (_error) {
+            selectionBound = cursor;
+        }
+        if (selectionBound < 0)
+            selectionBound = cursor;
+        selectionBound = Math.max(0, Math.min(text.length, selectionBound));
+        const start = Math.min(cursor, selectionBound);
+        const end = Math.max(cursor, selectionBound);
+        const next = `${text.slice(0, start)}\n${text.slice(end)}`;
+        entry.set_text(next.slice(0, NOTE_MAX_CHARS));
+        const inserted = entry.get_text();
+        try {
+            textActor.set_cursor_position(Math.min(inserted.length, start + 1));
+            textActor.set_selection_bound(Math.min(inserted.length, start + 1));
+        } catch (_error) {
+            // Cursor placement is best effort; the text is already inserted.
+        }
+        const note = this._notes.find(item => item.id === id);
+        if (note) {
+            note.text = inserted.slice(0, NOTE_MAX_CHARS);
+            note.updatedAt = Date.now();
+        }
+        this._resizeNotesEditor();
+        this._scheduleNotesResize();
+        this._keepNotesCursorVisible();
+    }
+
     _resizeNotesEditor() {
         const entry = this._notesEditorEntry;
         const box = this._notesEditorBox;
@@ -7379,7 +7424,8 @@ export default class PerdanaIslandExtension extends Extension {
         if (!adjustment || adjustment.page_size <= 0)
             return;
         try {
-            const position = entry.clutter_text.get_cursor_position();
+            const rawPosition = entry.clutter_text.get_cursor_position();
+            const position = rawPosition < 0 ? entry.get_text().length : rawPosition;
             const [_x, y, _line, lineHeight] = entry.clutter_text.position_to_coords(position);
             const top = adjustment.value;
             const bottom = top + adjustment.page_size;

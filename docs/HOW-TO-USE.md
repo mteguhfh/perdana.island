@@ -36,7 +36,7 @@ Use **Add task** to create an item. Select its check control to mark it complete
 
 ## Notes
 
-Notes is a quick scratchpad. Select **+** to create a note, then write in the editor on the right; the first line becomes the title in the list. Text saves to `~/.local/share/perdana.island/notes.json` about half a second after you stop typing, and **Escape** leaves the editor. Use the trash control to delete a note; an **Undo** row stays available for seven seconds. Notes that are still empty when you leave the page are discarded.
+Notes is a quick scratchpad. Select **+** to create a note, then write in the editor on the right; the first line becomes the title in the list. Press **Enter** for a new line and **Escape** to leave the editor. Text saves to `~/.local/share/perdana.island/notes.json` about half a second after you stop typing. Use the trash control to delete a note; an **Undo** row stays available for seven seconds. Notes that are still empty when you leave the page are discarded.
 
 ## Clipboard
 
