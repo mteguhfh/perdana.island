@@ -85,6 +85,9 @@ const PAGE_WIDTHS = {
 const OPEN_HEIGHT = 256;
 const HEADER_HEIGHT = 42;
 const TABBAR_HEIGHT = 46;
+const DRAG_THRESHOLD = 10;
+const EDGE_SNAP_DISTANCE = 44;
+const POSITION_MODES = ['top', 'bottom', 'left', 'right', 'free'];
 const PAGE_INSET = 28;
 const MEDIA_ART_SIZE = 58;
 const MEDIA_COPY_GAP = 22;
@@ -102,6 +105,27 @@ const PAGES = [
     {key: 'notifications', label: 'Notifications', icon: 'preferences-system-notifications-symbolic'},
     {key: 'settings', label: 'Settings', icon: 'preferences-system-symbolic'},
 ];
+const PAGE_KEYS = new Set(PAGES.map(page => page.key));
+
+function normalizeTabOrder(value) {
+    const order = [];
+    for (const key of Array.isArray(value) ? value : []) {
+        if (PAGE_KEYS.has(key) && !order.includes(key))
+            order.push(key);
+    }
+    for (const page of PAGES) {
+        if (!order.includes(page.key))
+            order.push(page.key);
+    }
+    return order;
+}
+
+function clampUnit(value, fallback = 0) {
+    const number = Number(value);
+    if (!Number.isFinite(number))
+        return fallback;
+    return Math.min(1, Math.max(0, number));
+}
 const THEMES = [
     {
         key: 'midnight',
@@ -372,6 +396,11 @@ export default class PerdanaIslandExtension extends Extension {
         this._pageBody = null;
         this._outgoingPageBodies = new Set();
         this._tabSwitching = false;
+        this._tabDrag = null;
+        this._tabDragSuppressUntil = 0;
+        this._islandDrag = null;
+        this._islandClickSuppressUntil = 0;
+        this._positionAnimating = false;
         this._mediaPositionLabel = null;
         this._mediaDurationLabel = null;
         this._progressTrack = null;
@@ -525,8 +554,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._shelfDirectory = GLib.build_filenamev([this._taskDirectory, 'shelf']);
         this._migrateLegacyData();
         this._preferences = this._loadPreferences();
-        if (!this._visiblePages().some(page => page.key === this._activePage))
-            this._activePage = this._visiblePages()[0]?.key || 'settings';
+        this._activePage = this._visiblePages()[0]?.key || 'settings';
         this._tasks = this._loadTasks();
         this._focusLog = this._loadFocusLog();
         this._prayerCache = this._loadPrayerCache();
@@ -643,6 +671,10 @@ export default class PerdanaIslandExtension extends Extension {
             greetingWelcomeShown: false,
             greetingLastSession: '',
             visiblePages,
+            tabOrder: normalizeTabOrder([]),
+            positionMode: 'top',
+            positionX: 0.5,
+            positionY: 0,
         };
         try {
             const stored = JSON.parse(this._readText(this._preferencesFile) || '{}');
@@ -703,6 +735,11 @@ export default class PerdanaIslandExtension extends Extension {
             defaults.greetingLastSession = typeof stored.greetingLastSession === 'string'
                 ? stored.greetingLastSession
                 : '';
+            defaults.tabOrder = normalizeTabOrder(stored.tabOrder);
+            defaults.positionMode = POSITION_MODES.includes(stored.positionMode)
+                ? stored.positionMode : 'top';
+            defaults.positionX = clampUnit(stored.positionX, 0.5);
+            defaults.positionY = clampUnit(stored.positionY, 0);
         } catch (_error) {
             // Corrupt or missing preferences fall back to the default appearance.
         }
@@ -719,8 +756,23 @@ export default class PerdanaIslandExtension extends Extension {
         }
     }
 
+    _orderedPages() {
+        const byKey = new Map(PAGES.map(page => [page.key, page]));
+        const pages = [];
+        for (const key of this._preferences?.tabOrder || []) {
+            const page = byKey.get(key);
+            if (page && !pages.includes(page))
+                pages.push(page);
+        }
+        for (const page of PAGES) {
+            if (!pages.includes(page))
+                pages.push(page);
+        }
+        return pages;
+    }
+
     _visiblePages() {
-        return PAGES.filter(page => page.key === 'settings'
+        return this._orderedPages().filter(page => page.key === 'settings'
             || this._preferences?.visiblePages?.[page.key] !== false);
     }
 
@@ -1046,6 +1098,10 @@ export default class PerdanaIslandExtension extends Extension {
     disable() {
         this._enabled = false;
         this._uiActorsAlive = false;
+        this._tabDrag = null;
+        this._islandDrag = null;
+        this._positionAnimating = false;
+        this._positionButtons = null;
         this._dropEmptyNotes();
         this._flushNotesSave();
         this._clearTimeout('_notesSaveSource');
@@ -1297,6 +1353,8 @@ export default class PerdanaIslandExtension extends Extension {
             accessible_name: 'Open Perdana Island',
         });
         this._compactButton.connect('clicked', () => {
+            if (GLib.get_monotonic_time() < this._islandClickSuppressUntil)
+                return;
             this._pinned = true;
             this._setExpanded(true);
         });
@@ -1472,8 +1530,14 @@ export default class PerdanaIslandExtension extends Extension {
             else
                 this._root.remove_style_class_name('perdana-island--resting-lyrics');
         }
+        const positionMode = this._preferences?.positionMode || 'top';
+        const earsVisible = positionMode === 'top' || positionMode === 'bottom';
         for (const [index, ear] of this._islandEars.entries()) {
-            ear.set_position(index === 0 ? -ISLAND_EAR_SIZE : width, 0);
+            ear.visible = earsVisible;
+            if (!earsVisible)
+                continue;
+            ear.set_position(index === 0 ? -ISLAND_EAR_SIZE : width,
+                positionMode === 'bottom' ? height - ISLAND_EAR_SIZE : 0);
             if (Math.round(ear.width) !== ISLAND_EAR_SIZE || Math.round(ear.height) !== ISLAND_EAR_SIZE)
                 ear.set_size(ISLAND_EAR_SIZE, ISLAND_EAR_SIZE);
         }
@@ -1659,6 +1723,10 @@ export default class PerdanaIslandExtension extends Extension {
             return;
         const cr = area.get_context();
         cr.scale(surfaceWidth / area.width, surfaceHeight / area.height);
+        if (this._preferences?.positionMode === 'bottom') {
+            cr.translate(0, ISLAND_EAR_SIZE);
+            cr.scale(1, -1);
+        }
         cr.newPath();
         if (isRight) {
             cr.moveTo(0, 0);
@@ -1695,15 +1763,24 @@ export default class PerdanaIslandExtension extends Extension {
         const radius = this._islandRadius(width, height);
         const theme = this._theme();
         const stops = this._preferences?.glass ? theme.glassFill : theme.fill;
+        const mode = this._preferences?.positionMode || 'top';
+        const topRadius = mode === 'top' ? 0 : radius;
+        const bottomRadius = mode === 'bottom' ? 0 : radius;
         const tracePath = () => {
             cr.newPath();
-            cr.moveTo(0, 0);
-            cr.lineTo(width, 0);
-            cr.lineTo(width, height - radius);
-            cr.arc(width - radius, height - radius, radius, 0, Math.PI / 2);
-            cr.lineTo(radius, height);
-            cr.arc(radius, height - radius, radius, Math.PI / 2, Math.PI);
-            cr.lineTo(0, 0);
+            cr.moveTo(topRadius, 0);
+            cr.lineTo(width - topRadius, 0);
+            if (topRadius > 0)
+                cr.arc(width - topRadius, topRadius, topRadius, -Math.PI / 2, 0);
+            cr.lineTo(width, height - bottomRadius);
+            if (bottomRadius > 0)
+                cr.arc(width - bottomRadius, height - bottomRadius, bottomRadius, 0, Math.PI / 2);
+            cr.lineTo(bottomRadius, height);
+            if (bottomRadius > 0)
+                cr.arc(bottomRadius, height - bottomRadius, bottomRadius, Math.PI / 2, Math.PI);
+            cr.lineTo(0, topRadius);
+            if (topRadius > 0)
+                cr.arc(topRadius, topRadius, topRadius, Math.PI, Math.PI * 1.5);
             cr.closePath();
         };
         tracePath();
@@ -1758,12 +1835,11 @@ export default class PerdanaIslandExtension extends Extension {
     _positionIsland() {
         if (!this._uiActorsAlive || !this._root || !Main.layoutManager.primaryMonitor)
             return;
-
-        const monitor = Main.layoutManager.primaryMonitor;
-        const width = this._root.width || this._root.get_preferred_width(-1)[1];
-        const x = monitor.x + (monitor.width - width) / 2;
-        if (this._root.x !== x || this._root.y !== monitor.y)
-            this._root.set_position(x, monitor.y);
+        if (this._islandDrag?.moved || this._positionAnimating)
+            return;
+        const target = this._islandPositionTarget();
+        if (Math.abs(this._root.x - target.x) > 0.5 || Math.abs(this._root.y - target.y) > 0.5)
+            this._root.set_position(target.x, target.y);
     }
 
     _restingLyricsPillWidth() {
@@ -1820,7 +1896,7 @@ export default class PerdanaIslandExtension extends Extension {
                 320,
                 () => {
                     this._hoverCloseSource = 0;
-                    if (!this._root?.hover)
+                    if (!this._root?.hover && !this._tabDrag?.moved && !this._islandDrag?.moved)
                         this._setExpanded(false);
                     return GLib.SOURCE_REMOVE;
                 }
@@ -1840,6 +1916,8 @@ export default class PerdanaIslandExtension extends Extension {
         if (this._userHidden) {
             this._cancelCompactTrackTextTransition();
             this._pinned = false;
+            this._tabDrag = null;
+            this._islandDrag = null;
             this._clearTimeout('_hoverOpenSource');
             this._clearTimeout('_hoverCloseSource');
             this._clearTimeout('_noticeDismissSource');
@@ -1884,7 +1962,7 @@ export default class PerdanaIslandExtension extends Extension {
     _setExpanded(expanded) {
         if (!this._enabled || !this._root || !this._panel)
             return;
-        if (expanded && this._userHidden)
+        if (expanded && (this._userHidden || this._islandDrag?.moved))
             return;
         if (this._expanded === expanded) {
             if (expanded && this._activePage === 'today')
@@ -1894,8 +1972,22 @@ export default class PerdanaIslandExtension extends Extension {
 
         if (!expanded && this._activePage === 'notes')
             this._leaveNotes();
+        if (expanded && this._pinned) {
+            // A click on the resting island opens the user's first tab, so
+            // dragging a page to the front turns it into the startup page.
+            const first = this._visiblePages()[0];
+            if (first && first.key !== this._activePage) {
+                if (this._activePage === 'notes')
+                    this._leaveNotes();
+                this._activePage = first.key;
+            }
+        }
         this._expanded = expanded;
         this._closing = !expanded;
+        if (!expanded) {
+            this._tabDrag = null;
+            this._islandDrag = null;
+        }
         if (expanded) {
             this._resetRestingEyes();
             this._cancelCompactTrackTextTransition();
@@ -1907,6 +1999,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._header.remove_all_transitions();
         this._compactButton.remove_all_transitions();
         this._root.remove_all_transitions();
+        this._positionAnimating = false;
         this._collapsedTargetSize = null;
 
         if (expanded) {
@@ -1919,6 +2012,7 @@ export default class PerdanaIslandExtension extends Extension {
             this._updateClockLabel();
             this._panel.show();
             this._renderPanel();
+            this._updateMediaTicker();
             this._panel.opacity = 0;
             this._root.set_size(this._collapsedWidth(), this._collapsedHeight());
             this._layoutIsland();
@@ -2140,7 +2234,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _updateRestingLift() {
-        if (!this._root || this._expanded || this._closing)
+        if (!this._root || this._expanded || this._closing || this._islandDrag?.moved)
             return;
         if (this._reducedMotion) {
             this._root.set_scale(1, 1);
@@ -2162,6 +2256,8 @@ export default class PerdanaIslandExtension extends Extension {
             return Clutter.EVENT_PROPAGATE;
         if (event.type() === Clutter.EventType.MOTION) {
             this._trackRestingEyes(event);
+            const [pointerX, pointerY] = event.get_coords();
+            this._updatePointerDrag(pointerX, pointerY);
         } else if (event.type() === Clutter.EventType.KEY_PRESS) {
             const key = event.get_key_symbol();
             if (this._expanded && key === Clutter.KEY_Escape) {
@@ -2174,16 +2270,313 @@ export default class PerdanaIslandExtension extends Extension {
                 this._stepPage(key === Clutter.KEY_Left ? -1 : 1);
                 return Clutter.EVENT_STOP;
             }
-        } else if (event.type() === Clutter.EventType.BUTTON_PRESS && this._expanded) {
+        } else if (event.type() === Clutter.EventType.BUTTON_PRESS) {
             const [pointerX, pointerY] = event.get_coords();
-            const [x, y] = this._root.get_transformed_position();
-            const [width, height] = this._root.get_transformed_size();
-            if (pointerX < x || pointerX > x + width || pointerY < y || pointerY > y + height) {
+            const inside = this._pointerInRoot(pointerX, pointerY);
+            if (this._expanded && !inside) {
                 this._pinned = false;
                 this._setExpanded(false);
+                return Clutter.EVENT_PROPAGATE;
             }
+            if (inside && event.get_button() === 1)
+                this._beginPointerDrag(pointerX, pointerY);
+        } else if (event.type() === Clutter.EventType.BUTTON_RELEASE) {
+            this._endPointerDrag();
         }
         return Clutter.EVENT_PROPAGATE;
+    }
+
+    _pointerInRoot(pointerX, pointerY) {
+        if (!this._root)
+            return false;
+        const [x, y] = this._root.get_transformed_position();
+        const [width, height] = this._root.get_transformed_size();
+        return pointerX >= x && pointerX <= x + width
+            && pointerY >= y && pointerY <= y + height;
+    }
+
+    _tabKeyAt(pointerX, pointerY) {
+        if (!this._tabBar)
+            return null;
+        const [tabX, tabY] = this._tabBar.get_transformed_position();
+        const [tabWidth, tabHeight] = this._tabBar.get_transformed_size();
+        if (pointerX < tabX || pointerX > tabX + tabWidth
+            || pointerY < tabY || pointerY > tabY + tabHeight)
+            return null;
+        for (const page of this._visiblePages()) {
+            const entry = this._pageButtons.get(page.key);
+            if (!entry?.slot.visible)
+                continue;
+            const [slotX, slotY] = entry.slot.get_transformed_position();
+            const [slotWidth, slotHeight] = entry.slot.get_transformed_size();
+            if (pointerX >= slotX && pointerX <= slotX + slotWidth
+                && pointerY >= slotY && pointerY <= slotY + slotHeight)
+                return page.key;
+        }
+        return null;
+    }
+
+    _beginPointerDrag(pointerX, pointerY) {
+        if (this._tabDrag || this._islandDrag || this._closing || this._systemNoticeActive
+            || this._userHidden || !this._root?.visible)
+            return;
+        if (this._expanded) {
+            const key = this._tabKeyAt(pointerX, pointerY);
+            if (key) {
+                const entry = this._pageButtons.get(key);
+                const [slotX] = entry.slot.get_transformed_position();
+                const [tabX] = this._tabBar.get_transformed_position();
+                for (const page of this._visiblePages())
+                    this._pageButtons.get(page.key)?.slot.remove_all_transitions();
+                this._tabDrag = {
+                    key,
+                    startX: pointerX,
+                    startY: pointerY,
+                    moved: false,
+                    grabOffset: pointerX - slotX,
+                    visualX: slotX - tabX,
+                    width: entry.slot.width,
+                };
+                this._tabBar.set_child_above_sibling(entry.slot, null);
+                if (!this._reducedMotion) {
+                    entry.slot.set_pivot_point(0.5, 0.5);
+                    entry.slot.set_scale(1.05, 1.05);
+                }
+                return;
+            }
+            const [, rootY] = this._root.get_transformed_position();
+            if (pointerY > rootY + HEADER_HEIGHT)
+                return;
+        }
+        this._clearTimeout('_hoverOpenSource');
+        this._islandDrag = {
+            startX: pointerX,
+            startY: pointerY,
+            rootX: this._root.x,
+            rootY: this._root.y,
+            moved: false,
+        };
+    }
+
+    _updatePointerDrag(pointerX, pointerY) {
+        if (this._tabDrag) {
+            const drag = this._tabDrag;
+            if (!drag.moved && Math.abs(pointerX - drag.startX) >= DRAG_THRESHOLD)
+                drag.moved = true;
+            if (drag.moved)
+                this._updateTabDrag(pointerX);
+            return;
+        }
+        const drag = this._islandDrag;
+        if (!drag)
+            return;
+        if (!drag.moved && Math.hypot(pointerX - drag.startX, pointerY - drag.startY) >= DRAG_THRESHOLD)
+            drag.moved = true;
+        if (!drag.moved)
+            return;
+        this._clearTimeout('_hoverOpenSource');
+        if (!this._reducedMotion) {
+            this._root.set_pivot_point(0.5, 0.5);
+            this._root.set_scale(1.01, 1.01);
+        }
+        this._islandClickSuppressUntil = GLib.get_monotonic_time() + 100_000;
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!monitor)
+            return;
+        const maxX = monitor.x + Math.max(0, monitor.width - this._root.width);
+        const maxY = monitor.y + Math.max(0, monitor.height - this._root.height);
+        this._root.set_position(
+            Math.max(monitor.x, Math.min(maxX, drag.rootX + pointerX - drag.startX)),
+            Math.max(monitor.y, Math.min(maxY, drag.rootY + pointerY - drag.startY))
+        );
+    }
+
+    _updateTabDrag(pointerX) {
+        const drag = this._tabDrag;
+        if (!drag?.moved)
+            return;
+        const [tabX] = this._tabBar.get_transformed_position();
+        const [tabWidth] = this._tabBar.get_transformed_size();
+        const localX = pointerX - tabX;
+        drag.visualX = Math.max(0, Math.min(tabWidth - drag.width,
+            localX - drag.grabOffset));
+        const pages = this._visiblePages();
+        const others = pages.filter(page => page.key !== drag.key);
+        let insertBefore = null;
+        for (const page of others) {
+            const entry = this._pageButtons.get(page.key);
+            const [slotX] = entry.slot.get_transformed_position();
+            if (localX < slotX - tabX + entry.slot.width / 2) {
+                insertBefore = page.key;
+                break;
+            }
+        }
+        const order = this._preferences.tabOrder.filter(key => key !== drag.key);
+        const index = insertBefore ? order.indexOf(insertBefore) : order.length;
+        order.splice(index < 0 ? order.length : index, 0, drag.key);
+        if (order.join('|') !== this._preferences.tabOrder.join('|')) {
+            this._preferences.tabOrder = order;
+            this._layoutTabs(this._expandedWidth());
+        }
+        this._tabDragSuppressUntil = GLib.get_monotonic_time() + 100_000;
+        const entry = this._pageButtons.get(drag.key);
+        if (entry) {
+            entry.slot.set_position(drag.visualX,
+                Math.round((TABBAR_HEIGHT - 30) / 2));
+        }
+    }
+
+    _endTabDrag() {
+        const drag = this._tabDrag;
+        this._tabDrag = null;
+        if (!drag)
+            return;
+        this._pageButtons.get(drag.key)?.slot.set_scale(1, 1);
+        for (const page of this._visiblePages())
+            this._pageButtons.get(page.key)?.slot.remove_all_transitions();
+        if (!drag.moved)
+            return;
+        this._preferences.tabOrder = normalizeTabOrder(this._preferences.tabOrder);
+        this._savePreferences();
+        this._tabDragSuppressUntil = GLib.get_monotonic_time() + 100_000;
+        this._layoutTabs(this._expandedWidth());
+        if (this._activePage === 'settings' && this._settingsSection === 'tabs')
+            this._renderPanel();
+    }
+
+    _endPointerDrag() {
+        if (this._tabDrag)
+            this._endTabDrag();
+        if (this._islandDrag)
+            this._endIslandDrag();
+    }
+
+    _endIslandDrag() {
+        const drag = this._islandDrag;
+        if (!drag)
+            return;
+        this._islandDrag = null;
+        if (!drag.moved)
+            return;
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!monitor)
+            return;
+        const width = this._root.width;
+        const height = this._root.height;
+        const distances = {
+            top: this._root.y - monitor.y,
+            bottom: monitor.y + monitor.height - (this._root.y + height),
+            left: this._root.x - monitor.x,
+            right: monitor.x + monitor.width - (this._root.x + width),
+        };
+        let mode = 'free';
+        let nearest = EDGE_SNAP_DISTANCE;
+        for (const edge of ['top', 'bottom', 'left', 'right']) {
+            if (distances[edge] <= nearest) {
+                nearest = distances[edge];
+                mode = edge;
+            }
+        }
+        const spanX = Math.max(1, monitor.width - width);
+        const spanY = Math.max(1, monitor.height - height);
+        this._preferences.positionX = clampUnit((this._root.x - monitor.x) / spanX, 0.5);
+        this._preferences.positionY = clampUnit((this._root.y - monitor.y) / spanY, 0);
+        this._preferences.positionMode = mode;
+        this._savePreferences();
+        this._clearTimeout('_hoverOpenSource');
+        this._islandClickSuppressUntil = GLib.get_monotonic_time() + 100_000;
+        this._root.set_scale(1, 1);
+        this._applyIslandPosition(true);
+        this._updatePositionButtons();
+        this._updateRestingLift();
+    }
+
+    _islandPositionTarget() {
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!monitor || !this._root)
+            return {x: 0, y: 0};
+        const width = this._root.width || this._root.get_preferred_width(-1)[1];
+        const height = this._root.height || this._root.get_preferred_height(-1)[1];
+        const mode = this._preferences?.positionMode || 'top';
+        const spanX = Math.max(0, monitor.width - width);
+        const spanY = Math.max(0, monitor.height - height);
+        const preferredX = monitor.x + Math.round(spanX * clampUnit(this._preferences?.positionX, 0.5));
+        const preferredY = monitor.y + Math.round(spanY * clampUnit(this._preferences?.positionY, 0));
+        let x = preferredX;
+        let y = preferredY;
+        if (mode === 'top')
+            y = monitor.y;
+        else if (mode === 'bottom')
+            y = monitor.y + monitor.height - height;
+        else if (mode === 'left')
+            x = monitor.x;
+        else if (mode === 'right')
+            x = monitor.x + monitor.width - width;
+        return {
+            x: Math.max(monitor.x, Math.min(monitor.x + spanX, x)),
+            y: Math.max(monitor.y, Math.min(monitor.y + spanY, y)),
+        };
+    }
+
+    _storeIslandPosition() {
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!monitor || !this._root)
+            return;
+        const spanX = Math.max(1, monitor.width - this._root.width);
+        const spanY = Math.max(1, monitor.height - this._root.height);
+        this._preferences.positionX = clampUnit((this._root.x - monitor.x) / spanX,
+            this._preferences.positionX);
+        this._preferences.positionY = clampUnit((this._root.y - monitor.y) / spanY,
+            this._preferences.positionY);
+    }
+
+    _applyIslandPosition(animate = false) {
+        if (!this._root)
+            return;
+        const target = this._islandPositionTarget();
+        this._surface?.queue_repaint();
+        for (const ear of this._islandEars)
+            ear.queue_repaint();
+        this._positionAnimating = Boolean(animate) && !this._reducedMotion;
+        this._layoutIsland();
+        if (this._positionAnimating) {
+            this._root.ease({
+                x: target.x,
+                y: target.y,
+                duration: 260,
+                mode: Clutter.AnimationMode.EASE_OUT_QUINT,
+                onComplete: () => {
+                    this._positionAnimating = false;
+                    this._positionIsland();
+                },
+            });
+        } else {
+            this._root.set_position(target.x, target.y);
+        }
+    }
+
+    _setPositionMode(mode) {
+        if (!POSITION_MODES.includes(mode) || this._preferences.positionMode === mode)
+            return;
+        this._storeIslandPosition();
+        this._preferences.positionMode = mode;
+        this._savePreferences();
+        this._applyIslandPosition(true);
+        this._updatePositionButtons();
+    }
+
+    _updatePositionButtons() {
+        if (!this._positionButtons)
+            return;
+        for (const [key, button] of this._positionButtons) {
+            if (key === this._preferences.positionMode) {
+                button.add_style_class_name('perdana-island__setting-option--active');
+            } else {
+                button.remove_style_class_name('perdana-island__setting-option--active');
+                button.set_style('');
+            }
+        }
+        this._applyAccentStyles();
     }
 
     _scheduleBlink() {
@@ -2230,7 +2623,11 @@ export default class PerdanaIslandExtension extends Extension {
                 style_class: 'perdana-button perdana-button--nav',
                 accessible_name: `${page.label} page`,
             });
-            button.connect('clicked', () => this._selectPage(page.key));
+            button.connect('clicked', () => {
+                if (GLib.get_monotonic_time() < this._tabDragSuppressUntil)
+                    return;
+                this._selectPage(page.key);
+            });
             attachButtonMotion(button, {hoverScale: 1.07, pressScale: 0.93});
             const pill = new St.Widget({
                 reactive: false,
@@ -2282,19 +2679,38 @@ export default class PerdanaIslandExtension extends Extension {
         }
         const widths = pages.map(page => page.key === this._activePage ? activeWidth : inactiveWidth);
         const totalWidth = widths.reduce((total, item) => total + item, 0) + gap * (pages.length - 1);
-        let x = Math.max(0, Math.round((width - totalWidth) / 2));
+        const visibleKeys = new Set(pages.map(page => page.key));
         for (const page of PAGES) {
+            const entry = this._pageButtons.get(page.key);
+            if (entry && !visibleKeys.has(page.key))
+                entry.slot.visible = false;
+        }
+        let x = Math.max(0, Math.round((width - totalWidth) / 2));
+        for (const [visibleIndex, page] of pages.entries()) {
             const entry = this._pageButtons.get(page.key);
             if (!entry)
                 continue;
-            const visibleIndex = pages.findIndex(visiblePage => visiblePage.key === page.key);
-            const shown = visibleIndex >= 0;
-            entry.slot.visible = shown;
-            if (!shown)
-                continue;
+            entry.slot.visible = true;
             const active = page.key === this._activePage;
             const buttonWidth = widths[visibleIndex];
-            entry.slot.set_position(x, Math.round((TABBAR_HEIGHT - buttonHeight) / 2));
+            const slotY = Math.round((TABBAR_HEIGHT - buttonHeight) / 2);
+            const drag = this._tabDrag;
+            if (drag?.moved && drag.key === page.key) {
+                const maxX = Math.max(0, width - buttonWidth);
+                const visualX = Math.max(0, Math.min(maxX, drag.visualX ?? x));
+                entry.slot.set_position(visualX, slotY);
+            } else if (drag?.moved && !this._reducedMotion) {
+                if (Math.abs(entry.slot.x - x) > 0.5) {
+                    entry.slot.remove_all_transitions();
+                    entry.slot.ease({
+                        x,
+                        duration: 170,
+                        mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                    });
+                }
+            } else {
+                entry.slot.set_position(x, slotY);
+            }
             entry.slot.set_size(buttonWidth, buttonHeight);
             entry.button.set_position(0, 0);
             entry.button.set_size(buttonWidth, buttonHeight);
@@ -4509,7 +4925,7 @@ export default class PerdanaIslandExtension extends Extension {
             place(body, button, 0, 31 + index * 32, navWidth, 27);
         });
 
-        const contentHeights = {island: 372, greeting: 402, reminders: 310, tabs: 158};
+        const contentHeights = {island: 474, greeting: 402, reminders: 310, tabs: 158};
         const contentHeight = contentHeights[this._settingsSection];
         const scroll = new St.ScrollView({
             overlay_scrollbars: false,
@@ -4612,6 +5028,8 @@ export default class PerdanaIslandExtension extends Extension {
             return entry;
         };
 
+        this._positionButtons = null;
+
         if (this._settingsSection === 'island') {
             heading('Theme', 0);
             const themeGap = 7;
@@ -4686,6 +5104,20 @@ export default class PerdanaIslandExtension extends Extension {
                 'preferences-desktop-screensaver-symbolic');
             place(content, makeLabel(this._keepAwakeStatusText(), 'perdana-island__settings-hint'),
                 halfWidth + columnGap, 337, halfWidth, 30);
+
+            heading('Position · drag to move', 386);
+            const positionGap = 6;
+            const positionWidth = (contentWidth - positionGap * 4) / 5;
+            this._positionButtons = new Map();
+            [['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'],
+                ['right', 'Right'], ['free', 'Free']].forEach(([key, label], index) => {
+                const button = settingButton(label, this._preferences.positionMode === key,
+                    index * (positionWidth + positionGap), 408, positionWidth,
+                    () => this._setPositionMode(key));
+                this._positionButtons.set(key, button);
+            });
+            place(content, makeLabel('Drag the resting pill or the header. Release near an edge to snap.',
+                'perdana-island__settings-hint'), 0, 444, contentWidth, 26);
         } else if (this._settingsSection === 'greeting') {
             heading('Session greeting', 0);
             settingButton(this._preferences.greetingEnabled ? 'Greeting on' : 'Greeting off',
@@ -4793,9 +5225,9 @@ export default class PerdanaIslandExtension extends Extension {
                 0, 280, contentWidth, 26);
         } else {
             heading('Visible tabs · Settings stays available', 0);
-            place(content, makeLabel('Hide or restore pages in the bottom tab bar.',
+            place(content, makeLabel('Drag tabs in the bar to reorder. The first tab opens with the island.',
                 'perdana-island__settings-hint'), 0, 20, contentWidth, 18);
-            const pages = PAGES.filter(page => page.key !== 'settings');
+            const pages = this._orderedPages().filter(page => page.key !== 'settings');
             const gap = 7;
             const itemWidth = (contentWidth - gap * 3) / 4;
             pages.forEach((page, index) => {
@@ -5973,7 +6405,15 @@ export default class PerdanaIslandExtension extends Extension {
         if ((playing || focusRunning) && this._root.hover && !this._expanded && !this._hoverOpenSource) {
             this._hoverOpenSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 160, () => {
                 this._hoverOpenSource = 0;
-                if (this._root?.hover && (this._isPlaying() || this._focusSource)) {
+                if (this._root?.hover && !this._islandDrag?.moved
+                    && (this._isPlaying() || this._focusSource)) {
+                    const page = this._focusSource ? 'focus'
+                        : (this._isPlaying()
+                            ? (this._preferences?.showRestingLyrics ? 'lyrics' : 'media')
+                            : 'focus');
+                    if (this._visiblePages().some(entry => entry.key === page))
+                        this._activePage = page;
+                    this._updateMediaTicker();
                     this._pinned = false;
                     this._setExpanded(true);
                 }

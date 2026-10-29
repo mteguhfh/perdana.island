@@ -6,6 +6,9 @@
 - When a media player or focus timer is active, hover over the island to open its page.
 - Select a page from the tab bar. With the island open, use **Left / Right** to switch pages.
 - Press **Escape** or click outside the panel to close it.
+- Drag a tab along the bar to reorder it. The first tab is what a click opens next time, so put Today, To-do, or any other page first.
+- Drag the resting pill or the header to move the island. Release near an edge to snap to the top, bottom, left, or right; release away from the edges to leave it free. The island keeps a horizontal layout on every edge.
+- Settings → Island → Position has the same Top, Bottom, Left, Right, and Free choices, and there is a hint under the tabs.
 
 The island, tabs, buttons, media progress, and focus ring animate on every change. The animation follows GNOME's **enable-animations** accessibility setting; when it is off, transitions are instant.
 

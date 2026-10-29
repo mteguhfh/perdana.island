@@ -22,6 +22,7 @@ These images show representative UI states with sample media, files, notificatio
 | --- | --- |
 | Resting island | ![Resting island with pointer eyes](assets/screenshots/resting.png) |
 | Resting lyrics | ![Optional synced lyric in the compact resting island](assets/screenshots/resting-lyrics.png) |
+| Bottom placement | ![Expanded island docked at the bottom edge with Today as the first tab](assets/screenshots/position-bottom.png) |
 | Music controls | ![Music page with cover art, playback controls, and track progress](assets/screenshots/music.png) |
 | Lyrics | ![Lyrics page with track details, transport controls, and the active synced line](assets/screenshots/lyrics.png) |
 | Focus timer | ![Focus page with presets and custom timer controls](assets/screenshots/focus.png) |
@@ -40,6 +41,7 @@ These images show representative UI states with sample media, files, notificatio
 ## Features
 
 - Resting eyes react to the pointer; settings choose between a clock on hover and eyes beside a visible clock. **Ctrl+Alt+X** hides or shows the island.
+- Tabs can be dragged into any order from the bar. The first tab is the page a click opens, so dragging Today or To-do to the front makes it the startup page. The order is saved in `preferences.json`.
 - Motion responds to every interaction: the resting island lifts under the pointer, buttons squash and settle with a short spring, the active tab pill fades between labels, pages slide and settle into place, media progress moves continuously, and the focus ring redraws ten times a second. All of it follows GNOME's **enable-animations** setting and becomes instant when animations are reduced.
 - Playing media and a running focus timer appear in compact form. Hovering opens the matching page.
 - Music uses MPRIS metadata and supports seeking, previous, play/pause, and next when the player exposes those controls.
@@ -53,6 +55,7 @@ These images show representative UI states with sample media, files, notificatio
 - Notes is a local scratchpad with a list on the left and a wrapping editor on the right. The first line becomes the row title, **Enter** starts a new line, **Escape** leaves the editor, and text saves to `notes.json` shortly after typing stops. Deleting a note leaves a seven second Undo row, and empty notes are dropped when the page is left.
 - Settings are split into **Island**, **Greeting**, **Reminders**, and **Tabs** side sections. They control themes, resting style, glass, accent color, notices, keep awake, greeting text and name, reminders, and visible page tabs.
 - Keep awake asks GNOME's session manager for idle and suspend inhibitors while it is on. The switch is under Island and the inhibitor is released as soon as it is turned off or the extension is disabled.
+- The island can sit on any edge: drag the resting pill or the expanded header, and release near the top, bottom, left, or right edge to snap; release elsewhere to keep it free. Settings → Island → Position offers the same choices. Position is stored as a ratio so it survives monitor size changes. The island stays horizontal on every edge.
 - Themes change the island material without touching the layout. Midnight is the plain black island, Aero adds a blue gloss band with a hairline border, Aqua uses rounded translucent graphite, Yaru uses an aubergine tint, and Graphite uses flat grey with small corners. The choice persists between sessions, and translucent themes hide the solid corner ears so the glass edge stays clean.
 - Water reminders can show a short notice every hour between 08:00 and 21:00 while the island is idle.
 - Prayer reminders fetch the five daily times from the Aladhan API for a city, cache them per day, and show a notice at each time. The calculation method can be switched between Kemenag, MWL, ISNA, and Umm al-Qura. Times are converted from the city timezone to the local clock.
@@ -160,3 +163,4 @@ The following merged pull requests add the contributions below:
 - [PR #10 — KDE feature parity](https://github.com/txtperdana/perdana.island/pull/10): brings daily agenda, water and prayer reminders, and the five themes to the Plasma widget, with KDE-native settings and notifications.
 - [PR #11 — Notes and keep awake](https://github.com/txtperdana/perdana.island/pull/11): adds a Notes page with a wrapping editor, autosave to `notes.json`, a seven second delete undo, empty-note cleanup, a tighter tab bar that fits the extra page, and a Keep awake switch that holds idle and suspend inhibitors and releases them when turned off or when the extension is disabled.
 - [PR #12 — Motion polish](https://github.com/txtperdana/perdana.island/pull/12): smooths opening and closing, page changes, tab switching, button press and release, media progress, notices, the Notes undo row, and the focus ring; adds hover lift and a sliding tab highlight; and stops restyling accents on every allocation frame.
+- [PR #13 — Draggable tabs and island placement](https://github.com/txtperdana/perdana.island/pull/13): reorders tabs by dragging, opens the first tab when the island is clicked, and lets the island snap to the top, bottom, left, or right edge or stay free, with the shape and ears following the chosen edge.
