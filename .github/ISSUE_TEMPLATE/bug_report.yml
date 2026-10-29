@@ -1,0 +1,80 @@
+name: Bug report
+description: Report a reproducible problem in the GNOME extension or KDE widget
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Remove passwords, tokens, clipboard contents, and other private data from logs and screenshots before submitting.
+  - type: dropdown
+    id: desktop
+    attributes:
+      label: Desktop
+      options:
+        - GNOME Shell
+        - KDE Plasma
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: project-version
+    attributes:
+      label: Perdana Island version
+      description: Shown in the release archive name or in the Settings page.
+      placeholder: v68
+    validations:
+      required: true
+  - type: input
+    id: distribution
+    attributes:
+      label: Distribution and version
+      placeholder: Fedora 44, Ubuntu 26.04, Arch Linux
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Session type
+      options:
+        - Wayland
+        - X11
+        - Not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Enable the extension
+        2. Open the Music page
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: For GNOME, run `journalctl -f -o cat /usr/bin/gnome-shell` and repeat the problem.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag images here when the problem is visible.
+    validations:
+      required: false

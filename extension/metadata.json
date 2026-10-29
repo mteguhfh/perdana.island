@@ -1,9 +1,9 @@
 {
   "uuid": "perdana.island@perdana",
   "name": "Perdana Island",
-  "description": "Media controls, LRCLIB synced lyrics, focus timer, file shelf, tasks, local clipboard history, notifications, and system status.",
-  "shell-version": ["50"],
+  "description": "Media, synced lyrics, focus timer, file shelf, tasks, clipboard, notifications, system status, and customizable session greetings.",
+  "shell-version": ["50", "51"],
   "settings-schema": "org.gnome.shell.extensions.perdana-island",
   "url": "https://github.com/txtperdana/perdana.island",
-  "version-name": "v68"
+  "version-name": "v70"
 }

@@ -12,7 +12,7 @@ The extension is for GNOME users who want quick media controls and short focus s
 2. Keep page content inside the rounded island as it changes between states.
 3. Make media and focus controls usable directly from the island.
 4. Store tasks and Shelf files locally and migrate previous user data safely.
-5. Run on GNOME Shell 50.x across Linux distributions that package that Shell version.
+5. Run on GNOME Shell 50.x and 51.x across Linux distributions that package those Shell versions.
 
 ## Scope
 
@@ -33,7 +33,7 @@ The extension is for GNOME users who want quick media controls and short focus s
 - **Clipboard:** observe clipboard owner changes while the extension is enabled; skip explicit sensitive MIME types and recognizable credential formats; allow recopy and delete; persist up to four unique entries locally between sessions. Normalize repeated text and URL forms to prevent duplicate rows.
 - **Today:** local date plus available processor, memory, disk, and battery metrics.
 - **Notifications:** recent desktop notifications, activation of the originating notification, and clear action.
-- **Settings:** resting style, glass appearance, accent color, system notices, and visible page tabs.
+- **Settings:** side sections for Island appearance, session greetings, reminders, and visible page tabs. Greeting settings choose Linux account/device/custom name, editable welcome and returning text with a `{name}` token, preview actions, and a once-per-login greeting.
 - **System notices:** charger connect/disconnect and output-volume changes; each notice dismisses automatically.
 
 ## Data and upgrade behavior
@@ -42,15 +42,17 @@ The extension is for GNOME users who want quick media controls and short focus s
 - Reconcile tasks from both the Perdana and legacy Pulo data directories, then synchronize task changes to both locations for compatibility across extension UUIDs.
 - Copy files under `shelf/` from the former `pulo-island` data directory only when the corresponding destination does not exist.
 - Store recent clipboard text in the Perdana data directory with user-only permissions.
+- Store greeting preferences and the last greeted desktop session in the local preferences file. A returning-session notice should show at most once per login session and should retry after the island is hidden or expanded.
 - Observe clipboard changes while the extension is enabled, including while collapsed or on another page. Keep clipboard history local with user-only file permissions; do not transmit it to LRCLIB or another third party. Mask email addresses and URLs in displayed previews and prevent duplicate entries.
 
 ## Platform and architecture
 
-- GNOME Shell 50.x, GJS, St, Clutter, Gio, GLib, Pango, Gvc, and GNOME Shell volume status integration.
+- GNOME Shell 50.x and 51.x, GJS, St, Clutter, Gio, GLib, Pango, Gvc, and GNOME Shell volume status integration.
 - MPRIS on the current user's session D-Bus for media controls.
 - Development runtime validated on Fedora Linux 44, GNOME Shell 50.6, Wayland.
+- Ubuntu 26.10, GNOME Shell 51.0, Wayland: headless smoke test covering enable/disable, every page, notices, and preferences.
 - Ubuntu 26.04 LTS and Debian testing (Forky) have GNOME Shell 50.x packages; runtime validation on those systems remains outstanding.
-- Non-GNOME desktops and GNOME Shell versions outside 50.x are out of scope for this release.
+- Non-GNOME desktops and GNOME Shell versions outside 50.x and 51.x are out of scope for this release.
 
 ## Constraints
 

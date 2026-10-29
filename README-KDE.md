@@ -11,11 +11,15 @@ This is the KDE Plasma 6 implementation of Perdana Island. It is a native Plasma
 
 - **Music** reads the active player's MPRIS metadata and provides playback, previous/next, and seeking controls.
 - **Focus** offers Focus, Short, Long, and custom timers in seconds or minutes. A finished session appears in the island and sends a Plasma notification.
-- **Tasks** supports adding, completing, and deleting tasks. The list is saved in the widget configuration.
-- **Clipboard** keeps up to four recent plain-text entries. Entries can be copied again or deleted. A small heuristic skips text that resembles common labeled secrets or private-key blocks; it is not a complete secret detector.
+- **Tasks** supports adding, completing, and deleting tasks. A task can carry a time and a priority (High, Med, Low), the list shows the next scheduled items, and the widget reports how many are scheduled and completed today. The list is saved in the widget configuration.
+- **Daily agenda** can send a Plasma notification at 08:00 with the first scheduled tasks and a recap at 17:00 with the number completed today. Both are toggled in the widget settings.
+- **Water reminder** can send a Plasma notification every hour between 08:00 and 21:00.
+- **Prayer times** can fetch the five daily times from the Aladhan API for a city, cache them for the day, and notify at each time. The calculation method can be Kemenag, MWL, ISNA, or Umm al-Qura.
+- **Themes** change the widget background, border, corners, and tab tint. Midnight, Aero, Aqua, Yaru, and Graphite are available in the settings.
+- **Clipboard** keeps up to four recent plain-text entries while the widget is running. Entries can be copied again or deleted. A small heuristic skips text that resembles common labeled secrets or private-key blocks; it is not a complete secret detector.
 - **Resting capsule** blinks and shows the clock when hovered.
 
-The widget uses a compact panel representation and an expanded Plasma popup. It does not create the GNOME version's separate, centered top-edge overlay. It also does not follow the global pointer, auto-open when media starts, or include Shelf, system metrics, battery notices, or volume notices. Those features are not part of this KDE port yet.
+The widget uses a compact panel representation and an expanded Plasma popup. It does not create the GNOME version's separate, centered top-edge overlay. It also does not follow the global pointer, auto-open when media starts, or include Shelf, system metrics, battery notices, or volume notices. Those features are not part of this KDE port yet. Focus guard and the GNOME screenshot button are also GNOME-only: the widget cannot read the active window without a KWin script, and it has no Shelf page to receive a capture.
 
 No KDE runtime screenshots are published yet. The screenshots in the main README show the GNOME extension and do not represent this widget.
 
@@ -89,13 +93,24 @@ The countdown continues if the popup is closed. While it is running, the compact
 
 ### Tasks
 
-Open **Tasks**, type into **Add a task**, then press **Enter** or click **Add**. Use the checkbox to mark a task complete or incomplete; completed tasks are crossed out. Use the delete button on a task row to remove it. The page shows the number completed and supports up to 50 tasks.
+Open **Tasks**, type into **Add a task**, optionally fill the time field (`HH:MM`), choose a priority with the Prio button, then press **Enter** or click **Add**. The header shows how many tasks are scheduled today, the next time, and how many are done today. Use the checkbox to mark a task complete or incomplete; completed tasks are crossed out. Use the delete button on a task row to remove it. The widget supports up to 50 tasks.
+
+Scheduled tasks show their time and priority on the row. A task whose date has passed is marked **Late** until it is completed.
+
+### Reminders and themes
+
+Right-click the widget, choose **Configure Perdana Island**, and use the settings page:
+
+- **Theme** selects the widget material.
+- **Morning briefing** and **Evening recap** control the daily agenda notifications.
+- **Drink water** sends a reminder every hour between 08:00 and 21:00.
+- **Prayer times** needs a city in the `City, Country` field and a calculation method. Times are cached for the current day, so the widget only calls the API once per day. The API returns times in the city's clock; pick a city in your own timezone.
 
 ### Clipboard
 
-Open **Clipboard** before copying text. While this page is open, newly copied plain text is added to the recent list; opening the page also checks the current plain-text clipboard. The widget keeps up to four entries, each of which can be copied again or deleted with its row buttons.
+Newly copied plain text is recorded while the widget is running, including when the popup is closed. Open **Clipboard** to review the recent list. The widget keeps up to four entries, each of which can be copied again or deleted with its row buttons.
 
-Clipboard history is limited to plain text up to 1,200 characters. A simple pattern check skips text that resembles labeled passwords, secrets, tokens, API keys, authorization values, or private-key blocks. This is only a precaution, not a complete secret detector, so do not use the history for sensitive information.
+Clipboard history is plain text truncated to 1,200 characters. Text tagged with KDE's password-manager hint is skipped. A simple pattern check also skips text that resembles labeled passwords, secrets, tokens, API keys, authorization values, or private-key blocks. This is only a precaution, not a complete secret detector, so do not use the history for sensitive information.
 
 ### Saved data
 

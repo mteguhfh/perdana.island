@@ -8,7 +8,23 @@ Item {
     id: page
     property var island
     property var tasks: []
+    property int draftPriority: 0
+    readonly property var priorityOrder: [null, "high", "medium", "low"]
+    readonly property var priorityLabels: ["Prio", "High", "Med", "Low"]
     readonly property int doneCount: tasks.filter(task => task.done).length
+    readonly property int agendaCount: tasks.filter(task =>
+        !task.done && task.due !== null && task.dueDate === todayKey()).length
+    readonly property int doneToday: tasks.filter(task =>
+        task.done && task.doneAt && island
+            && island.dateKey(new Date(task.doneAt)) === todayKey()).length
+
+    function todayKey() {
+        return island ? island.dateKey(new Date()) : Qt.formatDate(new Date(), "yyyy-MM-dd");
+    }
+
+    function formatClock(minutes) {
+        return island ? island.formatClock(minutes) : "";
+    }
 
     function reload() {
         if (island)
@@ -18,8 +34,23 @@ Item {
     function addTask() {
         if (!island)
             return;
-        island.addTask(taskInput.text);
+        const value = taskInput.text.trim();
+        if (!value)
+            return;
+        let due = null;
+        const timeText = timeInput.text.trim();
+        if (timeText) {
+            const match = timeText.match(/^(\d{1,2})[:.](\d{2})$/);
+            if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) {
+                timeInput.placeholderText = "HH:MM";
+                return;
+            }
+            due = Number(match[1]) * 60 + Number(match[2]);
+        }
+        island.addTask(value, due, priorityOrder[draftPriority]);
         taskInput.clear();
+        timeInput.clear();
+        draftPriority = 0;
     }
 
     Component.onCompleted: reload()
@@ -44,15 +75,16 @@ Item {
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: page.doneCount + "/" + page.tasks.length + " done"
+                text: page.agendaCount + " scheduled · " + page.doneToday + " done today"
                 color: "#92939a"
-                font.pixelSize: 11
+                font.pixelSize: 10
             }
         }
 
         RowLayout {
             Layout.fillWidth: true
             spacing: 7
+
             QQC2.TextField {
                 id: taskInput
                 Layout.fillWidth: true
@@ -67,6 +99,49 @@ Item {
                 }
                 onAccepted: page.addTask()
             }
+
+            QQC2.TextField {
+                id: timeInput
+                Layout.preferredWidth: 62
+                height: 30
+                placeholderText: "HH:MM"
+                color: "#f3f3f5"
+                font.pixelSize: 11
+                horizontalAlignment: TextInput.AlignHCenter
+                inputMethodHints: Qt.ImhDigitsOnly
+                background: Rectangle {
+                    radius: 10
+                    color: "#111215"
+                    border.color: timeInput.activeFocus ? "#ff9f43" : "#22242a"
+                }
+                onAccepted: page.addTask()
+            }
+
+            QQC2.Button {
+                id: priorityButton
+                Layout.preferredWidth: 52
+                Layout.preferredHeight: 30
+                text: page.priorityLabels[page.draftPriority]
+                font.pixelSize: 10
+                Accessible.name: "Task priority, " + page.priorityLabels[page.draftPriority]
+                background: Rectangle {
+                    radius: 10
+                    color: "#1a1c21"
+                    border.width: priorityButton.activeFocus ? 2 : 0
+                    border.color: "#f3f3f5"
+                }
+                contentItem: Text {
+                    text: priorityButton.text
+                    color: page.draftPriority === 1 ? "#ff8f8f"
+                        : page.draftPriority === 2 ? "#ffd479"
+                            : page.draftPriority === 3 ? "#8fd6ff" : "#c6c9d1"
+                    font: priorityButton.font
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: page.draftPriority = (page.draftPriority + 1) % page.priorityOrder.length
+            }
+
             Island.PillButton {
                 id: addButton
                 text: "Add"
@@ -97,7 +172,7 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: 9
                     anchors.rightMargin: 4
-                    spacing: 8
+                    spacing: 7
 
                     QQC2.CheckBox {
                         id: taskCheck
@@ -140,6 +215,23 @@ Item {
                         font.pixelSize: 12
                         font.strikeout: modelData.done
                         elide: Text.ElideRight
+                    }
+
+                    Text {
+                        visible: modelData.due !== null && !modelData.done
+                        text: (modelData.dueDate < page.todayKey() ? "Late " : "")
+                            + page.formatClock(modelData.due)
+                        color: modelData.dueDate < page.todayKey() ? "#ffb86b" : "#b9bcc4"
+                        font.pixelSize: 10
+                    }
+
+                    Text {
+                        visible: modelData.priority !== null && !modelData.done
+                        text: island.taskPriorityLabels[modelData.priority] || ""
+                        color: modelData.priority === "high" ? "#ff8f8f"
+                            : modelData.priority === "medium" ? "#ffd479" : "#8fd6ff"
+                        font.pixelSize: 10
+                        font.weight: Font.DemiBold
                     }
 
                     QQC2.ToolButton {
