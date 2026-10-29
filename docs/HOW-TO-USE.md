@@ -7,6 +7,8 @@
 - Select a page from the tab bar. With the island open, use **Left / Right** to switch pages.
 - Press **Escape** or click outside the panel to close it.
 
+The island, tabs, buttons, media progress, and focus ring animate on every change. The animation follows GNOME's **enable-animations** accessibility setting; when it is off, transitions are instant.
+
 ## Music
 
 The Music page reads active players through MPRIS. It can show the title, artist, artwork, elapsed and total time, and playback controls. Click the progress bar to seek. Previous, Play/Pause, and Next are available when the active player exposes those capabilities. Some browsers only publish media after playback has started.

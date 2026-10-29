@@ -263,6 +263,7 @@ function makeIconButton(iconName, accessibleName, callback, styleClass = '') {
         accessible_name: accessibleName,
     });
     button.connect('clicked', callback);
+    attachButtonMotion(button, {hoverScale: 1.07, pressScale: 0.93});
     return button;
 }
 
@@ -276,6 +277,7 @@ function makeTextButton(label, accessibleName, callback, styleClass = '') {
         accessible_name: accessibleName,
     });
     button.connect('clicked', callback);
+    attachButtonMotion(button);
     return button;
 }
 
@@ -284,6 +286,49 @@ function place(parent, actor, x, y, width, height) {
     actor.set_size(width, height);
     parent.add_child(actor);
     return actor;
+}
+
+function animationsEnabled() {
+    try {
+        return Boolean(St.Settings.get().enable_animations);
+    } catch (_error) {
+        return true;
+    }
+}
+
+function attachButtonMotion(button, {hoverScale = 1.035, pressScale = 0.955} = {}) {
+    if (!button || button._perdanaMotionAttached)
+        return button;
+    button._perdanaMotionAttached = true;
+    const scaleTo = (value, duration, mode) => {
+        button.remove_all_transitions();
+        if (!animationsEnabled()) {
+            button.set_scale(value, value);
+            return;
+        }
+        button.ease({
+            scale_x: value,
+            scale_y: value,
+            duration,
+            mode,
+        });
+    };
+    button.connect('notify::hover', () => {
+        if (button._perdanaPressed)
+            return;
+        scaleTo(button.hover ? hoverScale : 1, 180,
+            Clutter.AnimationMode.EASE_OUT_CUBIC);
+    });
+    button.connect('notify::pressed', () => {
+        button._perdanaPressed = Boolean(button.pressed);
+        if (button.pressed) {
+            scaleTo(pressScale, 90, Clutter.AnimationMode.EASE_OUT_QUAD);
+        } else {
+            scaleTo(button.hover ? hoverScale : 1, 240,
+                Clutter.AnimationMode.EASE_OUT_BACK);
+        }
+    });
+    return button;
 }
 
 function makeActionButton(iconName, label, accessibleName, callback, styleClass = '') {
@@ -303,6 +348,7 @@ function makeActionButton(iconName, label, accessibleName, callback, styleClass 
     button.connect('clicked', callback);
     button._perdanaActionIcon = icon;
     button._perdanaActionLabel = text;
+    attachButtonMotion(button);
     return button;
 }
 
@@ -808,7 +854,8 @@ export default class PerdanaIslandExtension extends Extension {
             ['perdana-island__clipboard-notice', `color: ${color};`],
             ['perdana-island__today-weekday', `color: ${color};`],
             ['perdana-island__calendar-day--today', `color: ${color};`],
-            ['perdana-button--nav-active', `background-color: ${soft}; color: #ffffff;`],
+            ['perdana-button--nav-active', 'color: #ffffff;'],
+            ['perdana-island__tab-pill', `background-color: ${soft};`],
             ['perdana-button--segment-active', `background-color: ${soft}; color: #ffffff;`],
             ['perdana-button--lyrics-resting-active', `background-color: ${soft}; color: #ffffff;`],
             ['perdana-island__setting-option--active', `background-color: ${soft}; color: #ffffff;`],
@@ -1570,7 +1617,7 @@ export default class PerdanaIslandExtension extends Extension {
         bar.ease({
             scale_y: target,
             duration: this._motionDuration(duration),
-            mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
+            mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
             onComplete: () => {
                 if (!this._enabled || !equalizer._perdanaAnimating)
                     return;
@@ -1782,6 +1829,7 @@ export default class PerdanaIslandExtension extends Extension {
             this._root.remove_style_class_name('perdana-island--hot');
             this._updateCollapsedLabel();
         }
+        this._updateRestingLift();
     }
 
     _toggleIslandVisibility() {
@@ -1805,6 +1853,8 @@ export default class PerdanaIslandExtension extends Extension {
                 this._panel.remove_all_transitions();
                 this._compactButton.remove_all_transitions();
                 this._root.remove_style_class_name('perdana-island--expanded');
+                this._root.set_pivot_point(0.5, 0.5);
+                this._root.set_scale(1, 1);
                 this._panel.hide();
                 this._panel.opacity = 255;
                 this._header.hide();
@@ -1873,12 +1923,22 @@ export default class PerdanaIslandExtension extends Extension {
             this._root.set_size(this._collapsedWidth(), this._collapsedHeight());
             this._layoutIsland();
             this._positionIsland();
+            const startScale = this._reducedMotion
+                ? 1
+                : (this._root.hover ? Math.max(1, this._root.scale_x) : 0.99);
+            this._root.set_scale(startScale, startScale);
             this._root.ease({
                 width: this._expandedWidth(),
                 height: this._expandedHeight(),
-                duration: this._motionDuration(500),
-                mode: this._reducedMotion ? Clutter.AnimationMode.LINEAR : Clutter.AnimationMode.EASE_OUT_CUBIC,
+                scale_x: 1,
+                scale_y: 1,
+                duration: this._motionDuration(460),
+                mode: this._reducedMotion ? Clutter.AnimationMode.LINEAR : Clutter.AnimationMode.EASE_OUT_QUINT,
                 onComplete: () => {
+                    if (!this._root)
+                        return;
+                    this._root.set_pivot_point(0.5, 0.5);
+                    this._root.set_scale(1, 1);
                     this._layoutIsland();
                 },
             });
@@ -1893,14 +1953,14 @@ export default class PerdanaIslandExtension extends Extension {
             });
             this._header.ease({
                 opacity: 255,
-                duration: this._motionDuration(150),
-                delay: this._motionDuration(365),
+                duration: this._motionDuration(190),
+                delay: this._motionDuration(110),
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
             this._panel.ease({
                 opacity: 255,
-                duration: this._motionDuration(150),
-                delay: this._motionDuration(365),
+                duration: this._motionDuration(220),
+                delay: this._motionDuration(130),
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
             if (this._activePage === 'today')
@@ -1913,18 +1973,18 @@ export default class PerdanaIslandExtension extends Extension {
             this._compactButton.opacity = 0;
             this._compactButton.ease({
                 opacity: 255,
-                duration: this._motionDuration(140),
-                delay: this._motionDuration(360),
+                duration: this._motionDuration(180),
+                delay: this._motionDuration(230),
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
             this._header.ease({
                 opacity: 0,
-                duration: this._motionDuration(125),
+                duration: this._motionDuration(130),
                 mode: Clutter.AnimationMode.EASE_IN_QUAD,
             });
             this._panel.ease({
                 opacity: 0,
-                duration: this._motionDuration(125),
+                duration: this._motionDuration(130),
                 mode: Clutter.AnimationMode.EASE_IN_QUAD,
             });
             const collapsedWidth = this._collapsedWidth();
@@ -1934,8 +1994,9 @@ export default class PerdanaIslandExtension extends Extension {
             this._root.ease({
                 width: collapsedWidth,
                 height: collapsedHeight,
-                duration: this._motionDuration(500),
-                delay: 70,
+                scale_x: this._reducedMotion ? 1 : 0.99,
+                scale_y: this._reducedMotion ? 1 : 0.99,
+                duration: this._motionDuration(380),
                 mode: this._reducedMotion ? Clutter.AnimationMode.LINEAR : Clutter.AnimationMode.EASE_IN_CUBIC,
                 onComplete: () => {
                     if (this._expanded || !this._enabled || !this._root
@@ -1948,12 +2009,15 @@ export default class PerdanaIslandExtension extends Extension {
                     this._compactButton.opacity = 255;
                     this._root.remove_style_class_name('perdana-island--expanded');
                     this._closing = false;
+                    this._root.set_pivot_point(0.5, 0.5);
+                    this._root.set_scale(1, 1);
                     this._root.set_size(this._collapsedWidth(), this._collapsedHeight());
                     this._layoutIsland();
                     this._positionIsland();
                     this._compactVisualState = null;
                     this._updateHeaderClock();
                     this._updateCollapsedLabel();
+                    this._updateRestingLift();
                     this._queueSessionGreeting();
                     if (!this._isPlaying() && !this._focusSource)
                         this._scheduleBlink();
@@ -2017,8 +2081,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._root.ease({
                 width: this._expandedWidth(),
                 height: this._expandedHeight(),
-                duration: this._motionDuration(320),
-                mode: this._reducedMotion ? Clutter.AnimationMode.LINEAR : Clutter.AnimationMode.EASE_OUT_CUBIC,
+                duration: this._motionDuration(380),
+                mode: this._reducedMotion ? Clutter.AnimationMode.LINEAR : Clutter.AnimationMode.EASE_OUT_QUINT,
                 onComplete: () => this._layoutIsland(),
             });
             this._layoutIsland();
@@ -2071,6 +2135,24 @@ export default class PerdanaIslandExtension extends Extension {
             translation_x: 0,
             translation_y: 0,
             duration: this._motionDuration(180),
+            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+        });
+    }
+
+    _updateRestingLift() {
+        if (!this._root || this._expanded || this._closing)
+            return;
+        if (this._reducedMotion) {
+            this._root.set_scale(1, 1);
+            return;
+        }
+        const hovered = Boolean(this._root.hover) && !this._systemNoticeActive;
+        const target = hovered ? 1.014 : 1;
+        this._root.set_pivot_point(0.5, 0.5);
+        this._root.ease({
+            scale_x: target,
+            scale_y: target,
+            duration: 240,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
         });
     }
@@ -2149,11 +2231,27 @@ export default class PerdanaIslandExtension extends Extension {
                 accessible_name: `${page.label} page`,
             });
             button.connect('clicked', () => this._selectPage(page.key));
-            button.visible = page.key === 'settings'
+            attachButtonMotion(button, {hoverScale: 1.07, pressScale: 0.93});
+            const pill = new St.Widget({
+                reactive: false,
+                style_class: 'perdana-island__tab-pill',
+            });
+            pill.visible = false;
+            pill.opacity = 0;
+            pill.set_pivot_point(0.5, 0.5);
+            const slot = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                reactive: false,
+                style_class: 'perdana-island__tab-slot',
+            });
+            slot.add_child(pill);
+            slot.add_child(button);
+            slot.visible = page.key === 'settings'
                 || this._preferences.visiblePages[page.key] !== false;
-            this._tabBar.add_child(button);
-            this._pageButtons.set(page.key, {button, icon, label, selected: undefined});
+            this._tabBar.add_child(slot);
+            this._pageButtons.set(page.key, {slot, pill, button, icon, label, selected: undefined});
         }
+        this._tabsPainted = false;
         this._layoutTabs(this._expandedWidth());
     }
 
@@ -2191,28 +2289,94 @@ export default class PerdanaIslandExtension extends Extension {
                 continue;
             const visibleIndex = pages.findIndex(visiblePage => visiblePage.key === page.key);
             const shown = visibleIndex >= 0;
-            entry.button.visible = shown;
+            entry.slot.visible = shown;
             if (!shown)
                 continue;
             const active = page.key === this._activePage;
             const buttonWidth = widths[visibleIndex];
-            entry.button.set_position(x, Math.round((TABBAR_HEIGHT - buttonHeight) / 2));
+            entry.slot.set_position(x, Math.round((TABBAR_HEIGHT - buttonHeight) / 2));
+            entry.slot.set_size(buttonWidth, buttonHeight);
+            entry.button.set_position(0, 0);
             entry.button.set_size(buttonWidth, buttonHeight);
+            entry.pill.set_position(0, 0);
+            entry.pill.set_size(buttonWidth, buttonHeight);
             entry.button.accessible_name = active ? `${page.label}, selected` : page.label;
             if (entry.selected !== active) {
+                const wasSelected = entry.selected === true;
                 entry.selected = active;
                 if (active) {
                     entry.button.add_style_class_name('perdana-button--nav-active');
+                    entry.label.visible = true;
+                    entry.pill.visible = true;
+                    entry.label.remove_all_transitions();
+                    entry.pill.remove_all_transitions();
+                    entry.icon.remove_all_transitions();
+                    if (!this._tabsPainted || this._reducedMotion) {
+                        entry.label.opacity = 255;
+                        entry.pill.opacity = 255;
+                        entry.pill.set_scale(1, 1);
+                    } else {
+                        entry.label.opacity = 0;
+                        entry.label.ease({
+                            opacity: 255,
+                            duration: 190,
+                            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                        });
+                        entry.pill.opacity = 0;
+                        entry.pill.set_scale(0.9, 0.9);
+                        entry.pill.ease({
+                            opacity: 255,
+                            scale_x: 1,
+                            scale_y: 1,
+                            duration: 280,
+                            mode: Clutter.AnimationMode.EASE_OUT_QUINT,
+                        });
+                        entry.icon.set_pivot_point(0.5, 0.5);
+                        entry.icon.set_scale(0.86, 0.86);
+                        entry.icon.ease({
+                            scale_x: 1,
+                            scale_y: 1,
+                            duration: 300,
+                            mode: Clutter.AnimationMode.EASE_OUT_BACK,
+                        });
+                    }
                 } else {
                     entry.button.remove_style_class_name('perdana-button--nav-active');
                     entry.button.set_style('');
+                    if (!this._tabsPainted || this._reducedMotion) {
+                        entry.label.remove_all_transitions();
+                        entry.pill.remove_all_transitions();
+                        entry.label.visible = false;
+                        entry.label.opacity = 0;
+                        entry.pill.visible = false;
+                        entry.pill.opacity = 0;
+                    } else if (wasSelected) {
+                        entry.label.remove_all_transitions();
+                        entry.pill.remove_all_transitions();
+                        entry.label.ease({
+                            opacity: 0,
+                            duration: 130,
+                            mode: Clutter.AnimationMode.EASE_IN_QUAD,
+                            onComplete: () => {
+                                if (!entry.selected)
+                                    entry.label.visible = false;
+                            },
+                        });
+                        entry.pill.ease({
+                            opacity: 0,
+                            duration: 170,
+                            mode: Clutter.AnimationMode.EASE_IN_QUAD,
+                            onComplete: () => {
+                                if (!entry.selected)
+                                    entry.pill.visible = false;
+                            },
+                        });
+                    }
                 }
-                entry.label.visible = active;
             }
-            entry.label.set_opacity(active ? 255 : 0);
             x += buttonWidth + gap;
         }
-        this._applyAccentStyles();
+        this._tabsPainted = true;
     }
 
     _renderPanel(animate = false, direction = 1) {
@@ -2276,6 +2440,10 @@ export default class PerdanaIslandExtension extends Extension {
         });
         body.set_position(0, 0);
         body.set_size(this._pageWidth(), this._bodyHeight());
+        // Attach the page before filling it so measuring the wrapped note
+        // editor can resolve its theme node and preferred height.
+        this._pageBody = body;
+        this._pageViewport.add_child(body);
         if (this._activePage === 'media')
             this._renderMediaPage(body);
         else if (this._activePage === 'lyrics')
@@ -2296,8 +2464,6 @@ export default class PerdanaIslandExtension extends Extension {
             this._renderRemindersPage(body);
         else
             this._renderInfoPage(body, this._activePage);
-        this._pageBody = body;
-        this._pageViewport.add_child(body);
         this._layoutPanel(this._content?.width || CONTENT_WIDTH);
         this._setEqualizerPlaying(
             this._mediaEqualizer,
@@ -2305,27 +2471,42 @@ export default class PerdanaIslandExtension extends Extension {
         );
         if (previous && previous !== body) {
             previous.remove_all_transitions();
-            if (animate && !this._reducedMotion) {
-                const distance = Math.min(30, Math.round(this._pageWidth() * 0.06));
+            if (this._reducedMotion) {
+                previous.destroy();
+                body.opacity = 255;
+            } else if (animate) {
+                const distance = Math.min(18, Math.round(this._pageWidth() * 0.03));
                 this._outgoingPageBodies.add(previous);
                 previous.ease({
-                    translation_x: -direction * distance,
+                    translation_x: -direction * distance * 0.6,
                     opacity: 0,
-                    duration: 240,
-                    mode: Clutter.AnimationMode.EASE_IN_CUBIC,
+                    duration: 190,
+                    mode: Clutter.AnimationMode.EASE_IN_QUAD,
                     onComplete: () => {
                         this._outgoingPageBodies.delete(previous);
                         if (previous.get_parent())
                             previous.destroy();
                     },
                 });
+                body.set_pivot_point(0.5, 0.5);
                 body.translation_x = direction * distance;
+                body.set_scale(0.985, 0.985);
                 body.opacity = 0;
                 body.ease({
                     translation_x: 0,
                     opacity: 255,
-                    duration: 280,
-                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                    scale_x: 1,
+                    scale_y: 1,
+                    duration: 300,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUINT,
+                });
+            } else if (this._expanded) {
+                previous.destroy();
+                body.opacity = 0;
+                body.ease({
+                    opacity: 255,
+                    duration: 140,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
                 });
             } else {
                 previous.destroy();
@@ -2970,7 +3151,7 @@ export default class PerdanaIslandExtension extends Extension {
         const targetY = activeIndex < 0
             ? (viewportHeight - 24) / 2
             : viewportHeight / 2 - offsets[activeIndex] - heights[activeIndex] / 2;
-        const duration = this._reducedMotion ? 160 : 560;
+        const duration = this._reducedMotion ? 160 : 620;
         if (this._reducedMotion) {
             const rail = this._lyricsRail;
             rail.remove_all_transitions();
@@ -2994,7 +3175,7 @@ export default class PerdanaIslandExtension extends Extension {
                 translation_y: targetY,
                 opacity: displayGap ? 112 : 255,
                 duration,
-                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                mode: Clutter.AnimationMode.EASE_OUT_QUINT,
             });
         }
         this._lyricsWaitLabel.ease({
@@ -3047,6 +3228,7 @@ export default class PerdanaIslandExtension extends Extension {
             style_class: 'perdana-island__progress-track',
         });
         this._progressFill = new St.Widget({style_class: 'perdana-island__progress-fill'});
+        this._progressFill._perdanaSmoothReady = false;
         this._progressLine.add_child(this._progressFill);
         this._progressFill.set_position(0, 0);
         this._progressFill.set_size(1, 4);
@@ -3179,6 +3361,7 @@ export default class PerdanaIslandExtension extends Extension {
             ? Math.max(0, Math.ceil(this._focusDeadline - GLib.get_monotonic_time() / MICROSECONDS_PER_SECOND))
             : this._focusRemaining;
         this._focusLabel = makeLabel(formatTime(remaining), 'perdana-island__timer');
+        this._focusLabel.set_pivot_point(0.5, 0.5);
         this._focusStatusLabel = makeLabel(
             remaining === 0 ? 'Complete' : this._focusModeLabel(),
             'perdana-island__timer-subtitle'
@@ -3256,6 +3439,7 @@ export default class PerdanaIslandExtension extends Extension {
             this._focusCustomUnit = this._focusCustomUnit === 'seconds' ? 'minutes' : 'seconds';
             this._focusCustomUnitLabel.text = this._focusCustomUnit;
         });
+        attachButtonMotion(this._focusCustomUnitButton, {hoverScale: 1.03});
         place(body, this._focusCustomUnitButton, controlsX + entryWidth + 10, 64, unitWidth, 34);
         place(body, makeTextButton(
             'Apply',
@@ -3455,6 +3639,7 @@ export default class PerdanaIslandExtension extends Extension {
                 accessible_name: task.done ? 'Uncheck ' + task.text : 'Complete ' + task.text,
             });
             checkbox.connect('clicked', () => this._toggleTask(task.id));
+            attachButtonMotion(checkbox, {hoverScale: 1.09, pressScale: 0.91});
             row.add_child(checkbox);
             const label = makeLabel(
                 task.text,
@@ -3611,6 +3796,7 @@ export default class PerdanaIslandExtension extends Extension {
                     accessible_name: `Note: ${this._noteTitle(note)}`,
                 });
                 button.connect('clicked', () => this._selectNote(note.id));
+                attachButtonMotion(button, {hoverScale: 1.012, pressScale: 0.985});
                 button.set_size(listContentWidth, rowHeight);
                 this._notesRowLabels.set(note.id, {title, preview, date});
                 list.add_child(button);
@@ -3628,6 +3814,16 @@ export default class PerdanaIslandExtension extends Extension {
                 () => this._undoNoteDelete(), 'perdana-island__notes-undo-button'));
             place(body, banner, 0, height - 28, listWidth, 24);
             this._notesUndoBanner = banner;
+            if (!this._reducedMotion) {
+                banner.opacity = 0;
+                banner.translation_y = 6;
+                banner.ease({
+                    opacity: 255,
+                    translation_y: 0,
+                    duration: 240,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUINT,
+                });
+            }
         }
 
         const note = this._notes.find(item => item.id === this._notesSelectedId);
@@ -3920,6 +4116,7 @@ export default class PerdanaIslandExtension extends Extension {
             });
             button.set_size(width, 28);
             button.connect('clicked', () => this._setPreference('shelfView', key));
+            attachButtonMotion(button, {hoverScale: 1.03});
             viewGroup.add_child(button);
         }
         place(card, viewGroup, viewX, 8, viewWidth, 30);
@@ -4066,6 +4263,7 @@ export default class PerdanaIslandExtension extends Extension {
             button.set_child(row);
         }
         button.connect('clicked', () => this._openShelfFile(item));
+        attachButtonMotion(button, {hoverScale: 1.02, pressScale: 0.97});
         return button;
     }
 
@@ -4105,6 +4303,7 @@ export default class PerdanaIslandExtension extends Extension {
             button.connect('clicked', () => {
                 St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, item);
             });
+            attachButtonMotion(button, {hoverScale: 1.015, pressScale: 0.98});
             row.add_child(button);
             row.add_child(makeIconButton(
                 'user-trash-symbolic',
@@ -4251,6 +4450,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._setExpanded(false);
             });
             button.set_size(cardWidth, 38);
+            attachButtonMotion(button, {hoverScale: 1.015, pressScale: 0.98});
             list.add_child(button);
         });
         const scroll = new St.ScrollView({
@@ -4305,6 +4505,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._settingsSection = key;
                 this._renderPanel();
             });
+            attachButtonMotion(button, {hoverScale: 1.04, pressScale: 0.95});
             place(body, button, 0, 31 + index * 32, navWidth, 27);
         });
 
@@ -4364,6 +4565,7 @@ export default class PerdanaIslandExtension extends Extension {
                 accessible_name: label,
             });
             button.connect('clicked', callback);
+            attachButtonMotion(button, {hoverScale: 1.02, pressScale: 0.97});
             place(content, button, x, y, width, 30);
             return button;
         };
@@ -4394,6 +4596,7 @@ export default class PerdanaIslandExtension extends Extension {
                 accessible_name: `${theme.label} theme`,
             });
             button.connect('clicked', () => this._setPreference('theme', theme.key));
+            attachButtonMotion(button, {hoverScale: 1.02, pressScale: 0.97});
             place(content, button, x, y, width, 30);
         };
         const addEntry = (name, value, x, y, width, onChanged, hintText = '') => {
@@ -4452,6 +4655,7 @@ export default class PerdanaIslandExtension extends Extension {
                 });
                 swatch.set_style(`background-color: ${color}; border: 2px solid ${selected ? '#ffffff' : 'rgba(255,255,255,0.18)'}; border-radius: 10px; padding: 0;`);
                 swatch.connect('clicked', () => this._setPreference('accentColor', color));
+                attachButtonMotion(swatch, {hoverScale: 1.1, pressScale: 0.9});
                 place(content, swatch, index * 40, 232, 34, 32);
             });
             const colorEntry = new St.Entry({
@@ -4665,6 +4869,7 @@ export default class PerdanaIslandExtension extends Extension {
             );
             this._clearTimeout('_focusSource');
             this._focusDeadline = 0;
+            this._focusTickSecond = 0;
             this._resetFocusGuard();
             this._renderPanel();
             this._updateCollapsedLabel();
@@ -4676,8 +4881,9 @@ export default class PerdanaIslandExtension extends Extension {
         }
         this._focusWasStarted = true;
         this._resetFocusGuard();
+        this._focusTickSecond = 0;
         this._focusDeadline = GLib.get_monotonic_time() / MICROSECONDS_PER_SECOND + this._focusRemaining;
-        this._focusSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
+        this._focusSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
             const remaining = Math.ceil(this._focusDeadline - GLib.get_monotonic_time() / MICROSECONDS_PER_SECOND);
             if (remaining <= 0) {
                 const completedMode = this._focusMode;
@@ -4696,10 +4902,19 @@ export default class PerdanaIslandExtension extends Extension {
                 this._showFocusCompleteNotice(completedMode, completedDuration);
                 return GLib.SOURCE_REMOVE;
             }
-            this._updateFocusPage(remaining);
-            this._updateCollapsedLabel();
-            if (remaining % 15 === 0)
-                this._trackFocusDistraction();
+            // Repaint the ring ten times a second so the arc grows smoothly,
+            // but only touch the text and the compact label when the second
+            // actually changes.
+            this._focusRing?.queue_repaint();
+            if (remaining !== this._focusTickSecond) {
+                this._focusTickSecond = remaining;
+                this._updateFocusPage(remaining);
+                this._updateCollapsedLabel();
+                if (remaining % 15 === 0)
+                    this._trackFocusDistraction();
+                if (remaining <= 5)
+                    this._pulseFocusLabel();
+            }
             return GLib.SOURCE_CONTINUE;
         });
         this._renderPanel();
@@ -4754,6 +4969,7 @@ export default class PerdanaIslandExtension extends Extension {
     _setFocusDuration(seconds, mode = null) {
         this._clearTimeout('_focusSource');
         this._focusDeadline = 0;
+        this._focusTickSecond = 0;
         this._resetFocusGuard();
         this._focusDuration = seconds;
         this._focusMode = mode || (seconds === DEFAULT_FOCUS_SECONDS
@@ -4796,6 +5012,21 @@ export default class PerdanaIslandExtension extends Extension {
             ? 'Pause focus session'
             : 'Resume focus session';
         this._focusRing?.queue_repaint();
+    }
+
+    _pulseFocusLabel() {
+        const label = this._focusLabel;
+        if (!label || this._reducedMotion)
+            return;
+        label.set_pivot_point(0.5, 0.5);
+        label.remove_all_transitions();
+        label.set_scale(1.06, 1.06);
+        label.ease({
+            scale_x: 1,
+            scale_y: 1,
+            duration: 340,
+            mode: Clutter.AnimationMode.EASE_OUT_BACK,
+        });
     }
 
     _discoverPlayers() {
@@ -5348,7 +5579,23 @@ export default class PerdanaIslandExtension extends Extension {
         this._mediaPositionLabel.text = formatTime(position);
         this._mediaDurationLabel.text = formatTime(duration);
         const ratio = duration > 0 ? Math.min(1, position / duration) : 0;
-        this._progressFill.width = Math.max(1, this._progressLine.width * ratio);
+        const fillWidth = Math.max(1, this._progressLine.width * ratio);
+        const smooth = !this._reducedMotion && this._progressFill._perdanaSmoothReady
+            && !this._progressSeeking && this._isPlaying();
+        if (smooth) {
+            // The ticker repeats every 250 ms on Lyrics and every second on
+            // Music. Matching the tween to that interval keeps the fill moving
+            // between updates instead of stepping once per tick.
+            this._progressFill.ease({
+                width: fillWidth,
+                duration: Math.max(200, this._mediaTickerInterval || 1000),
+                mode: Clutter.AnimationMode.LINEAR,
+            });
+        } else {
+            this._progressFill.remove_all_transitions();
+            this._progressFill.width = fillWidth;
+        }
+        this._progressFill._perdanaSmoothReady = true;
         if (this._activePage === 'lyrics')
             this._updateLyricsLines(position);
     }
@@ -6598,6 +6845,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._noticeBanner.set_position(0, 0);
                 this._noticeBanner.set_size(394, 76);
                 this._noticeBanner.opacity = 0;
+                this._noticeBanner.translation_y = 8;
                 if (type === 'application') {
                     this._noticeBanner.connect('button-release-event', () => {
                         const item = this._noticeNotificationItem;
@@ -6717,15 +6965,16 @@ export default class PerdanaIslandExtension extends Extension {
                 this._root.ease({
                     width: 394,
                     height: 76,
-                    duration: this._motionDuration(300),
-                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                    duration: this._motionDuration(320),
+                    mode: Clutter.AnimationMode.EASE_OUT_QUINT,
                     onComplete: () => this._layoutIsland(),
                 });
                 this._layoutIsland();
                 this._noticeBanner.ease({
                     opacity: 255,
-                    duration: this._motionDuration(150),
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                    translation_y: 0,
+                    duration: this._motionDuration(280),
+                    mode: Clutter.AnimationMode.EASE_OUT_QUINT,
                 });
             }
 
@@ -6749,7 +6998,11 @@ export default class PerdanaIslandExtension extends Extension {
                         : percent < 67 ? 'audio-volume-medium-symbolic'
                             : percent <= 100 ? 'audio-volume-high-symbolic'
                                 : 'audio-volume-overamplified-symbolic';
-                this._noticeVolumeFill.width = 84 * Math.min(100, percent) / 100;
+                this._noticeVolumeFill.ease({
+                    width: 84 * Math.min(100, percent) / 100,
+                    duration: 130,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                });
             } else if (type === 'application') {
                 const identity = `${data.app} ${data.title}`;
                 const brand = /whatsapp/i.test(identity) ? 'WhatsApp'
@@ -6810,14 +7063,15 @@ export default class PerdanaIslandExtension extends Extension {
         if (animate) {
             noticeBanner?.ease({
                 opacity: 0,
+                translation_y: 5,
                 duration: this._motionDuration(170),
                 mode: Clutter.AnimationMode.EASE_IN_QUAD,
             });
             this._root.ease({
                 width: this._collapsedWidth(),
                 height: this._collapsedHeight(),
-                duration: this._motionDuration(220),
-                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                duration: this._motionDuration(240),
+                mode: Clutter.AnimationMode.EASE_OUT_QUINT,
                 onComplete: () => {
                     if (noticeBanner?.get_parent())
                         noticeBanner.destroy();

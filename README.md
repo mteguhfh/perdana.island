@@ -40,6 +40,7 @@ These images show representative UI states with sample media, files, notificatio
 ## Features
 
 - Resting eyes react to the pointer; settings choose between a clock on hover and eyes beside a visible clock. **Ctrl+Alt+X** hides or shows the island.
+- Motion responds to every interaction: the resting island lifts under the pointer, buttons squash and settle with a short spring, the active tab pill fades between labels, pages slide and settle into place, media progress moves continuously, and the focus ring redraws ten times a second. All of it follows GNOME's **enable-animations** setting and becomes instant when animations are reduced.
 - Playing media and a running focus timer appear in compact form. Hovering opens the matching page.
 - Music uses MPRIS metadata and supports seeking, previous, play/pause, and next when the player exposes those controls.
 - Lyrics follow playback timestamps. When a player does not provide synced lyrics, the extension looks up track metadata with LRCLIB. The Lyrics page includes playback controls and a toggle to show the current lyric in the resting island; long lines wrap inside the fixed layout.
@@ -158,3 +159,4 @@ The following merged pull requests add the contributions below:
 - [PR #9 — Water and prayer reminders](https://github.com/txtperdana/perdana.island/pull/9): adds hourly water reminders, configurable prayer-time reminders fetched from Aladhan, city and calculation-method settings, a Reminders page, and a daily cache.
 - [PR #10 — KDE feature parity](https://github.com/txtperdana/perdana.island/pull/10): brings daily agenda, water and prayer reminders, and the five themes to the Plasma widget, with KDE-native settings and notifications.
 - [PR #11 — Notes and keep awake](https://github.com/txtperdana/perdana.island/pull/11): adds a Notes page with a wrapping editor, autosave to `notes.json`, a seven second delete undo, empty-note cleanup, a tighter tab bar that fits the extra page, and a Keep awake switch that holds idle and suspend inhibitors and releases them when turned off or when the extension is disabled.
+- [PR #12 — Motion polish](https://github.com/txtperdana/perdana.island/pull/12): smooths opening and closing, page changes, tab switching, button press and release, media progress, notices, the Notes undo row, and the focus ring; adds hover lift and a sliding tab highlight; and stops restyling accents on every allocation frame.
