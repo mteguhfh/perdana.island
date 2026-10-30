@@ -233,6 +233,34 @@
   background-color: transparent;
 }
 
+.perdana-island__tab-slot {
+  min-width: 0;
+  min-height: 0;
+  background-color: transparent;
+}
+
+.perdana-island__tab-pill {
+  border-radius: 15px;
+  background-color: rgba(85, 119, 184, 0.24);
+  box-shadow: none;
+}
+
+.perdana-island--theme-aero .perdana-island__tab-pill {
+  border-radius: 5px;
+}
+
+.perdana-island--theme-aqua .perdana-island__tab-pill {
+  border-radius: 10px;
+}
+
+.perdana-island--theme-yaru .perdana-island__tab-pill {
+  border-radius: 9px;
+}
+
+.perdana-island--theme-graphite .perdana-island__tab-pill {
+  border-radius: 6px;
+}
+
 .perdana-button {
   min-height: 30px;
   padding: 0 10px;
@@ -269,7 +297,7 @@
 
 .perdana-button--nav-active {
   color: #ffffff;
-  background-color: rgba(255, 255, 255, 0.14);
+  background-color: transparent;
 }
 
 .perdana-button--nav-active:hover {
@@ -955,9 +983,9 @@
 
 .perdana-button.perdana-island__settings-tab {
   min-width: 0;
-  min-height: 24px;
-  padding: 0 9px;
-  border-radius: 10px;
+  min-height: 21px;
+  padding: 0 8px;
+  border-radius: 8px;
   color: rgba(255, 255, 255, 0.62);
   background-color: rgba(255, 255, 255, 0.045);
   text-align: left;

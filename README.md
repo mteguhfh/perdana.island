@@ -10,9 +10,9 @@ Perdana Island provides separate native packages for GNOME Shell and KDE Plasma.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
-## Current version: v72 candidate
+## Current version: v73 candidate
 
-The GNOME extension adds app-source controls under Settings → Notifications for WhatsApp, Discord, Telegram Web/Desktop, and Google Chat. Recognized sources can show their app identity in island banners, and disabled sources are hidden from the island notification list. The island can tuck under an overlapping browser when the pointer reaches the top edge and can show a hardware brightness OSD. GNOME's own notification and brightness handling remain unchanged. KDE is version-aligned at v72 with no feature change. See the [v72 change notes](docs/releases/v72.md) for details.
+The v73 source snapshot ports the fluid motion work from PR #12 and the tab-order and island-placement work from PR #13 into the current GNOME code. Settings now includes a separate Music section for smart music detection, and the island can be dragged to supported screen edges or a free position. The latest published release remains v72; v73 packages are not published until a v73 tag is created. See the [v73 change notes](docs/releases/v73.md) for the port details and PR status.
 
 ## Feature previews
 
@@ -42,7 +42,7 @@ These images show representative UI states with sample media, files, notificatio
 - Resting eyes react to the pointer; settings choose between a clock on hover and eyes beside a visible clock. **Ctrl+Alt+X** hides or shows the island.
 - Playing media and a running focus timer appear in compact form. Hovering opens the matching page.
 - Music uses MPRIS metadata and supports seeking, previous, play/pause, and next when the player exposes those controls.
-- Smart music detection checks player service and track metadata before showing playback. It recognizes common music services such as Spotify, YouTube Music, YouTube, Deezer, SoundCloud, and Apple Music, while filtering spoken programs, films, social video, and ambiguous sessions. Turn it off under Settings → Island.
+- Smart music detection checks player service and track metadata before showing playback. It recognizes common music services such as Spotify, YouTube Music, YouTube, Deezer, SoundCloud, and Apple Music, while filtering spoken programs, films, social video, and ambiguous sessions. Turn it off under **Settings → Music**.
 - Lyrics follow playback timestamps. When a player does not provide synced lyrics, the extension looks up track metadata with LRCLIB. The Lyrics page includes playback controls and a toggle to show the current lyric in the resting island; long lines wrap inside the fixed layout.
 - Focus offers Focus, Short, Long, and custom durations in seconds or minutes. Completion shows a temporary notice. While a session runs, Focus guard checks the focused window and shows one notice after five minutes in YouTube, Netflix, Twitch, TikTok, Instagram, Facebook, Reddit, or X. It reads only the window class and title, keeps the counter in memory, and can be turned off in Settings.
 - Shelf offers Grid and List views, image thumbnails, a scrollable list capped at 10 visible items, and a local folder that refreshes when files change. A capture button saves the current screen into that folder through the desktop screenshot portal.
@@ -51,7 +51,9 @@ These images show representative UI states with sample media, files, notificatio
 - To-do also shows a daily summary: scheduled tasks with the next time, tasks completed today, focus minutes, and a Copy report action that puts a plain text report on the clipboard.
 - At 08:00 the island can show a morning agenda notice with today's scheduled tasks, and at 17:00 a recap of completed tasks and focus minutes. Clicking either notice opens the matching page. Both are toggled under Daily agenda in Settings.
 - Notes is a local scratchpad with a list on the left and a wrapping editor on the right. The first line becomes the row title, **Enter** starts a new line, **Escape** leaves the editor, and text saves to `notes.json` shortly after typing stops. Deleting a note leaves a seven second Undo row, and empty notes are dropped when the page is left.
-- Settings are split into **Island**, **Greeting**, **Reminders**, **Notifications**, and **Tabs** side sections. They control themes, Notch/Pill shape, browser tuck, resting style, glass, accent color, notices, app notification filters, keep awake, greeting text and name, reminders, and visible page tabs.
+- Settings are split into **Island**, **Greeting**, **Music**, **Reminders**, **Notifications**, and **Tabs** side sections. They control themes, Notch/Pill shape, browser tuck, resting style, glass, accent color, notices, app notification filters, smart music detection, keep awake, greeting text and name, reminders, and visible page tabs.
+- Drag tabs to change their order; the chosen order persists and the first visible tab becomes the default page when opening the island. Drag the island by its resting pill or open header to place it at the top, bottom, left, right, or a free position. Settings → Island also has position choices.
+- Page changes, tab selection, playback progress, focus ring, notices, and controls use short transitions and follow GNOME's reduced-motion preference.
 - Keep awake asks GNOME's session manager for idle and suspend inhibitors while it is on. The switch is under Island and the inhibitor is released as soon as it is turned off or the extension is disabled.
 - Themes change the island material without touching the layout. Midnight is the plain black island, Aero adds a blue gloss band with a hairline border, Aqua uses rounded translucent graphite, Yaru uses an aubergine tint, and Graphite uses flat grey with small corners. The choice persists between sessions, and translucent themes hide the solid corner ears so the glass edge stays clean.
 - Water reminders can show a short notice every hour between 08:00 and 21:00 while the island is idle.
@@ -100,10 +102,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
 
-- `Perdana-Island-GNOME-v72.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
-- `Perdana-Island-KDE-Plasma-v72.zip` for KDE Plasma 6.
+- `Perdana-Island-GNOME-v73.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
+- `Perdana-Island-KDE-Plasma-v73.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v72 archives locally, run `./scripts/package-release.sh v72`.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v73 archives locally, run `./scripts/package-release.sh v73`. Until the v73 tag is published, v72 remains the latest downloadable release.
 
 ## Use
 
@@ -144,7 +146,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, tests, packagin
 - **Project maintenance:** owns product direction, design reviews, release packaging, versioning, screenshots, README/PRD/how-to guides, and integration of community changes. Reviewed and merged contributor work while preserving attribution in this README.
 - **v70:** implemented first-session and returning-session greetings; added account, device, and custom display-name choices; editable welcome and return text with a `{name}` token; preview buttons; and once-per-login greeting state. Split Settings into Island, Greeting, Reminders, and Tabs side sections, with scroll-safe content in each section.
 - **v71:** added configurable MPRIS music classification to keep podcasts, movies, social videos, and ambiguous media out of the music island; refined Notes spacing and safe insets; and guarded Keep awake against delayed session-manager replies.
-- **v72 candidate:** added Settings → Notifications controls for app banners from WhatsApp, Discord, Telegram Web/Desktop, and Google Chat; added Notch/Pill shape selection, browser-overlap tuck-away, and a hardware brightness OSD. GNOME retains control of desktop notifications and brightness changes.
+- **v72:** added Settings → Notifications controls for app banners from WhatsApp, Discord, Telegram Web/Desktop, and Google Chat; added Notch/Pill shape selection, browser-overlap tuck-away, and a hardware brightness OSD. GNOME retains control of desktop notifications and brightness changes.
+- **v73 candidate:** ported motion and responsive transition behavior from PR #12; added reorderable tabs and persistent island placement from PR #13; separated smart music detection into Settings → Music; and synchronized the GNOME and KDE package version metadata. The KDE widget's features are unchanged.
 
 ### mteguhfh
 
@@ -161,3 +164,8 @@ The following merged pull requests add the contributions below:
 - [PR #9 — Water and prayer reminders](https://github.com/txtperdana/perdana.island/pull/9): adds hourly water reminders, configurable prayer-time reminders fetched from Aladhan, city and calculation-method settings, a Reminders page, and a daily cache.
 - [PR #10 — KDE feature parity](https://github.com/txtperdana/perdana.island/pull/10): brings daily agenda, water and prayer reminders, and the five themes to the Plasma widget, with KDE-native settings and notifications.
 - [PR #11 — Notes and keep awake](https://github.com/txtperdana/perdana.island/pull/11): adds a Notes page with a wrapping editor, autosave to `notes.json`, a seven second delete undo, empty-note cleanup, a tighter tab bar that fits the extra page, and a Keep awake switch that holds idle and suspend inhibitors and releases them when turned off or when the extension is disabled.
+
+The following PRs were reviewed and adapted into the v73 codebase rather than merged directly. Both were closed after their v70-era branches diverged from the newer `main` branch and GitHub reported merge conflicts:
+
+- [PR #12 — Fluid motion](https://github.com/txtperdana/perdana.island/pull/12) (**closed, not merged**): its motion work is adapted in v73, including reduced-motion-aware island/page transitions, animated tab selection and controls, smoother playback progress and lyrics movement, and lighter focus-ring repainting.
+- [PR #13 — Custom layout](https://github.com/txtperdana/perdana.island/pull/13) (**closed, not merged**): its layout work is adapted in v73, including drag-reordering tabs, persisting the first-tab opening behavior, dragging the island to screen edges or a free position, and position choices under Settings → Island. PR #13 was built on PR #12, so both branches were ported together against the current code.
