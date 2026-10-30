@@ -24,6 +24,7 @@ import {
     maskClipboardPreview,
     normalizeClipboardHistoryKey,
 } from './clipboard-utils.js';
+import {classifyMedia} from './music-classifier.js';
 
 const MPRIS_PREFIX = 'org.mpris.MediaPlayer2.';
 const MPRIS_PATH = '/org/mpris/MediaPlayer2';
@@ -495,6 +496,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._notesFocusSource = 0;
         this._notesUndo = null;
         this._keepAwakeCookie = 0;
+        this._keepAwakeGeneration = 0;
         this._shelfMonitorSignal = 0;
         this._shelfMonitor = this._monitorShelfDirectory();
         this._shelfRefreshSource = 0;
@@ -575,6 +577,7 @@ export default class PerdanaIslandExtension extends Extension {
             accentColor: DEFAULT_ACCENT_COLOR,
             restingStyle: 'hover-clock',
             showRestingLyrics: false,
+            smartMusicDetection: true,
             systemNotices: true,
             morningAgenda: true,
             eveningRecap: true,
@@ -616,6 +619,7 @@ export default class PerdanaIslandExtension extends Extension {
                 ? stored.restingStyle
                 : 'hover-clock';
             defaults.showRestingLyrics = stored.showRestingLyrics === true;
+            defaults.smartMusicDetection = stored.smartMusicDetection !== false;
             defaults.systemNotices = stored.systemNotices !== false;
             defaults.morningAgenda = stored.morningAgenda !== false;
             defaults.eveningRecap = stored.eveningRecap !== false;
@@ -715,6 +719,12 @@ export default class PerdanaIslandExtension extends Extension {
             this._compactLyricsFitKey = null;
             this._compactLyricsFitClass = null;
             this._updateLyricsRestingToggle();
+            if (value)
+                this._syncSelectedPlayerLyrics();
+            this._updateMediaTicker();
+            this._updateCollapsedLabel();
+        }
+        if (key === 'smartMusicDetection') {
             if (value)
                 this._syncSelectedPlayerLyrics();
             this._updateMediaTicker();
@@ -1006,6 +1016,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._clearTimeout('_notesFocusSource');
         this._clearTimeout('_notesResizeSource');
         this._notesUndo = null;
+        this._keepAwakeGeneration++;
         this._releaseKeepAwake();
         Main.wm.removeKeybinding('toggle-island-visibility');
         this._keybindingSettings = null;
@@ -3539,30 +3550,41 @@ export default class PerdanaIslandExtension extends Extension {
     _renderNotesPage(body) {
         const pageWidth = this._pageWidth();
         const height = this._bodyHeight();
-        const listWidth = Math.min(250, Math.max(196, Math.round(pageWidth * 0.36)));
-        const columnGap = 18;
-        const editorX = listWidth + columnGap;
-        const editorWidth = Math.max(1, pageWidth - editorX);
+        const safeInset = Math.min(12, Math.max(8, Math.round(pageWidth * 0.018)));
+        const contentWidth = Math.max(1, pageWidth - safeInset * 2);
+        const columnGap = Math.max(14, Math.min(20, Math.round(contentWidth * 0.03)));
+        const listWidth = Math.max(1, Math.min(
+            238,
+            Math.max(148, Math.round(contentWidth * 0.36)),
+            Math.max(112, contentWidth - columnGap - 220)
+        ));
+        const editorX = safeInset + listWidth + columnGap;
+        const editorWidth = Math.max(1, contentWidth - listWidth - columnGap);
+        const editorContentWidth = Math.max(1, editorWidth - 12);
         const notes = [...this._notes].sort((first, second) => second.updatedAt - first.updatedAt);
         const listContentWidth = Math.max(1, listWidth - 14);
         const undoVisible = Boolean(this._notesUndo);
-        const listTop = 24;
-        const listHeight = Math.max(1, height - listTop - (undoVisible ? 32 : 0));
+        const listTop = 30;
+        const listBottomInset = undoVisible ? 40 : 10;
+        const listHeight = Math.max(1, height - listTop - listBottomInset);
+        const statusY = height - 20;
         const statusState = this._notesSaveSource ? 'Saving…' : 'Saved locally';
         this._notesStatusValue = statusState;
         this._notesRowLabels = new Map();
 
-        place(body, makeLabel(notes.length ? `Notes · ${notes.length}` : 'Notes',
-            'perdana-island__notes-heading'), 0, 2, listWidth - 32, 22);
+        const heading = makeLabel(notes.length ? `Notes · ${notes.length}` : 'Notes',
+            'perdana-island__notes-heading');
+        heading.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        place(body, heading, safeInset, 4, Math.max(1, listWidth - 42), 22);
         place(body, makeIconButton('list-add-symbolic', 'New note', () => this._addNote(),
-            'perdana-island__notes-add'), listWidth - 28, 0, 28, 24);
+            'perdana-island__notes-add'), safeInset + listWidth - 28, 2, 28, 24);
 
         if (!this._notes.some(note => note.id === this._notesSelectedId))
             this._notesSelectedId = notes[0]?.id || null;
 
         if (!notes.length) {
             place(body, makeLabel('No notes yet · tap + to start', 'perdana-island__notes-empty'),
-                0, listTop + 12, listWidth, 22);
+                safeInset, listTop + 12, listWidth - 10, 22);
         } else {
             const rowHeight = 44;
             const rowGap = 6;
@@ -3616,7 +3638,7 @@ export default class PerdanaIslandExtension extends Extension {
                 list.add_child(button);
             });
             scroll.add_child(list);
-            place(body, scroll, 0, listTop, listWidth, listHeight);
+            place(body, scroll, safeInset, listTop, listWidth, listHeight);
         }
 
         if (undoVisible) {
@@ -3626,27 +3648,28 @@ export default class PerdanaIslandExtension extends Extension {
             banner.add_child(text);
             banner.add_child(makeTextButton('Undo', 'Restore the deleted note',
                 () => this._undoNoteDelete(), 'perdana-island__notes-undo-button'));
-            place(body, banner, 0, height - 28, listWidth, 24);
+            place(body, banner, safeInset, height - 32, listWidth - 12, 24);
             this._notesUndoBanner = banner;
         }
 
         const note = this._notes.find(item => item.id === this._notesSelectedId);
         if (!note) {
             place(body, makeLabel('Select a note, or create a new one', 'perdana-island__notes-empty'),
-                editorX, 66, editorWidth, 24);
+                editorX, listTop + 12, editorContentWidth, 24);
             this._notesSaveLabel = place(body, makeLabel('', 'perdana-island__note-status'),
-                editorX, height - 16, editorWidth, 14);
+                editorX, statusY, editorContentWidth, 14);
             return;
         }
 
         place(body, makeLabel(`Updated ${this._noteDateText(note.updatedAt)}`,
-            'perdana-island__note-meta'), editorX, 2, Math.max(1, editorWidth - 32), 18);
+            'perdana-island__note-meta'), editorX, 4,
+            Math.max(1, editorContentWidth - 34), 18);
         place(body, makeIconButton('user-trash-symbolic', 'Delete note',
             () => this._deleteNote(note.id), 'perdana-button--note-delete'),
-            editorX + editorWidth - 26, 0, 26, 22);
+            editorX + editorContentWidth - 26, 2, 26, 24);
 
         const scroll = new St.ScrollView({
-            overlay_scrollbars: true,
+            overlay_scrollbars: false,
             style_class: 'perdana-island__notes-scroll',
         });
         scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
@@ -3675,16 +3698,19 @@ export default class PerdanaIslandExtension extends Extension {
         });
         editorBox.add_child(entry);
         scroll.add_child(editorBox);
-        place(body, scroll, editorX, 26, editorWidth, Math.max(1, height - 44));
+        const editorTop = listTop;
+        const editorBottom = statusY - 8;
+        place(body, scroll, editorX, editorTop, editorWidth,
+            Math.max(1, editorBottom - editorTop));
         this._notesEditorScroll = scroll;
         this._notesEditorBox = editorBox;
         this._notesEditorEntry = entry;
-        this._notesEditorWidth = editorWidth;
+        this._notesEditorWidth = editorContentWidth;
         this._resizeNotesEditor();
         this._scheduleNotesResize();
         this._notesSaveLabel = place(body,
             makeLabel(this._notesStatusLine(statusState), 'perdana-island__note-status'),
-            editorX, height - 16, editorWidth, 14);
+            editorX, statusY, editorContentWidth, 14);
     }
 
     _renderRemindersPage(body) {
@@ -4308,7 +4334,7 @@ export default class PerdanaIslandExtension extends Extension {
             place(body, button, 0, 31 + index * 32, navWidth, 27);
         });
 
-        const contentHeights = {island: 372, greeting: 402, reminders: 310, tabs: 158};
+        const contentHeights = {island: 456, greeting: 402, reminders: 310, tabs: 158};
         const contentHeight = contentHeights[this._settingsSection];
         const scroll = new St.ScrollView({
             overlay_scrollbars: false,
@@ -4482,6 +4508,15 @@ export default class PerdanaIslandExtension extends Extension {
                 'preferences-desktop-screensaver-symbolic');
             place(content, makeLabel(this._keepAwakeStatusText(), 'perdana-island__settings-hint'),
                 halfWidth + columnGap, 337, halfWidth, 30);
+
+            heading('Music playback detection', 374);
+            settingButton(this._preferences.smartMusicDetection
+                ? 'Smart detection on' : 'Smart detection off',
+                this._preferences.smartMusicDetection, 0, 396, halfWidth,
+                () => this._setPreference('smartMusicDetection', !this._preferences.smartMusicDetection),
+                'audio-x-generic-symbolic');
+            place(content, makeLabel('Ignore podcasts, films, social clips, and unclear media.',
+                'perdana-island__settings-hint'), halfWidth + columnGap, 398, halfWidth, 30);
         } else if (this._settingsSection === 'greeting') {
             heading('Session greeting', 0);
             settingButton(this._preferences.greetingEnabled ? 'Greeting on' : 'Greeting off',
@@ -4968,17 +5003,61 @@ export default class PerdanaIslandExtension extends Extension {
 
     _getSelectedPlayer() {
         const players = [...this._players.values()];
-        const playing = players.find(player => this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing');
-        if (playing) {
-            this._selectedPlayerName = playing.name;
-            return playing;
+        if (this._preferences?.smartMusicDetection === false) {
+            const playing = players.find(player =>
+                this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing');
+            if (playing) {
+                this._selectedPlayerName = playing.name;
+                return playing;
+            }
+
+            const remembered = this._players.get(this._selectedPlayerName);
+            if (remembered)
+                return remembered;
+
+            const fallback = players[0] || null;
+            this._selectedPlayerName = fallback?.name || null;
+            return fallback;
         }
+
+        const playingMusic = players.find(player =>
+            this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing'
+            && this._classifyPlayer(player).kind === 'music');
+        if (playingMusic) {
+            this._selectedPlayerName = playingMusic.name;
+            return playingMusic;
+        }
+
+        // Do not keep displaying a paused song while another app plays speech or video.
+        if (players.some(player => this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing')) {
+            this._selectedPlayerName = null;
+            return null;
+        }
+
         const remembered = this._players.get(this._selectedPlayerName);
-        if (remembered)
+        if (remembered && this._classifyPlayer(remembered, false).kind === 'music')
             return remembered;
-        const fallback = players[0] || null;
-        this._selectedPlayerName = fallback?.name || null;
-        return fallback;
+
+        const pausedMusic = players.find(player => this._classifyPlayer(player, false).kind === 'music');
+        this._selectedPlayerName = pausedMusic?.name || null;
+        return pausedMusic || null;
+    }
+
+    _classifyPlayer(player, requirePlaying = true) {
+        const metadata = this._getMetadata(player.proxy);
+        return classifyMedia({
+            source: player.name.replace(MPRIS_PREFIX, ''),
+            desktopEntry: player.name,
+            title: metadata.title,
+            artist: metadata.artist,
+            album: metadata.album,
+            genre: metadata.genre,
+            contentType: metadata.contentType,
+            url: metadata.url,
+            trackId: metadata.trackId,
+            durationSeconds: metadata.length / 1_000_000,
+            playbackStatus: this._getProperty(player.proxy, 'PlaybackStatus'),
+        }, {enabled: this._preferences?.smartMusicDetection !== false, requirePlaying});
     }
 
     _getProperty(proxy, property) {
@@ -4990,12 +5069,19 @@ export default class PerdanaIslandExtension extends Extension {
         const title = unpack(metadata['xesam:title']);
         const rawArtist = unpack(metadata['xesam:artist']);
         const album = unpack(metadata['xesam:album']);
+        const genre = unpack(metadata['xesam:genre']);
+        const contentType = unpack(metadata['xesam:contentType'])
+            || unpack(metadata['xesam:mediaType']);
+        const url = unpack(metadata['xesam:url']);
         const lyrics = unpack(metadata['xesam:asText']);
         const artist = Array.isArray(rawArtist) ? rawArtist.join(', ') : rawArtist;
         return {
             title: typeof title === 'string' ? title : '',
             artist: typeof artist === 'string' ? artist : '',
             album: typeof album === 'string' ? album : '',
+            genre: Array.isArray(genre) ? genre : typeof genre === 'string' ? genre : '',
+            contentType: typeof contentType === 'string' ? contentType : '',
+            url: typeof url === 'string' ? url : '',
             lyrics: typeof lyrics === 'string' ? lyrics : '',
             artUrl: unpack(metadata['mpris:artUrl']),
             trackId: unpack(metadata['mpris:trackid']),
@@ -7300,7 +7386,7 @@ export default class PerdanaIslandExtension extends Extension {
         // the explicit height before measuring the wrapped text again.
         entry.set_height(-1);
         const [, naturalHeight] = entry.get_preferred_height(width);
-        const height = Math.max(124, Math.round(naturalHeight));
+        const height = Math.max(108, Math.round(naturalHeight));
         entry.set_size(width, height);
         box.set_size(width, height);
     }
@@ -7342,8 +7428,8 @@ export default class PerdanaIslandExtension extends Extension {
     _selectNote(id) {
         if (id === this._notesSelectedId)
             return;
-        this._flushNotesSave();
         this._dropEmptyNotes();
+        this._flushNotesSave();
         if (!this._notes.some(note => note.id === id))
             return;
         this._notesSelectedId = id;
@@ -7352,8 +7438,8 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _addNote() {
-        this._flushNotesSave();
         this._dropEmptyNotes();
+        this._flushNotesSave();
         const note = {
             id: `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
             text: '',
@@ -7440,6 +7526,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _applyKeepAwake() {
+        const generation = ++this._keepAwakeGeneration;
         this._releaseKeepAwake();
         if (this._preferences?.keepAwake !== true)
             return;
@@ -7459,7 +7546,7 @@ export default class PerdanaIslandExtension extends Extension {
                 Gio.DBusCallFlags.NONE,
                 -1,
                 null,
-                (connection, result) => this._onKeepAwakeInhibited(connection, result)
+                (connection, result) => this._onKeepAwakeInhibited(connection, result, generation)
             );
         } catch (error) {
             logError(error, 'Perdana Island could not keep the screen awake');
@@ -7467,14 +7554,15 @@ export default class PerdanaIslandExtension extends Extension {
         this._refreshKeepAwakeStatus();
     }
 
-    _onKeepAwakeInhibited(connection, result) {
+    _onKeepAwakeInhibited(connection, result, generation) {
         let cookie = 0;
         try {
             [cookie] = connection.call_finish(result).deep_unpack();
         } catch (error) {
             logError(error, 'Perdana Island could not keep the screen awake');
         }
-        if (!this._enabled || this._preferences?.keepAwake !== true) {
+        if (!this._enabled || this._preferences?.keepAwake !== true
+            || generation !== this._keepAwakeGeneration) {
             if (cookie)
                 this._uninhibitSession(cookie);
             this._refreshKeepAwakeStatus();

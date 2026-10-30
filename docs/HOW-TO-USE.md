@@ -9,7 +9,7 @@
 
 ## Music
 
-The Music page reads active players through MPRIS. It can show the title, artist, artwork, elapsed and total time, and playback controls. Click the progress bar to seek. Previous, Play/Pause, and Next are available when the active player exposes those capabilities. Some browsers only publish media after playback has started.
+The Music page reads active players through MPRIS. It can show the title, artist, artwork, elapsed and total time, and playback controls. Click the progress bar to seek. Previous, Play/Pause, and Next are available when the active player exposes those capabilities. Smart detection checks player and track metadata so podcasts, films, social clips, and unclear sessions are ignored. Turn it off under **Settings → Island** if you want every media session to be eligible. Some browsers only publish media after playback has started.
 
 ## Lyrics
 

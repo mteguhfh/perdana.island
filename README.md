@@ -10,9 +10,9 @@ Perdana Island provides separate native packages for GNOME Shell and KDE Plasma.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
-## Current version: v70 candidate
+## Current version: v71 candidate
 
-The GNOME extension adds a customizable session greeting and divides Settings into Island, Greeting, Reminders, and Tabs sections. Returning greetings are shown once per desktop login session. The KDE package is version-aligned at v70; its features are unchanged from v69. See the [v70 change notes](docs/releases/v70.md) for details.
+The GNOME extension adds smart music detection for MPRIS media sessions, filtering podcasts, films, social videos, and unclear media so they do not appear as music. Detection can be turned off in Settings. This release also refines the Notes layout and prevents a delayed Keep awake response from restoring an inhibitor after the setting or extension has been turned off. The KDE package is version-aligned at v71; its features are unchanged. See the [v71 change notes](docs/releases/v71.md) for details.
 
 ## Feature previews
 
@@ -42,6 +42,7 @@ These images show representative UI states with sample media, files, notificatio
 - Resting eyes react to the pointer; settings choose between a clock on hover and eyes beside a visible clock. **Ctrl+Alt+X** hides or shows the island.
 - Playing media and a running focus timer appear in compact form. Hovering opens the matching page.
 - Music uses MPRIS metadata and supports seeking, previous, play/pause, and next when the player exposes those controls.
+- Smart music detection checks player service and track metadata before showing playback. It recognizes common music services such as Spotify, YouTube Music, YouTube, Deezer, SoundCloud, and Apple Music, while filtering spoken programs, films, social video, and ambiguous sessions. Turn it off under Settings → Island.
 - Lyrics follow playback timestamps. When a player does not provide synced lyrics, the extension looks up track metadata with LRCLIB. The Lyrics page includes playback controls and a toggle to show the current lyric in the resting island; long lines wrap inside the fixed layout.
 - Focus offers Focus, Short, Long, and custom durations in seconds or minutes. Completion shows a temporary notice. While a session runs, Focus guard checks the focused window and shows one notice after five minutes in YouTube, Netflix, Twitch, TikTok, Instagram, Facebook, Reddit, or X. It reads only the window class and title, keeps the counter in memory, and can be turned off in Settings.
 - Shelf offers Grid and List views, image thumbnails, a scrollable list capped at 10 visible items, and a local folder that refreshes when files change. A capture button saves the current screen into that folder through the desktop screenshot portal.
@@ -99,10 +100,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
 
-- `Perdana-Island-GNOME-v70.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
-- `Perdana-Island-KDE-Plasma-v70.zip` for KDE Plasma 6.
+- `Perdana-Island-GNOME-v71.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
+- `Perdana-Island-KDE-Plasma-v71.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v70 archives locally, run `./scripts/package-release.sh v70`.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v71 archives locally, run `./scripts/package-release.sh v71`.
 
 ## Use
 
@@ -142,6 +143,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, tests, packagin
 - **KDE port:** created the separate Plasma 6 widget, its supported Music, Focus, Tasks, and Clipboard pages, and KDE-specific installation, usage, and compatibility documentation. Kept GNOME and KDE code and archives separate while aligning their release versions.
 - **Project maintenance:** owns product direction, design reviews, release packaging, versioning, screenshots, README/PRD/how-to guides, and integration of community changes. Reviewed and merged contributor work while preserving attribution in this README.
 - **v70:** implemented first-session and returning-session greetings; added account, device, and custom display-name choices; editable welcome and return text with a `{name}` token; preview buttons; and once-per-login greeting state. Split Settings into Island, Greeting, Reminders, and Tabs side sections, with scroll-safe content in each section.
+- **v71:** added configurable MPRIS music classification to keep podcasts, movies, social videos, and ambiguous media out of the music island; refined Notes spacing and safe insets; and guarded Keep awake against delayed session-manager replies.
 
 ### mteguhfh
 
