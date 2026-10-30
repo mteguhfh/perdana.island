@@ -6,13 +6,13 @@
 [![MPRIS](https://img.shields.io/badge/media-MPRIS%20over%20D--Bus-383838)](https://specifications.freedesktop.org/mpris-spec/latest/)
 [![Fedora 44](https://img.shields.io/badge/validated-Fedora%2044-51a2da?logo=fedora&logoColor=white)](https://fedoraproject.org/)
 
-Perdana Island provides separate native packages for GNOME Shell and KDE Plasma. The GNOME Shell 50 and 51 extension places media controls, synced lyrics, a focus timer, a file shelf, tasks, quick notes, recent clipboard text, notifications, settings, and system information in a compact island attached to the top edge of the desktop. The KDE Plasma 6 widget provides Music, Focus, Tasks, and Clipboard pages, plus daily agenda and reminder notifications. Both packages live in this repository, in `extension/` and `plasma-widget/` respectively, and share the project release version while keeping their code and installation packages separate. On GNOME, **Ctrl+Alt+X** hides or shows the island.
+Perdana Island provides separate native packages for GNOME Shell and KDE Plasma. The GNOME Shell 50 and 51 extension places media controls, synced lyrics, a focus timer, a file shelf, tasks, quick notes, recent clipboard text, notifications, settings, and system information in a compact Notch or floating Pill. The KDE Plasma 6 widget provides Music, Focus, Tasks, and Clipboard pages, plus daily agenda and reminder notifications. Both packages live in this repository, in `extension/` and `plasma-widget/` respectively, and share the project release version while keeping their code and installation packages separate. On GNOME, **Ctrl+Alt+X** hides or shows the island.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
-## Current version: v71 candidate
+## Current version: v72 candidate
 
-The GNOME extension adds smart music detection for MPRIS media sessions, filtering podcasts, films, social videos, and unclear media so they do not appear as music. Detection can be turned off in Settings. This release also refines the Notes layout and prevents a delayed Keep awake response from restoring an inhibitor after the setting or extension has been turned off. The KDE package is version-aligned at v71; its features are unchanged. See the [v71 change notes](docs/releases/v71.md) for details.
+The GNOME extension adds app-source controls under Settings → Notifications for WhatsApp, Discord, Telegram Web/Desktop, and Google Chat. Recognized sources can show their app identity in island banners, and disabled sources are hidden from the island notification list. The island can tuck under an overlapping browser when the pointer reaches the top edge and can show a hardware brightness OSD. GNOME's own notification and brightness handling remain unchanged. KDE is version-aligned at v72 with no feature change. See the [v72 change notes](docs/releases/v72.md) for details.
 
 ## Feature previews
 
@@ -51,7 +51,7 @@ These images show representative UI states with sample media, files, notificatio
 - To-do also shows a daily summary: scheduled tasks with the next time, tasks completed today, focus minutes, and a Copy report action that puts a plain text report on the clipboard.
 - At 08:00 the island can show a morning agenda notice with today's scheduled tasks, and at 17:00 a recap of completed tasks and focus minutes. Clicking either notice opens the matching page. Both are toggled under Daily agenda in Settings.
 - Notes is a local scratchpad with a list on the left and a wrapping editor on the right. The first line becomes the row title, **Enter** starts a new line, **Escape** leaves the editor, and text saves to `notes.json` shortly after typing stops. Deleting a note leaves a seven second Undo row, and empty notes are dropped when the page is left.
-- Settings are split into **Island**, **Greeting**, **Reminders**, and **Tabs** side sections. They control themes, resting style, glass, accent color, notices, keep awake, greeting text and name, reminders, and visible page tabs.
+- Settings are split into **Island**, **Greeting**, **Reminders**, **Notifications**, and **Tabs** side sections. They control themes, Notch/Pill shape, browser tuck, resting style, glass, accent color, notices, app notification filters, keep awake, greeting text and name, reminders, and visible page tabs.
 - Keep awake asks GNOME's session manager for idle and suspend inhibitors while it is on. The switch is under Island and the inhibitor is released as soon as it is turned off or the extension is disabled.
 - Themes change the island material without touching the layout. Midnight is the plain black island, Aero adds a blue gloss band with a hairline border, Aqua uses rounded translucent graphite, Yaru uses an aubergine tint, and Graphite uses flat grey with small corners. The choice persists between sessions, and translucent themes hide the solid corner ears so the glass edge stays clean.
 - Water reminders can show a short notice every hour between 08:00 and 21:00 while the island is idle.
@@ -60,7 +60,7 @@ These images show representative UI states with sample media, files, notificatio
 - Today combines a local calendar with available CPU, memory, disk, and battery information.
 - Notifications lists recent desktop notifications, uses the source application's icon when available, and can activate or clear them.
 - Session greetings show a customizable first-use welcome and a returning greeting on later desktop login sessions. Choose the Linux account name, device name, or a custom name; edit both messages with `{name}` as the insertion token; preview either message from Settings. Greetings can be disabled independently of other system notices.
-- Charging, charger disconnect, output-volume changes, and completed focus sessions can show short notices.
+- Charging, charger disconnect, output-volume changes, hardware brightness changes, and completed focus sessions can show short notices.
 
 ## Architecture
 
@@ -100,10 +100,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
 
-- `Perdana-Island-GNOME-v71.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
-- `Perdana-Island-KDE-Plasma-v71.zip` for KDE Plasma 6.
+- `Perdana-Island-GNOME-v72.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
+- `Perdana-Island-KDE-Plasma-v72.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v71 archives locally, run `./scripts/package-release.sh v71`.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v72 archives locally, run `./scripts/package-release.sh v72`.
 
 ## Use
 
@@ -144,6 +144,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, tests, packagin
 - **Project maintenance:** owns product direction, design reviews, release packaging, versioning, screenshots, README/PRD/how-to guides, and integration of community changes. Reviewed and merged contributor work while preserving attribution in this README.
 - **v70:** implemented first-session and returning-session greetings; added account, device, and custom display-name choices; editable welcome and return text with a `{name}` token; preview buttons; and once-per-login greeting state. Split Settings into Island, Greeting, Reminders, and Tabs side sections, with scroll-safe content in each section.
 - **v71:** added configurable MPRIS music classification to keep podcasts, movies, social videos, and ambiguous media out of the music island; refined Notes spacing and safe insets; and guarded Keep awake against delayed session-manager replies.
+- **v72 candidate:** added Settings → Notifications controls for app banners from WhatsApp, Discord, Telegram Web/Desktop, and Google Chat; added Notch/Pill shape selection, browser-overlap tuck-away, and a hardware brightness OSD. GNOME retains control of desktop notifications and brightness changes.
 
 ### mteguhfh
 

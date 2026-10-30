@@ -24,6 +24,15 @@
   background-color: transparent;
 }
 
+.perdana-island.perdana-island--pill-shape {
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.perdana-island.perdana-island--browser-tucked {
+  box-shadow: none;
+}
+
 .perdana-island.perdana-island--glass StScrollView,
 .perdana-island.perdana-island--glass StViewport,
 .perdana-island.perdana-island--glass .perdana-island__album-art,
@@ -946,7 +955,7 @@
 
 .perdana-button.perdana-island__settings-tab {
   min-width: 0;
-  min-height: 27px;
+  min-height: 24px;
   padding: 0 9px;
   border-radius: 10px;
   color: rgba(255, 255, 255, 0.62);

@@ -59,6 +59,20 @@ const MAX_NOTES = 60;
 const NOTE_MAX_CHARS = 12000;
 const NOTE_AUTOSAVE_MS = 600;
 const NOTE_UNDO_MS = 7000;
+const DEFAULT_NOTIFICATION_SOURCES = {
+    whatsapp: true,
+    discord: true,
+    telegramWeb: true,
+    telegramDesktop: true,
+    googleChat: true,
+};
+const NOTIFICATION_SOURCE_OPTIONS = [
+    ['whatsapp', 'WhatsApp Web', 'whatsapp'],
+    ['discord', 'Discord', 'discord'],
+    ['telegramWeb', 'Telegram Web', 'telegram'],
+    ['telegramDesktop', 'Telegram Desktop', 'telegram'],
+    ['googleChat', 'Google Chat', 'google-chat'],
+];
 // Idle (8) and suspend (4) inhibitors from org.gnome.SessionManager.
 const KEEP_AWAKE_FLAGS = 12;
 const MICROSECONDS_PER_SECOND = 1_000_000;
@@ -448,11 +462,14 @@ export default class PerdanaIslandExtension extends Extension {
         this._noticeDismissSource = 0;
         this._greetingSource = 0;
         this._greetingPreviewSource = 0;
+        this._brightnessReadSource = 0;
         this._blinkSource = 0;
         this._clipboardSource = 0;
         this._systemNoticeActive = false;
         this._systemNoticeType = null;
         this._noticeNotificationItem = null;
+        this._browserTuckSignal = 0;
+        this._tuckedByBrowser = false;
         this._noticeBanner = null;
         this._volumeControl = null;
         this._volumeStream = null;
@@ -522,6 +539,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._layoutIsland();
             this._positionIsland();
         });
+        this._browserTuckSignal = global.display.connect('notify::focus-window', () =>
+            this._updateBrowserTuckFromPointer());
         this._allocationSignal = this._root.connect('notify::allocation', () => this._layoutIsland());
         this._positionIsland();
         this._stageSignal = global.stage.connect('captured-event', (_stage, event) => this._onStageEvent(event));
@@ -575,10 +594,13 @@ export default class PerdanaIslandExtension extends Extension {
             glass: false,
             theme: DEFAULT_THEME,
             accentColor: DEFAULT_ACCENT_COLOR,
+            islandShape: 'notch',
+            browserOverlap: false,
             restingStyle: 'hover-clock',
             showRestingLyrics: false,
             smartMusicDetection: true,
             systemNotices: true,
+            notificationSources: {...DEFAULT_NOTIFICATION_SOURCES},
             morningAgenda: true,
             eveningRecap: true,
             lastAgendaBriefing: '',
@@ -615,12 +637,20 @@ export default class PerdanaIslandExtension extends Extension {
                 ? stored.theme
                 : DEFAULT_THEME;
             defaults.accentColor = normalizeHexColor(stored.accentColor) || defaults.accentColor;
+            defaults.islandShape = stored.islandShape === 'pill' ? 'pill' : 'notch';
+            defaults.browserOverlap = stored.browserOverlap === true;
             defaults.restingStyle = ['hover-clock', 'eyes-clock'].includes(stored.restingStyle)
                 ? stored.restingStyle
                 : 'hover-clock';
             defaults.showRestingLyrics = stored.showRestingLyrics === true;
             defaults.smartMusicDetection = stored.smartMusicDetection !== false;
             defaults.systemNotices = stored.systemNotices !== false;
+            if (stored.notificationSources && typeof stored.notificationSources === 'object') {
+                for (const key of Object.keys(DEFAULT_NOTIFICATION_SOURCES)) {
+                    if (typeof stored.notificationSources[key] === 'boolean')
+                        defaults.notificationSources[key] = stored.notificationSources[key];
+                }
+            }
             defaults.morningAgenda = stored.morningAgenda !== false;
             defaults.eveningRecap = stored.eveningRecap !== false;
             defaults.lastAgendaBriefing = typeof stored.lastAgendaBriefing === 'string'
@@ -691,8 +721,18 @@ export default class PerdanaIslandExtension extends Extension {
         if (key === 'greetingEnabled' && !value && this._systemNoticeActive
             && this._systemNoticeType === 'greeting')
             this._dismissSystemNotice(true);
+        if (key === 'notificationSources' && this._systemNoticeActive
+            && this._systemNoticeType === 'application'
+            && !this._isNotificationSourceEnabled(this._noticeNotificationItem?.appKey))
+            this._dismissSystemNotice(true);
         if (key === 'glass')
             this._applyGlassPreference();
+        if (key === 'islandShape') {
+            this._updateIslandShapePreference();
+            this._positionIsland();
+        }
+        if (key === 'browserOverlap' && !value)
+            this._setBrowserTucked(false);
         if (key === 'waterReminder' && value)
             this._preferences.lastWaterAt = Math.floor(Date.now() / 1000);
         if (key === 'prayerReminder' || key === 'prayerCity' || key === 'prayerMethod') {
@@ -861,12 +901,14 @@ export default class PerdanaIslandExtension extends Extension {
         for (const candidate of THEMES)
             this._root.remove_style_class_name(`perdana-island--theme-${candidate.key}`);
         this._root.add_style_class_name(`perdana-island--theme-${theme.key}`);
+        this._updateIslandShapePreference();
         this._updateEarVisibility();
         this._surface?.queue_repaint();
     }
 
     _updateEarVisibility() {
-        const visible = !this._preferences?.glass && this._theme().opaque;
+        const visible = this._preferences?.islandShape !== 'pill'
+            && !this._preferences?.glass && this._theme().opaque;
         for (const ear of this._islandEars || []) {
             ear.visible = visible;
             ear.queue_repaint();
@@ -936,9 +978,13 @@ export default class PerdanaIslandExtension extends Extension {
     _trackNotification(source, notification, fresh = false) {
         if (!notification)
             return;
+        const sourceDetails = this._notificationSourceDetails(source, notification);
         let item = this._notificationItems.find(entry => entry.notification === notification);
         if (item) {
-            item.app = String(source.title || source.app?.get_name?.() || 'Application');
+            item.app = sourceDetails.label;
+            item.appKey = sourceDetails.key;
+            item.appIconName = sourceDetails.iconName;
+            item.appIconFile = sourceDetails.iconFile;
             item.title = String(notification.title || source.title || 'Notification');
             item.body = String(notification.body || '');
         } else {
@@ -946,7 +992,10 @@ export default class PerdanaIslandExtension extends Extension {
                 id: ++this._notificationSequence,
                 source,
                 notification,
-                app: String(source.title || source.app?.get_name?.() || 'Application'),
+                app: sourceDetails.label,
+                appKey: sourceDetails.key,
+                appIconName: sourceDetails.iconName,
+                appIconFile: sourceDetails.iconFile,
                 title: String(notification.title || source.title || 'Notification'),
                 body: String(notification.body || ''),
             };
@@ -954,8 +1003,53 @@ export default class PerdanaIslandExtension extends Extension {
             this._notificationItems = this._notificationItems.slice(0, 100);
         }
         this._renderNotificationsIfVisible();
-        if (fresh && source.policy?.showBanners !== false)
+        if (fresh && source.policy?.showBanners !== false
+            && this._isNotificationSourceEnabled(item.appKey))
             this._showSystemNotice('application', item);
+    }
+
+    _notificationSourceDetails(source, notification) {
+        const app = source?.app;
+        const identity = [
+            source?.title,
+            app?.get_name?.(),
+            app?.get_id?.(),
+            app?.id,
+            notification?.title,
+        ].filter(value => typeof value === 'string' && value.trim())
+            .join(' ').toLowerCase();
+        if (/whatsapp/.test(identity))
+            return {key: 'whatsapp', label: 'WhatsApp', iconName: 'whatsapp'};
+        if (/discord/.test(identity))
+            return {key: 'discord', label: 'Discord', iconName: 'discord'};
+        if (/telegram/.test(identity)) {
+            const desktop = /desktop|org\.telegram/i.test(identity);
+            return {
+                key: desktop ? 'telegramDesktop' : 'telegramWeb',
+                label: desktop ? 'Telegram Desktop' : 'Telegram Web',
+                iconName: 'telegram',
+            };
+        }
+        if (/google[\s-]?chat|chat\.google\.com/.test(identity))
+            return {
+                key: 'googleChat',
+                label: 'Google Chat',
+                iconFile: `${this.path}/assets/google-chat.png`,
+            };
+
+        return {
+            key: null,
+            label: String(source?.title || app?.get_name?.() || 'Application'),
+            iconName: null,
+        };
+    }
+
+    _isNotificationSourceEnabled(key) {
+        return !key || this._preferences?.notificationSources?.[key] !== false;
+    }
+
+    _visibleNotifications() {
+        return this._notificationItems.filter(item => this._isNotificationSourceEnabled(item.appKey));
     }
 
     _untrackNotification(notification) {
@@ -1009,6 +1103,7 @@ export default class PerdanaIslandExtension extends Extension {
     disable() {
         this._enabled = false;
         this._uiActorsAlive = false;
+        this._tuckedByBrowser = false;
         this._dropEmptyNotes();
         this._flushNotesSave();
         this._clearTimeout('_notesSaveSource');
@@ -1023,6 +1118,10 @@ export default class PerdanaIslandExtension extends Extension {
         if (this._stageSignal) {
             global.stage.disconnect(this._stageSignal);
             this._stageSignal = 0;
+        }
+        if (this._browserTuckSignal) {
+            global.display.disconnect(this._browserTuckSignal);
+            this._browserTuckSignal = 0;
         }
         this._hoverOpenSource && GLib.source_remove(this._hoverOpenSource);
         this._hoverOpenSource = 0;
@@ -1051,6 +1150,8 @@ export default class PerdanaIslandExtension extends Extension {
         this._greetingSource = 0;
         this._greetingPreviewSource && GLib.source_remove(this._greetingPreviewSource);
         this._greetingPreviewSource = 0;
+        this._brightnessReadSource && GLib.source_remove(this._brightnessReadSource);
+        this._brightnessReadSource = 0;
         this._blinkSource && GLib.source_remove(this._blinkSource);
         this._blinkSource = 0;
         this._disconnectClipboardMonitor();
@@ -1261,6 +1362,7 @@ export default class PerdanaIslandExtension extends Extension {
             accessible_name: 'Open Perdana Island',
         });
         this._compactButton.connect('clicked', () => {
+            this._setBrowserTucked(false);
             this._pinned = true;
             this._setExpanded(true);
         });
@@ -1595,6 +1697,8 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _islandRadius(width, height) {
+        if (this._preferences?.islandShape === 'pill')
+            return Math.min(height / 2, width / 2);
         return Math.min(
             34 + this._theme().radius,
             Math.max(1, this._theme().radius
@@ -1661,6 +1765,14 @@ export default class PerdanaIslandExtension extends Extension {
         const stops = this._preferences?.glass ? theme.glassFill : theme.fill;
         const tracePath = () => {
             cr.newPath();
+            if (this._preferences?.islandShape === 'pill') {
+                cr.arc(width - radius, radius, radius, -Math.PI / 2, 0);
+                cr.arc(width - radius, height - radius, radius, 0, Math.PI / 2);
+                cr.arc(radius, height - radius, radius, Math.PI / 2, Math.PI);
+                cr.arc(radius, radius, radius, Math.PI, Math.PI * 1.5);
+                cr.closePath();
+                return;
+            }
             cr.moveTo(0, 0);
             cr.lineTo(width, 0);
             cr.lineTo(width, height - radius);
@@ -1700,6 +1812,19 @@ export default class PerdanaIslandExtension extends Extension {
         cr.$dispose();
     }
 
+    _updateIslandShapePreference() {
+        if (!this._root)
+            return;
+        const pill = this._preferences?.islandShape === 'pill';
+        if (pill)
+            this._root.add_style_class_name('perdana-island--pill-shape');
+        else
+            this._root.remove_style_class_name('perdana-island--pill-shape');
+        this._updateEarVisibility();
+        this._surface?.queue_repaint();
+        this._layoutIsland();
+    }
+
     _updateReducedMotion() {
         if (!this._root)
             return;
@@ -1726,8 +1851,9 @@ export default class PerdanaIslandExtension extends Extension {
         const monitor = Main.layoutManager.primaryMonitor;
         const width = this._root.width || this._root.get_preferred_width(-1)[1];
         const x = monitor.x + (monitor.width - width) / 2;
-        if (this._root.x !== x || this._root.y !== monitor.y)
-            this._root.set_position(x, monitor.y);
+        const y = monitor.y + (this._preferences?.islandShape === 'pill' && !this._tuckedByBrowser ? 8 : 0);
+        if (this._root.x !== x || this._root.y !== y)
+            this._root.set_position(x, y);
     }
 
     _restingLyricsPillWidth() {
@@ -1770,6 +1896,8 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _onHoverChanged() {
+        if (this._tuckedByBrowser)
+            return;
         if (this._root.hover) {
             this._root.add_style_class_name('perdana-island--hot');
             this._clearTimeout('_hoverCloseSource');
@@ -1795,10 +1923,89 @@ export default class PerdanaIslandExtension extends Extension {
         }
     }
 
+    _browserWindowOverlapsIsland() {
+        const window = global.display.get_focus_window();
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!window || !monitor || window.is_fullscreen?.())
+            return false;
+        const identity = `${window.get_wm_class?.() || ''} ${window.get_title?.() || ''} ${window.get_gtk_application_id?.() || ''}`;
+        if (!/(firefox|chrom(e|ium)|brave|vivaldi|opera|edge|thorium|floorp|librewolf|zen browser)/i.test(identity))
+            return false;
+        try {
+            const frame = window.get_frame_rect();
+            const width = this._root?.width || PLAYING_WIDTH;
+            const height = this._tuckedByBrowser ? this._collapsedHeight() : (this._root?.height || COLLAPSED_HEIGHT);
+            const x = monitor.x + (monitor.width - width) / 2;
+            const y = monitor.y + (this._preferences?.islandShape === 'pill' && !this._tuckedByBrowser ? 8 : 0);
+            const overlapWidth = frame.x < x + width && frame.x + frame.width > x;
+            const overlapHeight = frame.y < y + height && frame.y + frame.height > y;
+            return overlapWidth && overlapHeight;
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    _updateBrowserTuckFromPointer(pointerX = null, pointerY = null) {
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!monitor || !this._root)
+            return;
+        if (pointerX === null || pointerY === null) {
+            [pointerX, pointerY] = global.get_pointer();
+        }
+        const centerX = monitor.x + monitor.width / 2;
+        const nearX = Math.abs(pointerX - centerX) <= Math.min(370, Math.max(60, monitor.width * 0.42));
+        const nearTop = pointerY <= monitor.y + (this._tuckedByBrowser ? 62 : 48);
+        const overlaps = this._browserWindowOverlapsIsland();
+        const canTuck = this._preferences?.browserOverlap && nearX && nearTop && overlaps
+            && !this._expanded && !this._closing && !this._pinned
+            && !this._systemNoticeActive && !this._userHidden;
+        if (canTuck)
+            this._setBrowserTucked(true);
+        else if (this._tuckedByBrowser && (!nearTop || !nearX || !overlaps
+            || !this._preferences?.browserOverlap || this._expanded || this._pinned))
+            this._setBrowserTucked(false);
+    }
+
+    _setBrowserTucked(tucked) {
+        if (!this._root || this._tuckedByBrowser === tucked)
+            return;
+        if (tucked && (!this._preferences?.browserOverlap || this._expanded || this._closing
+            || this._pinned || this._systemNoticeActive || this._userHidden))
+            return;
+        this._tuckedByBrowser = tucked;
+        if (tucked)
+            this._root.add_style_class_name('perdana-island--browser-tucked');
+        else
+            this._root.remove_style_class_name('perdana-island--browser-tucked');
+        this._root.remove_all_transitions();
+        this._compactTrackTitle.remove_all_transitions();
+        this._compactTrackTitle.opacity = tucked ? 0 : 255;
+        const width = tucked ? 96 : this._collapsedWidth();
+        const height = tucked ? 12 : this._collapsedHeight();
+        this._root.ease({
+            width,
+            height,
+            duration: this._motionDuration(180),
+            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+            onComplete: () => {
+                if (!this._root || this._tuckedByBrowser !== tucked)
+                    return;
+                this._root.set_size(width, height);
+                this._layoutIsland();
+                this._positionIsland();
+                if (!tucked)
+                    this._updateCollapsedLabel();
+            },
+        });
+        this._layoutIsland();
+        this._positionIsland();
+    }
+
     _toggleIslandVisibility() {
         if (!this._enabled || !this._root)
             return;
 
+        this._setBrowserTucked(false);
         this._userHidden = !this._userHidden;
         if (this._userHidden) {
             this._cancelCompactTrackTextTransition();
@@ -1847,6 +2054,8 @@ export default class PerdanaIslandExtension extends Extension {
             return;
         if (expanded && this._userHidden)
             return;
+        if (expanded && this._tuckedByBrowser)
+            this._setBrowserTucked(false);
         if (this._expanded === expanded) {
             if (expanded && this._activePage === 'today')
                 this._startTodayTicker();
@@ -2091,8 +2300,12 @@ export default class PerdanaIslandExtension extends Extension {
             return Clutter.EVENT_PROPAGATE;
         if (event.type() === Clutter.EventType.MOTION) {
             this._trackRestingEyes(event);
+            const [pointerX, pointerY] = event.get_coords();
+            this._updateBrowserTuckFromPointer(pointerX, pointerY);
         } else if (event.type() === Clutter.EventType.KEY_PRESS) {
             const key = event.get_key_symbol();
+            if ([Clutter.KEY_MonBrightnessUp, Clutter.KEY_MonBrightnessDown].includes(key))
+                this._scheduleBrightnessNotice();
             if (this._expanded && key === Clutter.KEY_Escape) {
                 this._pinned = false;
                 this._setExpanded(false);
@@ -2113,6 +2326,42 @@ export default class PerdanaIslandExtension extends Extension {
             }
         }
         return Clutter.EVENT_PROPAGATE;
+    }
+
+    _scheduleBrightnessNotice() {
+        this._clearTimeout('_brightnessReadSource');
+        this._brightnessReadSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 140, () => {
+            this._brightnessReadSource = 0;
+            const percent = this._readBrightnessPercent();
+            if (percent !== null)
+                this._showSystemNotice('brightness', {percent});
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _readBrightnessPercent() {
+        let directory = null;
+        try {
+            directory = Gio.File.new_for_path('/sys/class/backlight')
+                .enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
+            let entry;
+            while ((entry = directory.next_file(null)) !== null) {
+                const base = `/sys/class/backlight/${entry.get_name()}`;
+                const current = Number(this._readText(`${base}/brightness`).trim());
+                const maximum = Number(this._readText(`${base}/max_brightness`).trim());
+                if (Number.isFinite(current) && Number.isFinite(maximum) && maximum > 0)
+                    return Math.max(0, Math.min(100, Math.round(current / maximum * 100)));
+            }
+        } catch (_error) {
+            // Some systems do not expose a readable backlight device.
+        } finally {
+            try {
+                directory?.close(null);
+            } catch (_error) {
+                // The enumerator may already have closed after an I/O error.
+            }
+        }
+        return null;
     }
 
     _scheduleBlink() {
@@ -4226,6 +4475,7 @@ export default class PerdanaIslandExtension extends Extension {
     _renderNotificationsPage(body) {
         const contentWidth = this._pageWidth();
         const cardWidth = contentWidth - 18;
+        const visibleItems = this._visibleNotifications();
         place(body, makeLabel('Notifications', 'perdana-island__todo-heading'), 0, 3, 220, 22);
         const clearButton = makeTextButton('Clear', 'Clear notifications', () => this._clearNotifications(),
             'perdana-island__notification-clear');
@@ -4233,16 +4483,18 @@ export default class PerdanaIslandExtension extends Extension {
         clearButton.opacity = this._notificationItems.length > 0 ? 255 : 110;
         place(body, clearButton, contentWidth - 58, 0, 58, 26);
 
-        if (!this._notificationItems.length) {
-            place(body, makeLabel('No notifications yet', 'perdana-island__empty-media'), 0, 66, contentWidth, 24);
+        if (!visibleItems.length) {
+            const emptyText = this._notificationItems.length
+                ? 'All app sources are turned off' : 'No notifications yet';
+            place(body, makeLabel(emptyText, 'perdana-island__empty-media'), 0, 66, contentWidth, 24);
             return;
         }
         const list = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__notification-list',
         });
-        list.set_size(cardWidth, this._notificationItems.length * 41 - 3);
-        this._notificationItems.forEach(item => {
+        list.set_size(cardWidth, visibleItems.length * 41 - 3);
+        visibleItems.forEach(item => {
             const card = new St.Widget({
                 layout_manager: new Clutter.FixedLayout(),
                 style_class: 'perdana-island__notification-card',
@@ -4300,6 +4552,7 @@ export default class PerdanaIslandExtension extends Extension {
             ['island', 'Island'],
             ['greeting', 'Greeting'],
             ['reminders', 'Reminders'],
+            ['notifications', 'Notifications'],
             ['tabs', 'Tabs'],
         ];
         if (!sections.some(([key]) => key === this._settingsSection))
@@ -4331,10 +4584,16 @@ export default class PerdanaIslandExtension extends Extension {
                 this._settingsSection = key;
                 this._renderPanel();
             });
-            place(body, button, 0, 31 + index * 32, navWidth, 27);
+            place(body, button, 0, 31 + index * 26, navWidth, 24);
         });
 
-        const contentHeights = {island: 456, greeting: 402, reminders: 310, tabs: 158};
+        const contentHeights = {
+            island: 554,
+            greeting: 402,
+            reminders: 310,
+            notifications: 270,
+            tabs: 158,
+        };
         const contentHeight = contentHeights[this._settingsSection];
         const scroll = new St.ScrollView({
             overlay_scrollbars: false,
@@ -4452,16 +4711,26 @@ export default class PerdanaIslandExtension extends Extension {
                 halfWidth + columnGap, 116, halfWidth,
                 () => this._setPreference('restingStyle', 'eyes-clock'), 'preferences-system-symbolic');
 
-            heading('Appearance & notices', 152);
-            settingButton(this._preferences.glass ? 'Glass on' : 'Glass off', this._preferences.glass,
-                0, 174, halfWidth, () => this._setPreference('glass', !this._preferences.glass),
-                'preferences-desktop-appearance-symbolic');
-            settingButton(this._preferences.systemNotices ? 'Notices on' : 'Notices off',
-                this._preferences.systemNotices, halfWidth + columnGap, 174, halfWidth,
-                () => this._setPreference('systemNotices', !this._preferences.systemNotices),
-                'preferences-system-notifications-symbolic');
+            heading('Island shape', 152);
+            settingButton('Notch', this._preferences.islandShape !== 'pill',
+                0, 174, halfWidth, () => this._setPreference('islandShape', 'notch'),
+                'view-fullscreen-symbolic');
+            settingButton('Pill', this._preferences.islandShape === 'pill',
+                halfWidth + columnGap, 174, halfWidth,
+                () => this._setPreference('islandShape', 'pill'), 'media-playlist-repeat-symbolic');
+            settingButton(this._preferences.browserOverlap ? 'Browser tuck on' : 'Browser tuck off',
+                this._preferences.browserOverlap, 0, 210, contentWidth,
+                () => this._setPreference('browserOverlap', !this._preferences.browserOverlap),
+                'web-browser-symbolic');
+            place(content, makeLabel('Tuck under a browser when the pointer reaches the top edge.',
+                'perdana-island__settings-hint'), 0, 240, contentWidth, 24);
 
-            heading('Accent color · Navy is the default', 210);
+            heading('Appearance', 270);
+            settingButton(this._preferences.glass ? 'Glass on' : 'Glass off', this._preferences.glass,
+                0, 292, halfWidth, () => this._setPreference('glass', !this._preferences.glass),
+                'preferences-desktop-appearance-symbolic');
+
+            heading('Accent color · Navy is the default', 328);
             const palette = [
                 ['Navy', '#5577B8'], ['Ocean', '#35A7C8'], ['Blue', '#4C83E2'],
                 ['Plum', '#A579D4'], ['Forest', '#43A778'], ['Bronze', '#D89651'], ['Slate', '#98A6B8'],
@@ -4478,7 +4747,7 @@ export default class PerdanaIslandExtension extends Extension {
                 });
                 swatch.set_style(`background-color: ${color}; border: 2px solid ${selected ? '#ffffff' : 'rgba(255,255,255,0.18)'}; border-radius: 10px; padding: 0;`);
                 swatch.connect('clicked', () => this._setPreference('accentColor', color));
-                place(content, swatch, index * 40, 232, 34, 32);
+                place(content, swatch, index * 40, 350, 34, 32);
             });
             const colorEntry = new St.Entry({
                 hint_text: DEFAULT_ACCENT_COLOR,
@@ -4497,26 +4766,26 @@ export default class PerdanaIslandExtension extends Extension {
                     colorEntry.add_style_class_name('perdana-island__color-entry--invalid');
             };
             colorEntry.clutter_text.connect('activate', applyColor);
-            place(content, colorEntry, 0, 271, 132, 32);
+            place(content, colorEntry, 0, 389, 132, 32);
             place(content, makeTextButton('Apply', 'Apply accent color', applyColor,
-                'perdana-island__color-apply'), 142, 271, 82, 32);
+                'perdana-island__color-apply'), 142, 389, 82, 32);
 
-            heading('Session', 310);
+            heading('Session', 428);
             settingButton(this._preferences.keepAwake ? 'Keep awake on' : 'Keep awake off',
-                this._preferences.keepAwake === true, 0, 332, halfWidth,
+                this._preferences.keepAwake === true, 0, 450, halfWidth,
                 () => this._setPreference('keepAwake', this._preferences.keepAwake !== true),
                 'preferences-desktop-screensaver-symbolic');
             place(content, makeLabel(this._keepAwakeStatusText(), 'perdana-island__settings-hint'),
-                halfWidth + columnGap, 337, halfWidth, 30);
+                halfWidth + columnGap, 455, halfWidth, 30);
 
-            heading('Music playback detection', 374);
+            heading('Music playback detection', 492);
             settingButton(this._preferences.smartMusicDetection
                 ? 'Smart detection on' : 'Smart detection off',
-                this._preferences.smartMusicDetection, 0, 396, halfWidth,
+                this._preferences.smartMusicDetection, 0, 514, halfWidth,
                 () => this._setPreference('smartMusicDetection', !this._preferences.smartMusicDetection),
                 'audio-x-generic-symbolic');
             place(content, makeLabel('Ignore podcasts, films, social clips, and unclear media.',
-                'perdana-island__settings-hint'), halfWidth + columnGap, 398, halfWidth, 30);
+                'perdana-island__settings-hint'), halfWidth + columnGap, 516, halfWidth, 30);
         } else if (this._settingsSection === 'greeting') {
             heading('Session greeting', 0);
             settingButton(this._preferences.greetingEnabled ? 'Greeting on' : 'Greeting off',
@@ -4622,6 +4891,35 @@ export default class PerdanaIslandExtension extends Extension {
                 }, 'perdana-island__color-apply'), 0, 244, contentWidth, 30);
             place(content, makeLabel(this._prayerStatusText(), 'perdana-island__settings-hint'),
                 0, 280, contentWidth, 26);
+        } else if (this._settingsSection === 'notifications') {
+            heading('Island notification banners', 0);
+            settingButton(this._preferences.systemNotices ? 'Notices on' : 'Notices off',
+                this._preferences.systemNotices, 0, 22, halfWidth,
+                () => this._setPreference('systemNotices', !this._preferences.systemNotices),
+                'preferences-system-notifications-symbolic');
+            place(content, makeLabel('Controls banners shown by the island; GNOME notifications stay unchanged.',
+                'perdana-island__settings-hint'), halfWidth + columnGap, 22, halfWidth, 32);
+
+            heading('App sources', 62);
+            const sourceGap = 8;
+            const sourceWidth = (contentWidth - sourceGap) / 2;
+            NOTIFICATION_SOURCE_OPTIONS.forEach(([key, label, iconName], index) => {
+                const enabled = this._preferences.notificationSources?.[key] !== false;
+                const row = Math.floor(index / 2);
+                const column = index % 2;
+                const x = column * (sourceWidth + sourceGap);
+                const y = 84 + row * 36;
+                settingButton(`${label} ${enabled ? 'on' : 'off'}`, enabled, x, y,
+                    sourceWidth, () => this._setPreference('notificationSources', {
+                        ...this._preferences.notificationSources,
+                        [key]: !enabled,
+                    }), iconName);
+            });
+            place(content, makeLabel('Notifications from browser apps follow the source name GNOME reports.',
+                'perdana-island__settings-hint'), 0, 192, contentWidth, 24);
+            heading('Keyboard brightness OSD', 220);
+            place(content, makeLabel('Brightness keys show the current hardware level; GNOME still changes it.',
+                'perdana-island__settings-hint'), 0, 242, contentWidth, 24);
         } else {
             heading('Visible tabs · Settings stays available', 0);
             place(content, makeLabel('Hide or restore pages in the bottom tab bar.',
@@ -5644,7 +5942,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _updateCollapsedLabel() {
-        if (!this._uiActorsAlive || !this._compact || this._systemNoticeActive)
+        if (!this._uiActorsAlive || !this._compact || this._systemNoticeActive || this._tuckedByBrowser)
             return;
         const player = this._getSelectedPlayer();
         const playing = player && this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing';
@@ -5809,7 +6107,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._clearTimeout('_blinkSource');
         else if (!this._expanded)
             this._scheduleBlink();
-        if ((playing || focusRunning) && this._root.hover && !this._expanded && !this._hoverOpenSource) {
+        if ((playing || focusRunning) && this._root.hover && !this._expanded
+            && !this._tuckedByBrowser && !this._hoverOpenSource) {
             this._hoverOpenSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 160, () => {
                 this._hoverOpenSource = 0;
                 if (this._root?.hover && (this._isPlaying() || this._focusSource)) {
@@ -6650,13 +6949,15 @@ export default class PerdanaIslandExtension extends Extension {
         if (!this._enabled || !this._root || this._userHidden || this._expanded
             || (type === 'greeting' ? !this._preferences.greetingEnabled : !this._preferences.systemNotices))
             return false;
+        if (this._tuckedByBrowser)
+            this._setBrowserTucked(false);
         const sameNotice = this._systemNoticeActive && this._systemNoticeType === type;
         this._clearTimeout('_noticeDismissSource');
         this._systemNoticeActive = true;
         this._systemNoticeType = type;
         this._noticeNotificationItem = type === 'application' ? data : null;
 
-        const duration = type === 'volume' ? 2
+        const duration = ['volume', 'brightness'].includes(type) ? 2
             : ['agenda', 'recap', 'focus-guard'].includes(type) ? 7
                 : type === 'water' || type === 'prayer' ? 6
                 : ['focus', 'application', 'greeting'].includes(type) ? 4 : 3;
@@ -6786,7 +7087,7 @@ export default class PerdanaIslandExtension extends Extension {
                     this._noticePercent = makeLabel('', 'perdana-island__notice-percent');
                     this._noticePercent.set_size(type === 'volume' ? 84 : 72, 36);
                     this._noticeRight.add_child(this._noticePercent);
-                    if (type === 'volume') {
+                    if (['volume', 'brightness'].includes(type)) {
                         this._noticeVolumeTrack = new St.Widget({
                             layout_manager: new Clutter.FixedLayout(),
                             style_class: 'perdana-island__volume-track',
@@ -6836,22 +7137,27 @@ export default class PerdanaIslandExtension extends Extension {
                             : percent <= 100 ? 'audio-volume-high-symbolic'
                                 : 'audio-volume-overamplified-symbolic';
                 this._noticeVolumeFill.width = 84 * Math.min(100, percent) / 100;
+            } else if (type === 'brightness') {
+                const percent = Math.max(0, Math.min(100, Number(data.percent) || 0));
+                this._noticeTitle.text = 'Brightness';
+                this._noticeSubtitle.text = 'Display brightness';
+                this._noticePercent.text = `${percent}%`;
+                this._noticeVolumeIcon.icon_name = 'display-brightness-symbolic';
+                this._noticeVolumeFill.width = 84 * percent / 100;
             } else if (type === 'application') {
-                const identity = `${data.app} ${data.title}`;
-                const brand = /whatsapp/i.test(identity) ? 'WhatsApp'
-                    : /discord/i.test(identity) ? 'Discord' : data.app;
-                const brandIcon = brand === 'WhatsApp' ? 'whatsapp'
-                    : brand === 'Discord' ? 'discord' : null;
-                this._noticeTitle.text = brand;
+                this._noticeTitle.text = data.app;
                 this._noticeSubtitle.text = data.body
                     ? `${data.title} · ${data.body}` : data.title;
-                this._noticeVolumeIcon.gicon = brandIcon
-                    ? Gio.ThemedIcon.new(brandIcon)
-                    : data.notification.gicon || data.source.icon
-                        || data.source.app?.get_icon?.() || Gio.ThemedIcon.new('application-x-executable-symbolic');
-                this._noticeVolumeIcon.fallback_gicon = data.notification.gicon
+                const sourceIcon = data.notification.gicon
                     || data.source.icon || data.source.app?.get_icon?.()
                     || Gio.ThemedIcon.new('application-x-executable-symbolic');
+                if (data.appIconFile && GLib.file_test(data.appIconFile, GLib.FileTest.EXISTS)) {
+                    this._noticeVolumeIcon.gicon = Gio.FileIcon.new(Gio.File.new_for_path(data.appIconFile));
+                } else {
+                    this._noticeVolumeIcon.gicon = data.appIconName
+                        ? Gio.ThemedIcon.new(data.appIconName) : sourceIcon;
+                }
+                this._noticeVolumeIcon.fallback_gicon = sourceIcon;
             } else if (type === 'greeting') {
                 this._noticeTitle.text = data.title;
                 this._noticeVolumeIcon.icon_name = 'avatar-default-symbolic';
