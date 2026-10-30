@@ -10,9 +10,9 @@ Perdana Island provides separate native packages for GNOME Shell and KDE Plasma.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
-## Current version: v73 candidate
+## Current version: v73
 
-The v73 source snapshot ports the fluid motion work from PR #12 and the tab-order and island-placement work from PR #13 into the current GNOME code. Settings now includes a separate Music section for smart music detection, and the island can be dragged to supported screen edges or a free position. The latest published release remains v72; v73 packages are not published until a v73 tag is created. See the [v73 change notes](docs/releases/v73.md) for the port details and PR status.
+The v73 release ports the fluid motion work from PR #12 and the tab-order and island-placement work from PR #13 into the current GNOME code. Settings includes a separate Music section for smart music detection, and the island can be dragged to supported screen edges or a free position. KDE's package is version-aligned; its widget features are unchanged. Download the GNOME or KDE package from the [v73 GitHub release](https://github.com/txtperdana/perdana.island/releases/tag/v73). See the [v73 change notes](docs/releases/v73.md) for the port details and PR status.
 
 ## Feature previews
 
@@ -105,7 +105,7 @@ The repository keeps each desktop implementation in its own directory. Release t
 - `Perdana-Island-GNOME-v73.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
 - `Perdana-Island-KDE-Plasma-v73.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v73 archives locally, run `./scripts/package-release.sh v73`. Until the v73 tag is published, v72 remains the latest downloadable release.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v73 archives locally, run `./scripts/package-release.sh v73`.
 
 ## Use
 
@@ -147,7 +147,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, tests, packagin
 - **v70:** implemented first-session and returning-session greetings; added account, device, and custom display-name choices; editable welcome and return text with a `{name}` token; preview buttons; and once-per-login greeting state. Split Settings into Island, Greeting, Reminders, and Tabs side sections, with scroll-safe content in each section.
 - **v71:** added configurable MPRIS music classification to keep podcasts, movies, social videos, and ambiguous media out of the music island; refined Notes spacing and safe insets; and guarded Keep awake against delayed session-manager replies.
 - **v72:** added Settings → Notifications controls for app banners from WhatsApp, Discord, Telegram Web/Desktop, and Google Chat; added Notch/Pill shape selection, browser-overlap tuck-away, and a hardware brightness OSD. GNOME retains control of desktop notifications and brightness changes.
-- **v73 candidate:** ported motion and responsive transition behavior from PR #12; added reorderable tabs and persistent island placement from PR #13; separated smart music detection into Settings → Music; and synchronized the GNOME and KDE package version metadata. The KDE widget's features are unchanged.
+- **v73:** ported motion and responsive transition behavior from PR #12; added reorderable tabs and persistent island placement from PR #13; separated smart music detection into Settings → Music; and synchronized the GNOME and KDE package version metadata. The KDE widget's features are unchanged.
 
 ### mteguhfh
 
