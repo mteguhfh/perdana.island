@@ -5600,7 +5600,7 @@ export default class PerdanaIslandExtension extends Extension {
             const fontOptions = [
                 ['cantarell', 'Cantarell'],
                 ['noto-sans', 'Noto Sans'],
-                ['plus-jakarta-sans', 'Plus Jakarta Sans*'],
+                ['plus-jakarta-sans', 'Plus Jakarta Sans'],
             ];
             const fontWidth = (contentWidth - columnGap * 2) / 3;
             fontOptions.forEach(([key, label], index) => {
@@ -5608,7 +5608,7 @@ export default class PerdanaIslandExtension extends Extension {
                     index * (fontWidth + columnGap), 450, fontWidth,
                     () => this._setPreference('fontFamily', key), 'font-x-generic-symbolic');
             });
-            place(content, makeLabel('* Plus Jakarta Sans must be installed; Cantarell is the fallback.',
+            place(content, makeLabel('Uses Plus Jakarta Sans when available; otherwise falls back to Cantarell.',
                 'perdana-island__settings-hint'), 0, 482, contentWidth, 24);
 
             heading('Session', 516);
