@@ -5,5 +5,5 @@
   "shell-version": ["50", "51"],
   "settings-schema": "org.gnome.shell.extensions.perdana-island",
   "url": "https://github.com/txtperdana/perdana.island",
-  "version-name": "v74"
+  "version-name": "v75"
 }

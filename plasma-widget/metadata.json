@@ -6,7 +6,7 @@
     "Description": "Media, focus, tasks, and clipboard in a compact Plasma widget.",
     "Category": "Utilities",
     "Icon": "applications-multimedia",
-    "Version": "74",
+    "Version": "75",
     "Website": "https://github.com/txtperdana/perdana.island"
   },
   "X-Plasma-API-Minimum-Version": "6.0"

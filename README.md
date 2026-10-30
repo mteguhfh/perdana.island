@@ -10,9 +10,9 @@ Perdana Island provides separate native packages for GNOME Shell and KDE Plasma.
 
 See [README-KDE.md](README-KDE.md) for KDE requirements, limitations, installation, and usage. Each GitHub release attaches one GNOME extension archive and one KDE Plasma widget archive. Install only the archive for your desktop environment.
 
-## Current version: v74
+## Current version: v75
 
-Version 74 adds interface font selection in Settings → Island: Cantarell, Noto Sans, and Plus Jakarta Sans. Plus Jakarta Sans must be installed on the system (for example, from [Google Fonts](https://fonts.google.com/specimen/Plus+Jakarta+Sans)); if unavailable, CSS falls back to Cantarell. It also fixes click-opened islands so they close when the pointer leaves. The KDE package version is aligned with no widget feature change. See the [v74 change notes](docs/releases/v74.md).
+Version 75 fixes Spotify detection when a song title contains words like “Movie”, cleans soundtrack suffixes from lyric lookup titles, and retries LRCLIB service errors that return HTTP 5xx. It includes the v74 font selector and click-away fixes. See the [v75 change notes](docs/releases/v75.md).
 
 ## Feature previews
 
@@ -102,10 +102,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps each desktop implementation in its own directory. Release tags use one shared project version, while the release contains separate installable archives:
 
-- `Perdana-Island-GNOME-v74.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
-- `Perdana-Island-KDE-Plasma-v74.zip` for KDE Plasma 6.
+- `Perdana-Island-GNOME-v75.shell-extension.zip` for GNOME Shell and GNOME Extensions submission.
+- `Perdana-Island-KDE-Plasma-v75.zip` for KDE Plasma 6.
 
-The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v74 archives locally, run `./scripts/package-release.sh v74`.
+The archive versions follow the tag and package metadata. Pushing a `v*` tag runs the release workflow, checks both package versions, compiles the GNOME settings schema, builds separate archives, and publishes the matching `docs/releases/<tag>.md` notes on GitHub. KDE installation and usage details are in [README-KDE.md](README-KDE.md). To prepare the v75 archives locally, run `./scripts/package-release.sh v75`.
 
 ## Use
 
@@ -149,6 +149,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, tests, packagin
 - **v72:** added Settings → Notifications controls for app banners from WhatsApp, Discord, Telegram Web/Desktop, and Google Chat; added Notch/Pill shape selection, browser-overlap tuck-away, and a hardware brightness OSD. GNOME retains control of desktop notifications and brightness changes.
 - **v73:** ported motion and responsive transition behavior from PR #12; added reorderable tabs and persistent island placement from PR #13; separated smart music detection into Settings → Music; and synchronized the GNOME and KDE package version metadata. The KDE widget's features are unchanged.
 - **v74:** adds persistent font selection for Cantarell, Noto Sans, and Plus Jakarta Sans; Plus Jakarta Sans falls back to Cantarell when not installed. Fixes pointer-exit auto-close for click-opened islands. The KDE widget's features are unchanged.
+- **v75:** prevents song titles mentioning films from hiding known music services, strips soundtrack attribution from lyric-search titles, and retries LRCLIB 5xx service errors. KDE package version aligned.
 
 ### mteguhfh
 

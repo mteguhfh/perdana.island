@@ -3594,6 +3594,8 @@ export default class PerdanaIslandExtension extends Extension {
         const isYouTube = /youtube/i.test(playerName || '') || /\byoutube(?: music)?\s*$/i.test(rawTitle);
 
         title = title
+            .replace(/\s*[-–—]\s*from\s+["“][^"”]+["”]\s+(?:movie|film)\s*$/i, '')
+            .replace(/\s*\(\s*from\s+["“][^"”]+["”]\s+(?:movie|film)\s*\)\s*$/i, '')
             .replace(/\s*[|–—-]\s*(?:youtube(?: music)?|official (?:music )?(?:audio|video)|lyrics? video)\s*$/i, '')
             .replace(/\s*\[(?:official (?:music )?(?:audio|video)|lyrics?|subtitles?|4k|hd|visuali[sz]er)[^\]]*\]\s*/gi, ' ')
             .replace(/\s*\((?:official (?:music )?(?:audio|video)|lyrics?|subtitles?|4k|hd|visuali[sz]er)[^)]*\)\s*/gi, ' ')
@@ -3776,7 +3778,7 @@ export default class PerdanaIslandExtension extends Extension {
         const failed = (message, status) => {
             if (!current())
                 return;
-            if (status === Soup.Status.TOO_MANY_REQUESTS) {
+            if (status === Soup.Status.TOO_MANY_REQUESTS || status >= 500) {
                 const retryHeader = message?.get_response_headers()?.get_one('Retry-After');
                 const retrySeconds = Number(retryHeader);
                 const retryDate = retryHeader ? Date.parse(retryHeader) : NaN;

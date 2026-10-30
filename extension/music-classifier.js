@@ -41,7 +41,10 @@ export function classifyMedia(media, {enabled = true, requirePlaying = true} = {
         return {kind: 'ignored', reason: `The player identifies this as ${contentType} content.`};
     if (SPOKEN_GENRE.test(genre))
         return {kind: 'ignored', reason: 'The media genre identifies spoken or podcast content.'};
-    if (SPOKEN_CONTENT.test(title))
+    // A provider with a strong music identity can legitimately use film words
+    // in song titles (for example, a soundtrack release). Keep title-only
+    // heuristics for ambiguous browser/media sessions instead.
+    if (SPOKEN_CONTENT.test(title) && !MUSIC_SERVICES.test(mediaHint))
         return {kind: 'ignored', reason: 'The title identifies podcast, episode, film, or spoken content.'};
     if (/\b(podcast|episode)\b/i.test(text(media.trackId)))
         return {kind: 'ignored', reason: 'The media identifier marks this as an episode.'};
