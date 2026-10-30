@@ -7,6 +7,42 @@
   border-radius: 0 0 19px 19px;
 }
 
+.perdana-island StLabel,
+.perdana-island StButton,
+.perdana-island StEntry,
+.perdana-island StText,
+.perdana-island .perdana-button,
+.perdana-island .perdana-action__label {
+  font-family: Cantarell, sans-serif;
+}
+
+.perdana-island--font-cantarell StLabel,
+.perdana-island--font-cantarell StButton,
+.perdana-island--font-cantarell StEntry,
+.perdana-island--font-cantarell StText,
+.perdana-island--font-cantarell .perdana-button,
+.perdana-island--font-cantarell .perdana-action__label {
+  font-family: Cantarell, sans-serif;
+}
+
+.perdana-island--font-noto-sans StLabel,
+.perdana-island--font-noto-sans StButton,
+.perdana-island--font-noto-sans StEntry,
+.perdana-island--font-noto-sans StText,
+.perdana-island--font-noto-sans .perdana-button,
+.perdana-island--font-noto-sans .perdana-action__label {
+  font-family: "Noto Sans", Cantarell, sans-serif;
+}
+
+.perdana-island--font-plus-jakarta-sans StLabel,
+.perdana-island--font-plus-jakarta-sans StButton,
+.perdana-island--font-plus-jakarta-sans StEntry,
+.perdana-island--font-plus-jakarta-sans StText,
+.perdana-island--font-plus-jakarta-sans .perdana-button,
+.perdana-island--font-plus-jakarta-sans .perdana-action__label {
+  font-family: "Plus Jakarta Sans", Cantarell, sans-serif;
+}
+
 .perdana-island--expanded {
   border-radius: 0 0 34px 34px;
 }
@@ -1044,7 +1080,7 @@
   color: #ffffff;
   background-color: rgba(255, 255, 255, 0.08);
   font-size: 12px;
-  font-family: monospace;
+  font-family: "Noto Sans Mono", monospace;
 }
 
 .perdana-island__color-entry:focus {

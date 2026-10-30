@@ -34,6 +34,7 @@ const MUTTER_DISPLAY_CONFIG_PATH = '/org/gnome/Mutter/DisplayConfig';
 const DEFAULT_FOCUS_SECONDS = 25 * 60;
 const DEFAULT_BREAK_SECONDS = 5 * 60;
 const DEFAULT_ACCENT_COLOR = '#5577B8';
+const FONT_FAMILIES = ['cantarell', 'noto-sans', 'plus-jakarta-sans'];
 const AGENDA_BRIEFING_MINUTES = 8 * 60;
 const AGENDA_RECAP_MINUTES = 17 * 60;
 const TASK_PRIORITIES = ['high', 'medium', 'low'];
@@ -689,6 +690,7 @@ export default class PerdanaIslandExtension extends Extension {
             glass: false,
             theme: DEFAULT_THEME,
             accentColor: DEFAULT_ACCENT_COLOR,
+            fontFamily: 'cantarell',
             islandShape: 'notch',
             browserOverlap: false,
             restingStyle: 'hover-clock',
@@ -736,6 +738,8 @@ export default class PerdanaIslandExtension extends Extension {
                 ? stored.theme
                 : DEFAULT_THEME;
             defaults.accentColor = normalizeHexColor(stored.accentColor) || defaults.accentColor;
+            defaults.fontFamily = FONT_FAMILIES.includes(stored.fontFamily)
+                ? stored.fontFamily : 'cantarell';
             defaults.islandShape = stored.islandShape === 'pill' ? 'pill' : 'notch';
             defaults.browserOverlap = stored.browserOverlap === true;
             defaults.restingStyle = ['hover-clock', 'eyes-clock'].includes(stored.restingStyle)
@@ -868,6 +872,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._focusRing?.queue_repaint();
             this._applyAccentStyles();
         }
+        if (key === 'fontFamily')
+            this._applyFontPreference();
         if (key === 'restingStyle') {
             this._compactVisualState = null;
             this._layoutCompactCenter();
@@ -1012,6 +1018,17 @@ export default class PerdanaIslandExtension extends Extension {
 
     _theme() {
         return THEMES.find(theme => theme.key === this._preferences?.theme) || THEMES[0];
+    }
+
+    _applyFontPreference() {
+        if (!this._root)
+            return;
+        for (const family of FONT_FAMILIES)
+            this._root.remove_style_class_name(`perdana-island--font-${family}`);
+        const family = FONT_FAMILIES.includes(this._preferences?.fontFamily)
+            ? this._preferences.fontFamily : 'cantarell';
+        this._root.add_style_class_name(`perdana-island--font-${family}`);
+        this._root.queue_relayout();
     }
 
     _applyTheme() {
@@ -1465,6 +1482,7 @@ export default class PerdanaIslandExtension extends Extension {
         });
         this._root.add_style_class_name('perdana-island--custom-shape');
         this._root.add_style_class_name('perdana-island--v12');
+        this._applyFontPreference();
         if (this._reducedMotion)
             this._root.add_style_class_name('perdana-island--reduced-motion');
         Main.layoutManager.addChrome(this._root, {
@@ -2063,7 +2081,7 @@ export default class PerdanaIslandExtension extends Extension {
             this._root.add_style_class_name('perdana-island--hot');
             this._clearTimeout('_hoverCloseSource');
             this._updateCollapsedLabel();
-        } else if (this._expanded && !this._pinned) {
+        } else if (this._expanded) {
             this._root.remove_style_class_name('perdana-island--hot');
             this._updateCollapsedLabel();
             this._clearTimeout('_hoverOpenSource');
@@ -2073,8 +2091,10 @@ export default class PerdanaIslandExtension extends Extension {
                 320,
                 () => {
                     this._hoverCloseSource = 0;
-                    if (!this._root?.hover && !this._tabDrag?.moved && !this._islandDrag?.moved)
+                    if (!this._root?.hover && !this._tabDrag?.moved && !this._islandDrag?.moved) {
+                        this._pinned = false;
                         this._setExpanded(false);
+                    }
                     return GLib.SOURCE_REMOVE;
                 }
             );
@@ -5386,7 +5406,7 @@ export default class PerdanaIslandExtension extends Extension {
         });
 
         const contentHeights = {
-            island: 600,
+            island: 670,
             greeting: 414,
             music: 108,
             reminders: 326,
@@ -5574,27 +5594,43 @@ export default class PerdanaIslandExtension extends Extension {
             place(content, makeTextButton('Apply', 'Apply accent color', applyColor,
                 'perdana-island__color-apply'), 142, 389, 82, 32);
 
-            heading('Session', 428);
+            heading('Font', 428);
+            const fontOptions = [
+                ['cantarell', 'Cantarell'],
+                ['noto-sans', 'Noto Sans'],
+                ['plus-jakarta-sans', 'Plus Jakarta Sans*'],
+            ];
+            const fontWidth = (contentWidth - columnGap * 2) / 3;
+            fontOptions.forEach(([key, label], index) => {
+                settingButton(label, this._preferences.fontFamily === key,
+                    index * (fontWidth + columnGap), 450, fontWidth,
+                    () => this._setPreference('fontFamily', key), 'font-x-generic-symbolic');
+            });
+            place(content, makeLabel('* Plus Jakarta Sans must be installed; Cantarell is the fallback.',
+                'perdana-island__settings-hint'), 0, 482, contentWidth, 24);
+
+            heading('Session', 516);
             settingButton(this._preferences.keepAwake ? 'Keep awake on' : 'Keep awake off',
-                this._preferences.keepAwake === true, 0, 450, halfWidth,
+                this._preferences.keepAwake === true, 0, 538, halfWidth,
                 () => this._setPreference('keepAwake', this._preferences.keepAwake !== true),
                 'preferences-desktop-screensaver-symbolic');
             place(content, makeLabel(this._keepAwakeStatusText(), 'perdana-island__settings-hint'),
-                halfWidth + columnGap, 455, halfWidth, 30);
+                halfWidth + columnGap, 543, halfWidth, 30);
 
-            heading('Position · drag to move', 492);
+            heading('Position · drag to move', 578);
             const positionGap = 6;
             const positionWidth = (contentWidth - positionGap * 4) / 5;
             this._positionButtons = new Map();
             [['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'],
                 ['right', 'Right'], ['free', 'Free']].forEach(([key, label], index) => {
                 const button = settingButton(label, this._preferences.positionMode === key,
-                    index * (positionWidth + positionGap), 514, positionWidth,
+                    index * (positionWidth + positionGap), 600, positionWidth,
                     () => this._setPositionMode(key));
                 this._positionButtons.set(key, button);
             });
             place(content, makeLabel('Drag the resting pill or header. Release near an edge to snap.',
-                'perdana-island__settings-hint'), 0, 550, contentWidth, 26);
+                'perdana-island__settings-hint'), 0, 636, contentWidth, 26);
+
         } else if (this._settingsSection === 'greeting') {
             heading('Session greeting', 0);
             settingButton(this._preferences.greetingEnabled ? 'Greeting on' : 'Greeting off',
