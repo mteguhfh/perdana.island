@@ -9,7 +9,7 @@
 
 ## Music
 
-The Music page reads active players through MPRIS. It can show the title, artist, artwork, elapsed and total time, and playback controls. Click the progress bar to seek. Previous, Play/Pause, and Next are available when the active player exposes those capabilities. Some browsers only publish media after playback has started.
+The Music page reads active players through MPRIS. It can show the title, artist, artwork, elapsed and total time, and playback controls. Click the progress bar to seek. Previous, Play/Pause, and Next are available when the active player exposes those capabilities. Smart detection checks player and track metadata so podcasts, films, social clips, and unclear sessions are ignored. Turn it off under **Settings → Music** if you want every media session to be eligible. Some browsers only publish media after playback has started.
 
 ## Lyrics
 
@@ -48,16 +48,18 @@ Today shows the local date and available CPU, memory, disk, and battery readings
 
 ## Notifications
 
-Open **Notifications** to review recent desktop notifications. Select a row to activate it and close the island. **Clear** dismisses the listed notifications from their applications.
+Open **Notifications** to review recent desktop notifications. Select a row to activate it and close the island. **Clear** dismisses the listed notifications from their applications. App banners can be filtered in **Settings → Notifications** for WhatsApp Web, Discord, Telegram Web/Desktop, and Google Chat when GNOME reports a recognizable source name. These switches affect Perdana Island only; they do not change GNOME's notification settings. A browser that reports only its own generic name cannot be separated by website. Hardware brightness keys can also show the current backlight level in an island OSD; GNOME still applies the brightness change.
 
 ## Settings
 
-Settings are divided into four side sections:
+Settings are divided into six side sections:
 
-- **Island** chooses the material, resting clock style, glass appearance, system notices, accent color, and keep awake. Enter a hex color or choose a swatch. **Keep awake** asks the session manager to block idle and suspend until you turn it off; the inhibitor is released when the extension is disabled.
+- **Island** chooses the material, Notch or Pill shape, browser tuck-away, resting clock style, glass appearance, accent color, island position, and keep awake. Browser tuck-away shrinks the island when an overlapping browser is active and the pointer reaches the top edge; moving away restores it. Choose Top, Bottom, Left, Right, or Free, or drag the island by its resting pill or open header. Enter a hex color or choose a swatch. **Keep awake** asks the session manager to block idle and suspend until you turn it off; the inhibitor is released when the extension is disabled.
 - **Greeting** controls the one-time welcome and returning-session message. Choose the Linux account name, device name, or enter a custom name. Edit the first sign-in and returning text; use `{name}` wherever the selected name should appear. Select either preview and click **Show on island** to see it. Greeting text is stored locally. The welcome appears the first time the feature runs; later desktop login sessions use the returning text. A manual preview counts as the greeting for the current session, preventing a duplicate automatic banner.
+- **Music** toggles smart music detection. When enabled, metadata and player names help filter podcasts, films, social clips, and ambiguous video from the resting music state.
 - **Reminders** controls morning agenda, evening recap, focus guard, water reminders, and prayer reminders, including city and calculation method.
-- **Tabs** shows or hides feature pages in the bottom navigation. Settings remains available.
+- **Notifications** controls island banners and filters WhatsApp Web, Discord, Telegram Web/Desktop, and Google Chat. Clicking a banner activates the original desktop notification; replies are not sent from the island. GNOME's own notification banners are not changed.
+- **Tabs** shows or hides feature pages in the bottom navigation. Settings remains available. Drag tabs in the bottom navigation to reorder them; the first visible tab becomes the page opened by a click on the resting island.
 
 Each section scrolls independently if its controls exceed the available panel height. Settings and greeting preferences are saved locally.
 
