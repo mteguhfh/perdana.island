@@ -25,12 +25,52 @@ import {
     normalizeClipboardHistoryKey,
 } from './clipboard-utils.js';
 import {classifyMedia} from './music-classifier.js';
+import {
+    aria2TotalLength,
+    cleanActivityIcon,
+    cleanActivityId,
+    cleanActivityText,
+    downloadTitle,
+    formatActivityDetail,
+    formatActivityValue,
+    isAria2Control,
+    normalizeProgress,
+    partialSuffix,
+    selectActivity,
+} from './progress-utils.js';
 
 const MPRIS_PREFIX = 'org.mpris.MediaPlayer2.';
 const MPRIS_PATH = '/org/mpris/MediaPlayer2';
 const MPRIS_PLAYER_IFACE = 'org.mpris.MediaPlayer2.Player';
 const MUTTER_DISPLAY_CONFIG = 'org.gnome.Mutter.DisplayConfig';
 const MUTTER_DISPLAY_CONFIG_PATH = '/org/gnome/Mutter/DisplayConfig';
+const ACTIVITY_DBUS_NAME = 'org.perdana.Island';
+const ACTIVITY_DBUS_PATH = '/org/perdana/Island';
+const ACTIVITY_DBUS_XML = `
+<node>
+  <interface name="org.perdana.Island">
+    <method name="StartActivity">
+      <arg type="s" name="id" direction="in"/>
+      <arg type="s" name="title" direction="in"/>
+      <arg type="s" name="subtitle" direction="in"/>
+      <arg type="d" name="progress" direction="in"/>
+      <arg type="s" name="icon" direction="in"/>
+    </method>
+    <method name="UpdateActivity">
+      <arg type="s" name="id" direction="in"/>
+      <arg type="d" name="progress" direction="in"/>
+      <arg type="s" name="subtitle" direction="in"/>
+    </method>
+    <method name="FinishActivity">
+      <arg type="s" name="id" direction="in"/>
+      <arg type="b" name="success" direction="in"/>
+    </method>
+    <method name="ListActivities">
+      <arg type="s" name="activities" direction="out"/>
+    </method>
+    <signal name="ActivityChanged"/>
+  </interface>
+</node>`;
 const DEFAULT_FOCUS_SECONDS = 25 * 60;
 const DEFAULT_BREAK_SECONDS = 5 * 60;
 const DEFAULT_ACCENT_COLOR = '#5577B8';
@@ -82,6 +122,10 @@ const MICROSECONDS_PER_SECOND = 1_000_000;
 const LEGACY_DATA_DIRECTORY = 'pulo-island';
 const COLLAPSED_WIDTH = 150;
 const PLAYING_WIDTH = 236;
+const ACTIVITY_WIDTH = 236;
+const ACTIVITY_EXPIRY_MS = 4500;
+const ACTIVITY_DOWNLOAD_DEBOUNCE_MS = 250;
+const ACTIVITY_DOWNLOAD_FINISH_MS = 700;
 const RESTING_LYRICS_WIDTH = 460;
 const COLLAPSED_HEIGHT = 38;
 const RESTING_LYRICS_HEIGHT = 64;
@@ -91,6 +135,7 @@ const PAGE_WIDTHS = {
     media: 460,
     lyrics: 740,
     focus: 680,
+    activity: 600,
     shelf: 640,
     tasks: 600,
     notes: 720,
@@ -114,6 +159,7 @@ const PAGES = [
     {key: 'media', label: 'Music', icon: 'audio-x-generic-symbolic'},
     {key: 'lyrics', label: 'Lyrics', icon: 'text-x-generic-symbolic'},
     {key: 'focus', label: 'Focus', icon: 'alarm-symbolic'},
+    {key: 'activity', label: 'Activity', icon: 'folder-download-symbolic'},
     {key: 'shelf', label: 'Shelf', icon: 'folder-symbolic'},
     {key: 'tasks', label: 'To-do', icon: 'view-list-symbolic'},
     {key: 'notes', label: 'Notes', icon: 'accessories-text-editor-symbolic'},
@@ -428,6 +474,22 @@ export default class PerdanaIslandExtension extends Extension {
         this._progressSeeking = false;
         this._progressSeekRatio = 0;
         this._progressCanSeek = false;
+        this._activities = new Map();
+        this._activityRows = [];
+        this._activityExpirySources = new Map();
+        this._activityDbus = null;
+        this._activityDbusOwnerId = 0;
+        this._downloadActivities = new Map();
+        this._downloadRefreshSources = new Map();
+        this._downloadFinishSources = new Map();
+        this._downloadsMonitor = null;
+        this._downloadsDirectory = null;
+        this._activityCompact = null;
+        this._activityCompactIcon = null;
+        this._activityCompactLabel = null;
+        this._activityCompactValue = null;
+        this._activityCompactTrack = null;
+        this._activityCompactFill = null;
         this._lyricsSession = null;
         this._lyricsCancellable = null;
         this._artworkSession = new Soup.Session();
@@ -681,6 +743,8 @@ export default class PerdanaIslandExtension extends Extension {
         );
         this._discoverPlayers();
         this._connectClipboardMonitor();
+        this._connectActivityService();
+        this._connectDownloadWatcher();
         this._queueSessionGreeting();
     }
 
@@ -1307,6 +1371,16 @@ export default class PerdanaIslandExtension extends Extension {
         this._blinkSource && GLib.source_remove(this._blinkSource);
         this._blinkSource = 0;
         this._disconnectClipboardMonitor();
+        this._disconnectActivityService();
+        this._disconnectDownloadWatcher();
+        this._activities.clear();
+        this._activityRows = [];
+        this._activityCompact = null;
+        this._activityCompactIcon = null;
+        this._activityCompactLabel = null;
+        this._activityCompactValue = null;
+        this._activityCompactTrack = null;
+        this._activityCompactFill = null;
         this._shelfRefreshSource && GLib.source_remove(this._shelfRefreshSource);
         this._shelfRefreshSource = 0;
         this._shelfNoticeSource && GLib.source_remove(this._shelfNoticeSource);
@@ -1613,6 +1687,34 @@ export default class PerdanaIslandExtension extends Extension {
         this._focusCompact.add_child(this._focusCompactLabel);
         this._focusCompact.add_child(this._focusCompactTime);
         this._compact.add_child(this._focusCompact);
+        this._activityCompact = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            visible: false,
+            x_expand: true,
+            y_expand: true,
+            style_class: 'perdana-island__activity-compact',
+        });
+        this._activityCompactIcon = new St.Icon({
+            icon_name: 'folder-download-symbolic',
+            style_class: 'perdana-island__activity-compact-icon',
+        });
+        this._activityCompactLabel = makeLabel('', 'perdana-island__activity-compact-label');
+        this._activityCompactLabel.clutter_text.line_wrap = false;
+        this._activityCompactValue = makeLabel('', 'perdana-island__activity-compact-value');
+        this._activityCompactValue.clutter_text.x_align = Clutter.ActorAlign.END;
+        this._activityCompactTrack = new St.Widget({
+            style_class: 'perdana-island__activity-compact-track',
+        });
+        this._activityCompactFill = new St.Widget({
+            style_class: 'perdana-island__activity-compact-fill',
+        });
+        this._activityCompactTrack.add_child(this._activityCompactFill);
+        this._activityCompact.add_child(this._activityCompactIcon);
+        this._activityCompact.add_child(this._activityCompactLabel);
+        this._activityCompact.add_child(this._activityCompactValue);
+        this._activityCompact.add_child(this._activityCompactTrack);
+        this._activityCompact.connect('notify::allocation', () => this._layoutActivityCompact());
+        this._compact.add_child(this._activityCompact);
         this._compact.add_child(this._equalizer);
         this._compactButton.set_child(this._compactContents);
         this._content.add_child(this._compactButton);
@@ -1741,6 +1843,7 @@ export default class PerdanaIslandExtension extends Extension {
         }
         this._layoutPanel(width);
         this._layoutCompactCenter();
+        this._layoutActivityCompact();
         this._positionIsland();
     }
 
@@ -1783,6 +1886,70 @@ export default class PerdanaIslandExtension extends Extension {
                 Math.round((height - clockHeight) / 2)
             );
         }
+    }
+
+    _layoutActivityCompact() {
+        if (!this._uiActorsAlive || !this._activityCompact || !this._activityCompactIcon
+            || !this._activityCompactLabel || !this._activityCompactValue
+            || !this._activityCompactTrack || !this._activityCompactFill)
+            return;
+        const width = Math.max(0, Math.round(this._activityCompact.width));
+        const height = Math.max(0, Math.round(this._activityCompact.height));
+        if (width <= 0 || height <= 0)
+            return;
+        const iconSize = 16;
+        const valueWidth = 48;
+        const labelX = 24;
+        const labelWidth = Math.max(1, width - labelX - valueWidth - 8);
+        const trackWidth = Math.max(1, width - labelX - 6);
+        const trackHeight = 3;
+        this._activityCompactIcon.set_size(iconSize, iconSize);
+        this._activityCompactIcon.set_position(2, Math.round((height - trackHeight - iconSize) / 2));
+        this._activityCompactLabel.set_position(labelX, 1);
+        this._activityCompactLabel.set_size(labelWidth, Math.max(1, height - 10));
+        this._activityCompactValue.set_position(width - valueWidth - 2, 1);
+        this._activityCompactValue.set_size(valueWidth, Math.max(1, height - 10));
+        this._activityCompactTrack.set_position(labelX, height - 7);
+        this._activityCompactTrack.set_size(trackWidth, trackHeight);
+        const activity = this._selectedRunningActivity();
+        const progress = normalizeProgress(activity?.progress);
+        const fillWidth = progress === null ? 0 : Math.max(1, Math.round(trackWidth * progress));
+        this._activityCompactFill.remove_all_transitions();
+        this._activityCompactFill.set_position(0, 0);
+        this._activityCompactFill.set_size(Math.max(0, fillWidth), trackHeight);
+    }
+
+    _updateActivityCompact() {
+        if (!this._uiActorsAlive || !this._activityCompact || !this._activityCompactLabel)
+            return;
+        const activity = this._selectedRunningActivity();
+        if (!activity)
+            return;
+        this._activityCompactLabel.text = cleanActivityText(activity.title, 80);
+        this._activityCompactValue.text = formatActivityValue(activity);
+        if (this._activityCompactIcon.icon_name !== activity.icon)
+            this._activityCompactIcon.icon_name = activity.icon;
+        this._updateActivityFill();
+    }
+
+    _updateActivityFill() {
+        if (!this._activityCompactTrack || !this._activityCompactFill)
+            return;
+        const activity = this._selectedRunningActivity();
+        const progress = normalizeProgress(activity?.progress);
+        const trackWidth = Math.max(1, Math.round(this._activityCompactTrack.width));
+        const fillWidth = progress === null ? 0 : Math.max(1, Math.round(trackWidth * progress));
+        const duration = this._motionDuration(240);
+        if (this._reducedMotion || !this._activityCompactFill.width) {
+            this._activityCompactFill.remove_all_transitions();
+            this._activityCompactFill.width = fillWidth;
+            return;
+        }
+        this._activityCompactFill.ease({
+            width: fillWidth,
+            duration,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        });
     }
 
     _makeEqualizer() {
@@ -2050,6 +2217,8 @@ export default class PerdanaIslandExtension extends Extension {
                 ? this._restingLyricsPillWidth()
                 : PLAYING_WIDTH;
         }
+        if (this._selectedRunningActivity())
+            return ACTIVITY_WIDTH;
         return COLLAPSED_WIDTH;
     }
 
@@ -3307,6 +3476,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._notesSaveLabel = null;
         this._notesUndoBanner = null;
         this._notesRowLabels = null;
+        this._activityRows = [];
         const previous = this._pageBody;
         const body = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
@@ -3324,6 +3494,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._renderLyricsPage(body);
         else if (this._activePage === 'focus')
             this._renderFocusPage(body);
+        else if (this._activePage === 'activity')
+            this._renderActivityPage(body);
         else if (this._activePage === 'tasks')
             this._renderTasksPage(body);
         else if (this._activePage === 'notes')
@@ -6765,8 +6937,7 @@ export default class PerdanaIslandExtension extends Extension {
             label.opacity = 255;
         }
 
-        const desiredWidth = this._focusSource ? PLAYING_WIDTH
-            : this._isPlaying() ? this._collapsedWidth() : COLLAPSED_WIDTH;
+        const desiredWidth = this._focusSource ? PLAYING_WIDTH : this._collapsedWidth();
         const desiredHeight = this._collapsedHeight();
         const geometryStable = !this._expanded && !this._closing && this._root
             && Math.round(this._root.width) === desiredWidth
@@ -6846,6 +7017,8 @@ export default class PerdanaIslandExtension extends Extension {
         const playing = player && this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing';
         const focusRunning = Boolean(this._focusSource);
         const showMedia = Boolean(playing && !focusRunning);
+        const activity = this._selectedRunningActivity();
+        const showActivity = Boolean(activity && !showMedia && !focusRunning);
         const restingWithClock = this._preferences?.restingStyle === 'eyes-clock';
         const showClock = Boolean(!playing && !focusRunning && !this._expanded && !this._closing
             && (restingWithClock || this._root?.hover));
@@ -6865,17 +7038,21 @@ export default class PerdanaIslandExtension extends Extension {
             this._focusCompactLabel.text = this._focusModeLabel();
             this._focusCompactTime.text = formatTime(remaining);
         }
-        this._compactCenter.visible = !showMedia && !focusRunning;
+        this._compactCenter.visible = !showMedia && !focusRunning && !showActivity;
         this._compactCenter.opacity = 255;
-        this._idleEyes.visible = !showMedia && !focusRunning;
-        this._compactClockLabel.visible = !showMedia && !focusRunning;
+        this._idleEyes.visible = !showMedia && !focusRunning && !showActivity;
+        this._compactClockLabel.visible = !showMedia && !focusRunning && !showActivity;
+        this._activityCompact.visible = showActivity;
+        if (showActivity)
+            this._updateActivityCompact();
         const compactState = focusRunning ? 'focus' : showMedia ? 'playing'
-            : showClock ? (restingWithClock ? 'eyes-clock' : 'hover') : 'idle';
+            : showActivity ? 'activity'
+                : showClock ? (restingWithClock ? 'eyes-clock' : 'hover') : 'idle';
         if (compactState !== this._compactVisualState) {
             this._compactVisualState = compactState;
             this._idleEyes.remove_all_transitions();
             this._compactClockLabel.remove_all_transitions();
-            if (showMedia || focusRunning) {
+            if (showMedia || focusRunning || showActivity) {
                 this._idleEyes.translation_x = 0;
                 this._idleEyes.translation_y = 0;
                 this._idleEyes.opacity = 0;
@@ -6952,8 +7129,7 @@ export default class PerdanaIslandExtension extends Extension {
         }
         this._updateHeaderClock();
         if (!this._expanded && !this._closing) {
-            const targetWidth = focusRunning ? PLAYING_WIDTH
-                : playing ? this._collapsedWidth() : COLLAPSED_WIDTH;
+            const targetWidth = focusRunning ? PLAYING_WIDTH : this._collapsedWidth();
             const targetHeight = this._collapsedHeight();
             const targetSize = `${targetWidth}x${targetHeight}`;
             const sizeMatches = Math.round(this._root.width) === targetWidth
@@ -7048,6 +7224,527 @@ export default class PerdanaIslandExtension extends Extension {
 
     _stopTodayTicker() {
         this._clearTimeout('_todaySource');
+    }
+
+    _connectActivityService() {
+        if (this._activityDbus)
+            return;
+        const owner = this;
+        this._activityApi = {
+            StartActivity(id, title, subtitle, progress, icon) {
+                owner._startActivity({id, title, subtitle, progress, icon, source: 'app'});
+                return [];
+            },
+            UpdateActivity(id, progress, subtitle) {
+                owner._updateActivity(id, {progress, subtitle});
+                return [];
+            },
+            FinishActivity(id, success) {
+                owner._finishActivity(id, success);
+                return [];
+            },
+            ListActivities() {
+                return new GLib.Variant('(s)', [JSON.stringify(owner._activitySnapshot())]);
+            },
+        };
+        try {
+            this._activityDbus = Gio.DBusExportedObject.wrapJSObject(
+                ACTIVITY_DBUS_XML,
+                this._activityApi
+            );
+            this._activityDbus.export(Gio.DBus.session, ACTIVITY_DBUS_PATH);
+            this._activityDbusOwnerId = Gio.bus_own_name_on_connection(
+                Gio.DBus.session,
+                ACTIVITY_DBUS_NAME,
+                Gio.BusNameOwnerFlags.NONE,
+                null,
+                null
+            );
+        } catch (error) {
+            logError(error, 'perdana-island: exporting the activity interface');
+            this._activityDbus = null;
+            this._activityDbusOwnerId = 0;
+        }
+    }
+
+    _disconnectActivityService() {
+        if (this._activityDbusOwnerId) {
+            Gio.bus_unown_name(this._activityDbusOwnerId);
+            this._activityDbusOwnerId = 0;
+        }
+        if (this._activityDbus) {
+            try {
+                this._activityDbus.unexport();
+            } catch (_error) {
+                // The shell session owns the connection; nothing to clean up.
+            }
+            this._activityDbus = null;
+        }
+        this._activityApi = null;
+    }
+
+    _startActivity(raw) {
+        const id = cleanActivityId(raw?.id);
+        if (!id)
+            return false;
+        const now = Date.now();
+        const existing = this._activities.get(id);
+        const receivedBytes = Number(raw?.receivedBytes);
+        const totalBytes = Number(raw?.totalBytes);
+        this._clearActivityExpiry(id);
+        this._activities.set(id, {
+            id,
+            title: cleanActivityText(raw?.title) || id,
+            subtitle: cleanActivityText(raw?.subtitle),
+            icon: cleanActivityIcon(raw?.icon),
+            progress: normalizeProgress(raw?.progress),
+            receivedBytes: Number.isFinite(receivedBytes) ? Math.max(0, receivedBytes) : 0,
+            totalBytes: Number.isFinite(totalBytes) ? Math.max(0, totalBytes) : 0,
+            source: raw?.source === 'download' ? 'download' : 'app',
+            state: 'running',
+            startedAt: existing?.startedAt ?? now,
+            updatedAt: now,
+            finishedAt: 0,
+        });
+        this._refreshActivityUi(true);
+        return true;
+    }
+
+    _updateActivity(id, changes = {}) {
+        const key = cleanActivityId(id);
+        const activity = this._activities.get(key);
+        if (!activity || activity.state !== 'running')
+            return false;
+        if ('progress' in changes)
+            activity.progress = normalizeProgress(changes.progress);
+        if ('subtitle' in changes)
+            activity.subtitle = cleanActivityText(changes.subtitle);
+        const receivedBytes = Number(changes.receivedBytes);
+        if (Number.isFinite(receivedBytes))
+            activity.receivedBytes = Math.max(0, receivedBytes);
+        const totalBytes = Number(changes.totalBytes);
+        if (Number.isFinite(totalBytes))
+            activity.totalBytes = Math.max(0, totalBytes);
+        activity.updatedAt = Date.now();
+        this._refreshActivityUi(false);
+        return true;
+    }
+
+    _finishActivity(id, success) {
+        const key = cleanActivityId(id);
+        const activity = this._activities.get(key);
+        if (!activity || activity.state !== 'running')
+            return false;
+        activity.state = success ? 'done' : 'failed';
+        activity.finishedAt = Date.now();
+        activity.updatedAt = activity.finishedAt;
+        if (success && (activity.progress === null || activity.progress < 1))
+            activity.progress = 1;
+        this._scheduleActivityExpiry(key);
+        this._refreshActivityUi(true);
+        return true;
+    }
+
+    _scheduleActivityExpiry(id) {
+        this._clearActivityExpiry(id);
+        const source = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ACTIVITY_EXPIRY_MS, () => {
+            this._activityExpirySources.delete(id);
+            this._activities.delete(id);
+            this._activityRows = [];
+            this._refreshActivityUi(true);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._activityExpirySources.set(id, source);
+    }
+
+    _clearActivityExpiry(id) {
+        const source = this._activityExpirySources.get(id);
+        if (!source)
+            return;
+        GLib.source_remove(source);
+        this._activityExpirySources.delete(id);
+    }
+
+    _selectedRunningActivity() {
+        return selectActivity([...this._activities.values()]);
+    }
+
+    _activityPageItems() {
+        return [...this._activities.values()].sort((first, second) => {
+            const firstRunning = first.state === 'running' ? 0 : 1;
+            const secondRunning = second.state === 'running' ? 0 : 1;
+            if (firstRunning !== secondRunning)
+                return firstRunning - secondRunning;
+            if (firstRunning === 0)
+                return first.startedAt - second.startedAt;
+            return second.finishedAt - first.finishedAt;
+        });
+    }
+
+    _activitySnapshot() {
+        return this._activityPageItems().map(activity => ({
+            id: activity.id,
+            title: activity.title,
+            subtitle: activity.subtitle,
+            icon: activity.icon,
+            progress: activity.progress,
+            receivedBytes: activity.receivedBytes,
+            totalBytes: activity.totalBytes,
+            source: activity.source,
+            state: activity.state,
+            startedAt: activity.startedAt,
+            updatedAt: activity.updatedAt,
+            finishedAt: activity.finishedAt,
+        }));
+    }
+
+    _refreshActivityUi(structural) {
+        this._updateCollapsedLabel();
+        if (structural) {
+            try {
+                this._activityDbus?.emit_signal('ActivityChanged', null);
+            } catch (_error) {
+                // Signals are best-effort and must never break an update.
+            }
+        }
+        if (this._expanded && this._activePage === 'activity') {
+            if (structural)
+                this._renderPanel();
+            else
+                this._updateActivityPage();
+        } else if (this._activityCompact?.visible) {
+            this._updateActivityCompact();
+        }
+    }
+
+    _renderActivityPage(body) {
+        const pageWidth = this._pageWidth();
+        const items = this._activityPageItems();
+        const running = items.filter(item => item.state === 'running').length;
+        place(body, makeLabel('Activity', 'perdana-island__reminder-heading'), 0, 0, 90, 16);
+        const hidden = Math.max(0, items.length - 3);
+        const summary = items.length
+            ? `${running} running${items.length > running ? ` · ${items.length - running} done` : ''}`
+                + `${hidden ? ` · +${hidden}` : ''}`
+            : 'Nothing running';
+        const summaryLabel = makeLabel(summary, 'perdana-island__reminder-subtitle');
+        summaryLabel.clutter_text.x_align = Clutter.ActorAlign.END;
+        place(body, summaryLabel, 0, 0, pageWidth, 16);
+        this._activityRows = [];
+        if (!items.length) {
+            place(body, makeLabel('Downloads and app tasks appear here.',
+                'perdana-island__activity-empty'), 0, 56, pageWidth, 24);
+            return;
+        }
+        items.slice(0, 3).forEach((activity, index) => {
+            this._activityRows.push(
+                this._renderActivityRow(body, activity, 28 + index * 46, pageWidth)
+            );
+        });
+    }
+
+    _renderActivityRow(body, activity, y, pageWidth) {
+        const finished = activity.state !== 'running';
+        const iconName = activity.state === 'done' ? 'object-select-symbolic'
+            : activity.state === 'failed' ? 'dialog-warning-symbolic'
+                : activity.icon;
+        const icon = new St.Icon({
+            icon_name: iconName,
+            style_class: finished
+                ? 'perdana-island__activity-icon perdana-island__activity-icon--finished'
+                : 'perdana-island__activity-icon',
+        });
+        place(body, icon, 0, y + 7, 18, 18);
+        const title = place(body, makeLabel(cleanActivityText(activity.title, 80),
+            'perdana-island__activity-title'), 26, y, pageWidth - 100, 18);
+        const detail = place(body, makeLabel(
+            finished
+                ? (activity.state === 'done' ? 'Done' : 'Stopped')
+                : formatActivityDetail(activity),
+            'perdana-island__activity-detail'), 26, y + 18, pageWidth - 100, 16);
+        const value = place(body, makeLabel(
+            finished ? '' : formatActivityValue(activity),
+            'perdana-island__activity-value'), pageWidth - 70, y + 1, 70, 18);
+        value.clutter_text.x_align = Clutter.ActorAlign.END;
+        let track = null;
+        let fill = null;
+        if (!finished) {
+            track = new St.Widget({style_class: 'perdana-island__activity-track'});
+            fill = new St.Widget({style_class: 'perdana-island__activity-fill'});
+            track.add_child(fill);
+            place(body, track, 26, y + 37, pageWidth - 26, 3);
+            const progress = normalizeProgress(activity.progress);
+            fill.set_position(0, 0);
+            fill.set_size(progress === null ? 0
+                : Math.max(1, Math.round((pageWidth - 26) * progress)), 3);
+        }
+        return {id: activity.id, title, detail, value, track, fill};
+    }
+
+    _updateActivityPage() {
+        if (!this._expanded || this._activePage !== 'activity' || !this._activityRows.length)
+            return;
+        for (const row of this._activityRows) {
+            const activity = this._activities.get(row.id);
+            if (!activity)
+                continue;
+            row.title.text = cleanActivityText(activity.title, 80);
+            row.detail.text = activity.state === 'running' ? formatActivityDetail(activity)
+                : activity.state === 'done' ? 'Done' : 'Stopped';
+            row.value.text = activity.state === 'running'
+                ? formatActivityValue(activity) : '';
+            if (!row.track || !row.fill)
+                continue;
+            const progress = normalizeProgress(activity.progress);
+            const fillWidth = progress === null ? 0
+                : Math.max(1, Math.round(Math.max(1, row.track.width) * progress));
+            if (this._reducedMotion) {
+                row.fill.remove_all_transitions();
+                row.fill.width = fillWidth;
+            } else {
+                row.fill.ease({
+                    width: fillWidth,
+                    duration: 240,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                });
+            }
+        }
+    }
+
+    _connectDownloadWatcher() {
+        if (this._downloadsMonitor)
+            return;
+        let path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD);
+        if (!path)
+            path = GLib.build_filenamev([GLib.get_home_dir(), 'Downloads']);
+        this._downloadsDirectory = Gio.File.new_for_path(path);
+        try {
+            this._downloadsMonitor = this._downloadsDirectory.monitor_directory(
+                Gio.FileMonitorFlags.WATCH_MOVES,
+                null
+            );
+            this._downloadsMonitor.connect('changed', (_monitor, file, other, eventType) =>
+                this._onDownloadChanged(file, other, eventType));
+            this._scanDownloads();
+        } catch (error) {
+            logError(error, 'perdana-island: watching the Downloads folder');
+            this._downloadsMonitor = null;
+        }
+    }
+
+    _disconnectDownloadWatcher() {
+        if (this._downloadsMonitor) {
+            this._downloadsMonitor.cancel();
+            this._downloadsMonitor = null;
+        }
+        for (const source of this._downloadRefreshSources.values())
+            GLib.source_remove(source);
+        this._downloadRefreshSources.clear();
+        for (const source of this._downloadFinishSources.values())
+            GLib.source_remove(source);
+        this._downloadFinishSources.clear();
+        for (const source of this._activityExpirySources.values())
+            GLib.source_remove(source);
+        this._activityExpirySources.clear();
+        this._downloadActivities.clear();
+        this._downloadsDirectory = null;
+    }
+
+    _scanDownloads() {
+        let enumerator;
+        try {
+            enumerator = this._downloadsDirectory.enumerate_children(
+                'standard::name,standard::type',
+                Gio.FileQueryInfoFlags.NONE,
+                null
+            );
+        } catch (_error) {
+            return;
+        }
+        const names = [];
+        let info;
+        while ((info = enumerator.next_file(null))) {
+            if (info.get_file_type() === Gio.FileType.REGULAR)
+                names.push(info.get_name());
+        }
+        enumerator.close(null);
+        for (const name of names) {
+            if (isAria2Control(name)) {
+                const file = this._downloadsDirectory.get_child(name);
+                this._ensureDownloadActivity(file, name);
+            }
+        }
+        for (const name of names) {
+            if (partialSuffix(name)) {
+                const file = this._downloadsDirectory.get_child(name);
+                this._ensureDownloadActivity(file, name);
+            }
+        }
+    }
+
+    _downloadTargetInfo(file, name) {
+        if (isAria2Control(name)) {
+            const parent = file.get_parent();
+            const directory = parent?.get_path() || this._downloadsDirectory?.get_path();
+            if (!directory)
+                return null;
+            return {
+                path: GLib.build_filenamev([directory, downloadTitle(name)]),
+                title: downloadTitle(name),
+            };
+        }
+        if (!partialSuffix(name))
+            return null;
+        return {path: file.get_path(), title: downloadTitle(name)};
+    }
+
+    _ensureDownloadActivity(file, name) {
+        const target = this._downloadTargetInfo(file, name);
+        if (!target?.path)
+            return;
+        this._downloadActivityFor(target.path, target.title);
+        this._queueDownloadRefresh(target.path);
+    }
+
+    _downloadActivityFor(path, title) {
+        let id = this._downloadActivities.get(path);
+        if (id && this._activities.has(id))
+            return id;
+        id = `download:${path}`;
+        this._downloadActivities.set(path, id);
+        this._startActivity({
+            id,
+            title,
+            subtitle: 'Downloading',
+            icon: 'folder-download-symbolic',
+            progress: null,
+            source: 'download',
+        });
+        return id;
+    }
+
+    _queueDownloadRefresh(path) {
+        if (this._downloadRefreshSources.has(path))
+            return;
+        const source = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ACTIVITY_DOWNLOAD_DEBOUNCE_MS, () => {
+            this._downloadRefreshSources.delete(path);
+            this._refreshDownloadActivity(path);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._downloadRefreshSources.set(path, source);
+    }
+
+    _refreshDownloadActivity(path) {
+        const id = this._downloadActivities.get(path);
+        if (!id || !this._activities.has(id))
+            return;
+        let received = 0;
+        try {
+            const info = Gio.File.new_for_path(path).query_info(
+                'standard::size,standard::type',
+                Gio.FileQueryInfoFlags.NONE,
+                null
+            );
+            if (info.get_file_type() === Gio.FileType.REGULAR)
+                received = Math.max(0, info.get_size());
+        } catch (_error) {
+            // The file may be between a rename and its final event.
+        }
+        let total = null;
+        try {
+            const [ok, contents] = Gio.File.new_for_path(`${path}.aria2`)
+                .load_contents(null);
+            if (ok)
+                total = aria2TotalLength(contents);
+        } catch (_error) {
+            // No aria2 control file; the activity stays indeterminate.
+        }
+        this._updateActivity(id, {
+            progress: total && total > 0 ? Math.min(1, received / total) : null,
+            receivedBytes: received,
+            totalBytes: total || 0,
+        });
+    }
+
+    _onDownloadChanged(file, other, eventType) {
+        const renamed = eventType === Gio.FileMonitorEvent.RENAMED
+            || eventType === Gio.FileMonitorEvent.MOVED;
+        if (renamed) {
+            this._downloadCreated(other);
+            this._downloadRemoved(file, other);
+            return;
+        }
+        if (eventType === Gio.FileMonitorEvent.DELETED
+            || eventType === Gio.FileMonitorEvent.MOVED_OUT)
+            this._downloadRemoved(file);
+        else
+            this._downloadCreated(file);
+    }
+
+    _downloadCreated(file) {
+        const name = file?.get_basename();
+        if (!name)
+            return;
+        if (!isAria2Control(name) && !partialSuffix(name)) {
+            const path = file.get_path();
+            if (path && this._downloadActivities.has(path))
+                this._queueDownloadRefresh(path);
+            return;
+        }
+        const target = this._downloadTargetInfo(file, name);
+        if (!target?.path)
+            return;
+        this._downloadActivityFor(target.path, target.title);
+        this._queueDownloadRefresh(target.path);
+    }
+
+    _downloadRemoved(file, nextFile = null) {
+        const name = file?.get_basename();
+        if (!name)
+            return;
+        const aria2 = isAria2Control(name);
+        const suffix = partialSuffix(name);
+        if (!aria2 && !suffix) {
+            const path = file.get_path();
+            const id = path ? this._downloadActivities.get(path) : null;
+            if (!id)
+                return;
+            this._downloadActivities.delete(path);
+            this._finishActivity(id, false);
+            return;
+        }
+        const target = this._downloadTargetInfo(file, name);
+        if (!target?.path || !this._downloadActivities.has(target.path))
+            return;
+        const nextName = nextFile?.get_basename();
+        const movedToFinal = nextName && !isAria2Control(nextName) && !partialSuffix(nextName);
+        const finalPath = movedToFinal
+            ? nextFile.get_path()
+            : aria2 ? target.path
+                : target.path.slice(0, target.path.length - suffix.length);
+        this._queueDownloadFinish(target.path, finalPath);
+    }
+
+    _queueDownloadFinish(targetPath, finalPath) {
+        if (this._downloadFinishSources.has(targetPath))
+            return;
+        const source = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ACTIVITY_DOWNLOAD_FINISH_MS, () => {
+            this._downloadFinishSources.delete(targetPath);
+            this._completeDownload(targetPath, finalPath);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._downloadFinishSources.set(targetPath, source);
+    }
+
+    _completeDownload(targetPath, finalPath) {
+        const id = this._downloadActivities.get(targetPath);
+        if (!id)
+            return;
+        this._downloadActivities.delete(targetPath);
+        const success = finalPath
+            ? Gio.File.new_for_path(finalPath).query_exists(null)
+            : false;
+        this._finishActivity(id, success);
     }
 
     _connectClipboardMonitor() {
