@@ -46,6 +46,7 @@ npm test
 gnome-extensions pack ./extension \
   --extra-source=./LICENSE \
   --extra-source=clipboard-utils.js \
+  --extra-source=layout-utils.js \
   --extra-source=music-classifier.js \
   --extra-source=backup-utils.js \
   --out-dir ./dist
