@@ -416,7 +416,7 @@
 .perdana-button--lyrics-resting-active,
 .perdana-button--lyrics-resting-active:hover {
   color: #ffffff;
-  background-color: var(--perdana-accent-soft, rgba(85, 119, 184, 0.24));
+  background-color: rgba(85, 119, 184, 0.24);
 }
 
 .perdana-button.perdana-button--lyrics-play {
@@ -1174,11 +1174,11 @@
 
 .perdana-island__notification-clear {
   min-height: 26px;
-  padding: 0 9px;
+  padding: 0 10px;
   border-radius: 13px;
   color: rgba(255, 255, 255, 0.74);
   background-color: rgba(255, 255, 255, 0.09);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .perdana-island__notification-button {
@@ -1262,8 +1262,58 @@
   min-height: 0;
 }
 
+.perdana-island__notice-source {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+}
+
+.perdana-island__notice-stack {
+  spacing: 2px;
+  min-width: 0;
+}
+
+.perdana-island__notice-message {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+}
+
+.perdana-island__notice-message--latest {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.perdana-island__notice-message--title {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .perdana-island__notice-right {
-  spacing: 4px;
+  spacing: 5px;
+}
+
+.perdana-button.perdana-island__notice-action {
+  min-height: 24px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.12);
+  font-size: 9px;
+}
+
+.perdana-button.perdana-island__notice-action:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.perdana-button.perdana-island__notice-action--primary {
+  background-color: rgba(85, 119, 184, 0.34);
+}
+
+.perdana-island__notice-action-label {
+  color: inherit;
+  font-size: 9px;
 }
 
 .perdana-island__notice-action {
@@ -1683,22 +1733,22 @@
   background-color: rgba(255, 255, 255, 0.18);
 }
 
-.perdana-island__prayer-name,
-.perdana-island__prayer-time {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
+.perdana-island__prayer-name {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 
-.perdana-island__prayer-name--next,
-.perdana-island__prayer-time--next {
+.perdana-island__prayer-time {
   color: #ffffff;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
-.perdana-island__prayer-name--passed,
-.perdana-island__prayer-time--passed {
-  color: rgba(255, 255, 255, 0.35);
+.perdana-island__prayer-name--next {
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .perdana-island__water-value {
@@ -2088,7 +2138,7 @@
 }
 .perdana-island__activity-fill {
   border-radius: 2px;
-  background-color: var(--accent-color, #5577b8);
+  background-color: #5577b8;
   height: 3px;
 }
 
@@ -2120,14 +2170,14 @@
   min-height: 0;
 }
 .perdana-island__message-entry {
-  spacing: 3px;
+  spacing: 2px;
   min-width: 0;
 }
 .perdana-button.perdana-island__message-reply {
-  min-width: 52px;
-  min-height: 23px;
-  padding: 0 9px;
-  border-radius: 12px;
+  min-width: 44px;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
   color: rgba(255, 255, 255, 0.78);
   background-color: rgba(85, 119, 184, 0.24);
   font-size: 10px;
@@ -2152,9 +2202,125 @@
 .perdana-island__notification-row {
   spacing: 9px;
   min-width: 0;
+  min-height: 38px;
   padding: 5px 9px;
   border-radius: 11px;
   background-color: rgba(255, 255, 255, 0.075);
+}
+
+/* Messages: one card per conversation (message-group.js). */
+.msg-group {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+}
+.msg-group:expanded {
+  background-color: rgba(255, 255, 255, 0.07);
+}
+.msg-header {
+  padding: 9px 12px;
+  min-height: 0;
+  border-radius: 14px;
+  background-color: transparent;
+  box-shadow: none;
+}
+.msg-header:hover,
+.msg-header:focus {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+.msg-group:expanded .msg-header {
+  border-radius: 14px 14px 0 0;
+}
+.msg-avatar {
+  border-radius: 16px;
+  margin-right: 10px;
+}
+.msg-text-col {
+  spacing: 2px;
+}
+.msg-sender {
+  color: #f2f4f8;
+  font-size: 13px;
+  font-weight: bold;
+}
+.msg-meta {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+}
+.msg-preview {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  padding-top: 1px;
+}
+.msg-badge {
+  min-width: 16px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background-color: #5b8def;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+}
+.msg-chevron {
+  margin-left: 6px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.msg-body {
+  padding: 0 12px 8px 12px;
+}
+/* 44px = avatar 32 + margin 10 + 2, so message text lines up with the sender. */
+.msg-row {
+  padding: 5px 0 5px 44px;
+  spacing: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.msg-row-last {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.msg-body-text {
+  color: #e6e9ef;
+  font-size: 12px;
+}
+.msg-row-time {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.msg-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background-color: #5b8def;
+}
+.msg-dot-read {
+  background-color: transparent;
+}
+.msg-footer {
+  padding-top: 8px;
+  spacing: 6px;
+}
+.msg-btn {
+  min-height: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+}
+.msg-btn:hover,
+.msg-btn:focus {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+.msg-btn-primary {
+  background-color: #5b8def;
+  color: #ffffff;
+  font-weight: bold;
+}
+.msg-btn-primary:hover,
+.msg-btn-primary:focus {
+  background-color: #7aa2f7;
 }
 .perdana-island__message-row--unread,
 .perdana-island__notification-row--unread {
@@ -2164,6 +2330,9 @@
 .perdana-island__notification-icon {
   icon-size: 22px;
   border-radius: 8px;
+}
+.perdana-island__message-icon {
+  icon-size: 26px;
 }
 .perdana-island__message-copy,
 .perdana-island__notification-copy {
@@ -2179,11 +2348,19 @@
 .perdana-island__notification-title {
   min-width: 0;
   color: #ffffff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
-.perdana-island__message-app,
-.perdana-island__message-time,
+.perdana-island__message-app {
+  flex: none;
+  max-width: 78px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 9px;
+}
+.perdana-island__message-time {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 10px;
+}
 .perdana-island__notification-app {
   color: rgba(255, 255, 255, 0.44);
   font-size: 9px;
@@ -2191,7 +2368,7 @@
 .perdana-island__message-body,
 .perdana-island__notification-body {
   min-width: 0;
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 0.58);
   font-size: 10px;
 }
 .perdana-island__message-meta {
@@ -2202,9 +2379,10 @@
   min-width: 16px;
   padding: 1px 4px;
   border-radius: 8px;
-  background-color: rgba(255, 255, 255, 0.16);
+  background-color: #5577b8;
   color: #ffffff;
-  font-size: 9px;
+  font-size: 10px;
+  font-weight: 700;
   text-align: center;
 }
 .perdana-button.perdana-island__message-button:hover .perdana-island__message-row,
@@ -2232,6 +2410,10 @@
   color: rgba(255, 255, 255, 0.52);
   font-size: 10px;
 }
+.perdana-island__reminder-next-in {
+  color: rgba(255, 255, 255, 0.7);
+  text-align: right;
+}
 .perdana-island__water-window {
   color: rgba(255, 255, 255, 0.42);
   font-size: 9px;
@@ -2249,14 +2431,14 @@
   text-align: right;
 }
 .perdana-island__prayer-cell {
-  border-radius: 9px;
+  border-radius: 10px;
   background-color: rgba(255, 255, 255, 0.075);
 }
 .perdana-island__prayer-cell--next {
-  background-color: rgba(255, 255, 255, 0.17);
+  background-color: rgba(255, 255, 255, 0.18);
 }
 .perdana-island__prayer-cell--passed {
-  background-color: rgba(255, 255, 255, 0.035);
+  opacity: 0.42;
 }
 .perdana-island__water-track {
   border-radius: 2px;
@@ -2288,7 +2470,7 @@
 /* Prayer's next-up tile is separate from the prayer-time strip, matching v2. */
 .perdana-island__reminder-next {
   border-radius: 12px;
-  background-color: var(--accent-soft, rgba(85, 119, 184, 0.2));
+  background-color: rgba(85, 119, 184, 0.24);
 }
 .perdana-island__reminder-city {
   color: rgba(255, 255, 255, 0.65);

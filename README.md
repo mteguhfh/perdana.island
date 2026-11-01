@@ -11,10 +11,16 @@ Perdana Island is a GNOME Shell extension for Shell 50 and 51. It places media c
 
 ## GNOME v79
 
-v79 builds on the v78.19 feature set. It adapts merged Activity progress work from [PR #24](https://github.com/txtperdana/perdana.island/pull/24) and Quick Capture and backup improvements from [PR #25](https://github.com/txtperdana/perdana.island/pull/25) and [PR #26](https://github.com/txtperdana/perdana.island/pull/26). It preserves the existing UI and old backup files, adds parser and validation coverage, and packages runtime icons instead of screenshot assets. Cross-monitor movement is deferred. The v79 GNOME source is on `main`; a tagged binary release is a separate step.
+v79 builds on the v78.19 feature set. It adapts merged Activity progress work from [PR #24](https://github.com/txtperdana/perdana.island/pull/24) and Quick Capture and backup improvements from [PR #25](https://github.com/txtperdana/perdana.island/pull/25) and [PR #26](https://github.com/txtperdana/perdana.island/pull/26). It adds a reworked Messages page for chat notifications, keeps every incoming message, and restores unread chat messages after logout. Cross-monitor movement is deferred. Release notes and known issues are in [docs/releases/v79.md](docs/releases/v79.md).
 
 ### v79 changes
 
+- **Messages:** chat notifications are grouped into one card per conversation. Expand a card to read every message in order. Each message has its own unread state, and `Mark all read` and `Clear` keep working.
+- **No lost messages:** chat apps that reuse one notification object for each new message now produce a separate history row, so earlier messages are not overwritten.
+- **Popup burst:** a WhatsApp popup shows up to three recent messages from the same conversation, with the count and `Reply` / `Open` actions.
+- **Chat history after logout:** unread and recent chat messages are saved to `~/.local/share/perdana.island/messages.json` (mode 0600) and restored at the next login. `Open` does not work yet for restored messages; see the known issues.
+- **Resting lyrics** no longer freeze until the island is opened.
+- **Prayer reminders** match the v2 design: next-prayer highlight, card layout, and typography. Tomorrow's Fajr is not highlighted as today's next prayer.
 - Activity can receive progress from compatible apps through the session D-Bus API `org.perdana.Island` and monitor partial downloads in the user's Downloads folder. aria2 totals are read from its control file; file contents are never opened.
 - Activity rows update in place. Completed downloads remain available until selected, then open and dismiss; completed app activities expire after a short interval.
 - Music detection now rejects podcast and episode titles even when the source is Spotify, while retaining legitimate soundtrack titles. Quick Capture understands more Indonesian and English date, weekday, time, period, priority, and note formats; impossible dates and invalid clock times stay in the captured title instead of silently changing.

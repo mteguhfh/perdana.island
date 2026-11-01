@@ -25,6 +25,13 @@ import {
     normalizeClipboardHistoryKey,
 } from './clipboard-utils.js';
 import {classifyMedia} from './music-classifier.js';
+import {
+    mergeMessageItem,
+    groupConversations,
+    serializeMessages,
+    restoreMessages,
+} from './message-history.js';
+import {MessageGroup} from './message-group.js';
 import {parseCapture} from './quick-capture.js';
 import {buildBackup, backupFileName, validateBackup, summarizeBackup} from './backup-utils.js';
 import {
@@ -570,6 +577,8 @@ export default class PerdanaIslandExtension extends Extension {
         this._calendarMonthOffset = 0;
         this._calendarDateKey = '';
         this._notificationItems = [];
+        this._messageSaveSource = 0;
+        this._expandedMessageGroups = new Set();
         this._notificationSources = new Map();
         this._notificationSourceAddedSignal = 0;
         this._notificationSourceRemovedSignal = 0;
@@ -642,7 +651,9 @@ export default class PerdanaIslandExtension extends Extension {
         this._clockSource = 0;
         this._mediaSource = 0;
         this._mediaTickerInterval = 0;
+        this._mediaTickErrorLogged = false;
         this._restingLyricsSource = 0;
+        this._restingLyricsErrorLogged = false;
         this._todaySource = 0;
         this._chargingSource = 0;
         this._noticeDismissSource = 0;
@@ -670,6 +681,13 @@ export default class PerdanaIslandExtension extends Extension {
         this._systemNoticeActive = false;
         this._systemNoticeType = null;
         this._noticeNotificationItem = null;
+        this._noticeMessageKey = null;
+        this._noticeBurst = [];
+        this._noticeStack = null;
+        this._noticeSource = null;
+        this._noticeSender = null;
+        this._noticeReplyButton = null;
+        this._noticeOpenButton = null;
         this._browserTuckSignal = 0;
         this._tuckedByBrowser = false;
         this._noticeBanner = null;
@@ -690,6 +708,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._preferencesFile = GLib.build_filenamev([this._taskDirectory, 'preferences.json']);
         this._focusLogFile = GLib.build_filenamev([this._taskDirectory, 'focus-log.json']);
         this._prayerCacheFile = GLib.build_filenamev([this._taskDirectory, 'prayer-cache.json']);
+        this._messagesFile = GLib.build_filenamev([this._taskDirectory, 'messages.json']);
         this._notesFile = GLib.build_filenamev([this._taskDirectory, 'notes.json']);
         this._legacyTaskFile = GLib.build_filenamev([
             GLib.get_user_data_dir(),
@@ -707,6 +726,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._tasks = this._loadTasks();
         this._focusLog = this._loadFocusLog();
         this._prayerCache = this._loadPrayerCache();
+        this._loadMessageHistory();
         this._prayerCancellable = new Gio.Cancellable();
         this._clipboardItems = this._loadClipboardItems();
         this._shelfItems = this._loadShelfItems();
@@ -775,19 +795,31 @@ export default class PerdanaIslandExtension extends Extension {
         );
         this._syncVolumeStream();
         this._clockSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 30, () => {
-            if (!this._enabled)
+            if (!this._enabled) {
+                this._clockSource = 0;
                 return GLib.SOURCE_REMOVE;
-            this._updateHeaderClock();
-            this._checkAgendaNotices();
-            this._checkReminders();
-            if (this._activePage === 'reminders')
-                this._updateReminderPage();
+            }
+            try {
+                this._updateHeaderClock();
+                this._checkAgendaNotices();
+                this._checkReminders();
+                if (this._activePage === 'reminders')
+                    this._updateReminderPage();
+            } catch (error) {
+                logError(error, 'Perdana Island clock tick failed');
+            }
             return GLib.SOURCE_CONTINUE;
         });
         this._chargingSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
-            if (!this._enabled)
+            if (!this._enabled) {
+                this._chargingSource = 0;
                 return GLib.SOURCE_REMOVE;
-            this._pollChargingState();
+            }
+            try {
+                this._pollChargingState();
+            } catch (error) {
+                logError(error, 'Perdana Island charging tick failed');
+            }
             return GLib.SOURCE_CONTINUE;
         });
 
@@ -1131,7 +1163,13 @@ export default class PerdanaIslandExtension extends Extension {
             ['perdana-button--nav-active', 'color: #ffffff;'],
             ['perdana-island__tab-pill', `background-color: ${soft};`],
             ['perdana-button--segment-active', `background-color: ${soft}; color: #ffffff;`],
+            ['perdana-island__rem-tab--on', `background-color: ${soft}; color: #ffffff;`],
             ['perdana-button--lyrics-resting-active', `background-color: ${soft}; color: #ffffff;`],
+            ['perdana-island__reminder-next', `background-color: ${soft};`],
+            ['perdana-island__message-row--unread', `background-color: ${soft};`],
+            ['perdana-island__message-badge', `background-color: ${color}; color: ${foreground};`],
+            ['perdana-island__notice-action--primary', `background-color: ${soft};`],
+            ['perdana-island__activity-fill', `background-color: ${color};`],
             ['perdana-island__setting-option--active', `background-color: ${soft}; color: #ffffff;`],
             ['perdana-button--focus-apply', `background-color: ${color}; color: ${foreground};`],
             ['perdana-action--primary', `background-color: ${color}; color: ${foreground};`],
@@ -1255,9 +1293,13 @@ export default class PerdanaIslandExtension extends Extension {
                 source.disconnect(signals.bannerSignal);
             this._notificationSources.delete(source);
         }
-        this._notificationItems = this._notificationItems.filter(item => item.source !== source);
-        this._renderNotificationsIfVisible();
-    }
+        for (const item of this._notificationItems) {
+            if (item.source === source) {
+                item.detached = true;
+                item.sourceGone = true;
+            }
+        }
+        this._renderNotificationsIfVisible();    }
 
     _normalizeNotificationText(value, appKey = null) {
         let text = String(value || '')
@@ -1286,33 +1328,20 @@ export default class PerdanaIslandExtension extends Extension {
             notification.title || source.title || 'Notification', sourceDetails.key
         ) || 'Notification';
         const body = this._normalizeNotificationText(notification.body, sourceDetails.key);
-        let item = this._notificationItems.find(entry => entry.notification === notification);
-        if (item) {
-            item.app = sourceDetails.label;
-            item.appKey = sourceDetails.key;
-            item.appIconName = sourceDetails.iconName;
-            item.appIconFile = sourceDetails.iconFile;
-            item.title = title;
-            item.body = body;
-            item.receivedAt = Date.now();
-            this._notificationItems = [item, ...this._notificationItems.filter(entry => entry !== item)];
-        } else {
-            item = {
-                id: ++this._notificationSequence,
-                source,
-                notification,
-                app: sourceDetails.label,
-                appKey: sourceDetails.key,
-                appIconName: sourceDetails.iconName,
-                appIconFile: sourceDetails.iconFile,
-                title,
-                body,
-                read: false,
-                receivedAt: Date.now(),
-            };
-            this._notificationItems.unshift(item);
-            this._notificationItems = this._notificationItems.slice(0, 100);
-        }
+        const merged = mergeMessageItem(this._notificationItems, {
+            id: ++this._notificationSequence,
+            source,
+            notification,
+            app: sourceDetails.label,
+            appKey: sourceDetails.key,
+            appId: source?.app?.get_id?.() || notification?.desktopEntry || '',
+            appIconName: sourceDetails.iconName,
+            appIconFile: sourceDetails.iconFile,
+            title,
+            body,
+        }, {limit: 100});
+        this._notificationItems = merged.items;
+        const item = merged.item;
         this._renderNotificationsIfVisible();
         if (fresh && source.policy?.showBanners !== false
             && this._isNotificationSourceEnabled(item.appKey))
@@ -1399,16 +1428,75 @@ export default class PerdanaIslandExtension extends Extension {
         return !key || this._preferences?.notificationSources?.[key] !== false;
     }
 
+    _loadMessageHistory() {
+        const restored = restoreMessages(this._readText(this._messagesFile), {isChat: isChatItem});
+        log(`Perdana Island restored ${restored.items.length} chat messages `
+            + `(${restored.items.filter(item => !item.read).length} unread)`);
+        if (!restored.items.length)
+            return;
+        this._notificationItems = restored.items;
+        this._notificationSequence = Math.max(this._notificationSequence, restored.nextId);
+    }
+
+    _scheduleMessageSave() {
+        if (!this._enabled || this._messageSaveSource)
+            return;
+        this._messageSaveSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => {
+            this._messageSaveSource = 0;
+            this._saveMessageHistory();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _saveMessageHistory() {
+        if (!this._messagesFile)
+            return;
+        try {
+            GLib.mkdir_with_parents(this._taskDirectory, 0o700);
+            GLib.file_set_contents(this._messagesFile,
+                serializeMessages(this._notificationItems, {isChat: isChatItem}));
+            Gio.File.new_for_path(this._messagesFile).set_attribute_uint32(
+                'unix::mode', 0o600, Gio.FileQueryInfoFlags.NONE, null
+            );
+        } catch (error) {
+            logError(error, 'Perdana Island could not save its message history');
+        }
+    }
+
+    // A stored message has no live GNOME notification after a new session. Open
+    // its app (the Chrome PWA for WhatsApp Web) so the row stays usable.
+    _openMessageApp(item) {
+        const appId = item?.appId;
+        if (!appId)
+            return false;
+        try {
+            const app = Shell.AppSystem.get_default().lookup_app(appId);
+            if (app) {
+                app.activate();
+                return true;
+            }
+            return Gio.DesktopAppInfo.new(appId)?.launch([], null) ?? false;
+        } catch (error) {
+            logError(error, 'Perdana Island could not open the message app');
+            return false;
+        }
+    }
+
     _visibleNotifications() {
         return this._notificationItems.filter(item => this._isNotificationSourceEnabled(item.appKey));
     }
 
     _untrackNotification(notification) {
-        this._notificationItems = this._notificationItems.filter(item => item.notification !== notification);
+        // Keep the history row; only mark it detached from the live object.
+        for (const item of this._notificationItems) {
+            if (item.notification === notification)
+                item.detached = true;
+        }
         this._renderNotificationsIfVisible();
     }
 
     _renderNotificationsIfVisible() {
+        this._scheduleMessageSave();
         this._updateSummaryRows();
         if (!this._clearingNotifications && this._enabled
             && ['notifications', 'messages'].includes(this._activePage) && this._pageViewport)
@@ -1418,11 +1506,13 @@ export default class PerdanaIslandExtension extends Extension {
     _clearNotifications(predicate = () => true) {
         this._clearingNotifications = true;
         const targets = this._notificationItems.filter(predicate);
-        for (const item of targets) {
+        // History rows can share one live notification; destroy it once.
+        const notifications = new Set(targets.map(item => item.notification).filter(Boolean));
+        for (const notification of notifications) {
             try {
-                item.notification.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
+                notification.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
             } catch (_error) {
-                this._untrackNotification(item.notification);
+                // The notification may already be gone.
             }
         }
         const removed = new Set(targets);
@@ -1432,6 +1522,9 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _disconnectNotifications() {
+        this._clearTimeout('_messageSaveSource');
+        log(`Perdana Island flushing ${this._notificationItems.length} chat messages on disable`);
+        this._saveMessageHistory();
         const tray = this._notificationTray;
         if (tray) {
             if (this._notificationSourceAddedSignal)
@@ -1449,6 +1542,7 @@ export default class PerdanaIslandExtension extends Extension {
         }
         this._notificationSources.clear();
         this._notificationItems = [];
+        this._expandedMessageGroups.clear();
         this._notificationTray = null;
         this._notificationSourceAddedSignal = 0;
         this._notificationSourceRemovedSignal = 0;
@@ -1508,21 +1602,14 @@ export default class PerdanaIslandExtension extends Extension {
         this._focusSource = 0;
         this._focusNoticeSource && GLib.source_remove(this._focusNoticeSource);
         this._focusNoticeSource = 0;
-        this._clockSource && GLib.source_remove(this._clockSource);
-        this._clockSource = 0;
-        this._mediaSource && GLib.source_remove(this._mediaSource);
-        this._mediaSource = 0;
+        this._clearTimeout('_clockSource');
         this._mediaTickerInterval = 0;
-        this._restingLyricsSource && GLib.source_remove(this._restingLyricsSource);
-        this._restingLyricsSource = 0;
-        this._lyricsFallbackSource && GLib.source_remove(this._lyricsFallbackSource);
-        this._lyricsFallbackSource = 0;
-        this._lyricsRetrySource && GLib.source_remove(this._lyricsRetrySource);
-        this._lyricsRetrySource = 0;
-        this._todaySource && GLib.source_remove(this._todaySource);
-        this._todaySource = 0;
-        this._chargingSource && GLib.source_remove(this._chargingSource);
-        this._chargingSource = 0;
+        this._clearTimeout('_mediaSource');
+        this._clearTimeout('_restingLyricsSource');
+        this._clearTimeout('_lyricsFallbackSource');
+        this._clearTimeout('_lyricsRetrySource');
+        this._clearTimeout('_todaySource');
+        this._clearTimeout('_chargingSource');
         this._noticeDismissSource && GLib.source_remove(this._noticeDismissSource);
         this._noticeDismissSource = 0;
         this._greetingSource && GLib.source_remove(this._greetingSource);
@@ -1931,7 +2018,7 @@ export default class PerdanaIslandExtension extends Extension {
         }
         this._content.set_position(0, 0);
         this._content.set_size(width, height);
-        const restingLyricsShape = !this._expanded && !this._closing
+        const restingLyricsShape = !this._expanded && !this._collapseIsAnimating()
             && !this._focusSource && this._preferences?.showRestingLyrics
             && height > COLLAPSED_HEIGHT && height <= RESTING_LYRICS_HEIGHT;
         if (this._root.has_style_class_name('perdana-island--resting-lyrics') !== restingLyricsShape) {
@@ -2484,7 +2571,7 @@ export default class PerdanaIslandExtension extends Extension {
         const overlaps = this._browserWindowOverlapsIsland();
         const canTuck = this._preferences?.positionMode === 'top'
             && this._preferences?.browserOverlap && nearX && nearTop && overlaps
-            && !this._expanded && !this._closing && !this._pinned
+            && !this._expanded && !this._collapseIsAnimating() && !this._pinned
             && !this._islandDrag && !this._tabDrag
             && !this._systemNoticeActive && !this._userHidden;
         if (canTuck)
@@ -2497,7 +2584,8 @@ export default class PerdanaIslandExtension extends Extension {
     _setBrowserTucked(tucked) {
         if (!this._root || this._tuckedByBrowser === tucked)
             return;
-        if (tucked && (!this._preferences?.browserOverlap || this._expanded || this._closing
+        if (tucked && (!this._preferences?.browserOverlap || this._expanded
+            || this._collapseIsAnimating()
             || this._pinned || this._systemNoticeActive || this._userHidden))
             return;
         this._tuckedByBrowser = tucked;
@@ -2989,9 +3077,17 @@ export default class PerdanaIslandExtension extends Extension {
         return Boolean(player && this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing');
     }
 
+    // `_closing` can outlive its animation if the close is interrupted. Only
+    // treat it as active while the geometry is genuinely still transitioning.
+    _collapseIsAnimating() {
+        return Boolean(this._closing && this._root
+            && (this._root.get_transition('width') || this._root.get_transition('height')));
+    }
+
     _trackRestingEyes(event) {
         if (!this._uiActorsAlive || !this._idleEyes || !this._compactCenter
-            || !this._idleEyes.visible || this._isPlaying() || this._expanded || this._closing)
+            || !this._idleEyes.visible || this._isPlaying() || this._expanded
+            || this._collapseIsAnimating())
             return Clutter.EVENT_PROPAGATE;
 
         const [pointerX, pointerY] = event.get_coords();
@@ -3016,7 +3112,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _updateRestingLift() {
-        if (!this._root || this._expanded || this._closing || this._islandDrag?.moved)
+        if (!this._root || this._expanded || this._collapseIsAnimating() || this._islandDrag?.moved)
             return;
         if (this._reducedMotion) {
             this._root.set_scale(1, 1);
@@ -5563,19 +5659,19 @@ export default class PerdanaIslandExtension extends Extension {
             });
             place(body, nextCard, 0, 40, pageWidth, 64);
             this._reminderNextCaption = makeLabel('', 'perdana-island__reminder-caption');
+            this._reminderNextCaption.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             this._reminderNextName = makeLabel('—', 'perdana-island__reminder-next-name');
             this._reminderNextTime = makeLabel('—', 'perdana-island__reminder-next-time');
             this._reminderNextIn = makeLabel('', 'perdana-island__reminder-next-in');
-            this._reminderCityLabel = makeLabel('', 'perdana-island__reminder-city');
-            place(nextCard, this._reminderNextCaption, 14, 7, pageWidth - 160, 15);
-            place(nextCard, this._reminderCityLabel, 14, 23, pageWidth - 160, 14);
-            place(nextCard, this._reminderNextName, 14, 38, pageWidth - 160, 22);
-            place(nextCard, this._reminderNextTime, pageWidth - 142, 11, 126, 22);
-            place(nextCard, this._reminderNextIn, pageWidth - 142, 34, 126, 16);
+            this._reminderCityLabel = null;
+            place(nextCard, this._reminderNextCaption, 14, 9, pageWidth - 176, 15);
+            place(nextCard, this._reminderNextName, 14, 26, pageWidth - 176, 22);
+            place(nextCard, this._reminderNextTime, pageWidth - 156, 9, 142, 22);
+            place(nextCard, this._reminderNextIn, pageWidth - 156, 32, 142, 16);
 
             const stripTop = 112;
-            const stripInset = 12;
-            const gap = 5;
+            const stripInset = 0;
+            const gap = 4;
             const stripWidth = Math.max(1, pageWidth - stripInset * 2);
             const cellWidth = (stripWidth - gap * (PRAYER_NAMES.length - 1)) / PRAYER_NAMES.length;
             PRAYER_NAMES.forEach((name, index) => {
@@ -5587,8 +5683,8 @@ export default class PerdanaIslandExtension extends Extension {
                 const timeLabel = makeLabel('—', 'perdana-island__prayer-time');
                 nameLabel.clutter_text.x_align = Clutter.ActorAlign.CENTER;
                 timeLabel.clutter_text.x_align = Clutter.ActorAlign.CENTER;
-                place(cell, nameLabel, 2, 7, cellWidth - 4, 14);
-                place(cell, timeLabel, 2, 23, cellWidth - 4, 17);
+                place(cell, nameLabel, 2, 7, cellWidth - 4, 13);
+                place(cell, timeLabel, 2, 23, cellWidth - 4, 15);
                 place(body, cell, stripInset + index * (cellWidth + gap), stripTop, cellWidth, 46);
                 this._reminderRows.push({name, cell, nameLabel, timeLabel});
             });
@@ -5683,7 +5779,10 @@ export default class PerdanaIslandExtension extends Extension {
             return;
         const minutes = now.getHours() * 60 + now.getMinutes();
         const times = this._preferences?.prayerReminder ? this._prayerTimesForToday() : null;
-        let next = times ? PRAYER_NAMES.find(name => times[name] > minutes) || null : null;
+        const nextToday = times
+            ? PRAYER_NAMES.find(name => times[name] > minutes) || null
+            : null;
+        let next = nextToday;
         let minutesUntilNext = null;
         if (next)
             minutesUntilNext = times[next] - minutes;
@@ -5691,10 +5790,14 @@ export default class PerdanaIslandExtension extends Extension {
             next = PRAYER_NAMES[0];
             minutesUntilNext = 24 * 60 - minutes + times[next];
         }
+        const nextIsTomorrow = Boolean(times && !nextToday);
         const [city] = splitCity(this._preferences?.prayerCity);
         const method = PRAYER_METHODS.find(([value]) => value === this._preferences?.prayerMethod);
-        if (this._reminderNextCaption)
-            this._reminderNextCaption.text = times ? 'Next prayer' : this._prayerPageSubtitle(city, method ? method[1] : 'Kemenag');
+        if (this._reminderNextCaption) {
+            this._reminderNextCaption.text = times
+                ? `Next prayer · ${city || 'No city'} · ${method ? method[1] : 'Kemenag'}`
+                : this._prayerPageSubtitle(city, method ? method[1] : 'Kemenag');
+        }
         if (this._reminderCityLabel)
             this._reminderCityLabel.text = times ? `${city || 'No city'} · ${method ? method[1] : 'Kemenag'}` : '';
         if (this._reminderNextName)
@@ -5704,13 +5807,13 @@ export default class PerdanaIslandExtension extends Extension {
         if (this._reminderNextIn) {
             const remaining = Number(minutesUntilNext);
             this._reminderNextIn.text = !times || !next ? ''
-                : remaining >= 24 * 60 ? 'tomorrow'
+                : nextIsTomorrow ? 'tomorrow'
                     : remaining >= 60 ? `in ${Math.floor(remaining / 60)} h ${remaining % 60} min`
                         : `in ${remaining} min`;
         }
         for (const row of this._reminderRows || []) {
             const state = !times ? null
-                : next === row.name && minutesUntilNext < 24 * 60 ? 'next'
+                : nextToday === row.name ? 'next'
                     : times[row.name] <= minutes ? 'passed' : null;
             for (const suffix of ['next', 'passed']) {
                 const className = `perdana-island__prayer-cell--${suffix}`;
@@ -6913,17 +7016,24 @@ export default class PerdanaIslandExtension extends Extension {
         if (!item)
             return;
         item.read = true;
+        this._scheduleMessageSave();
         this._updateSummaryRows();
         if (this._expanded)
             this._renderPanel();
         try {
+            if (!item.notification)
+                throw new Error('stored message has no live notification');
             item.notification.activate();
         } catch (error) {
-            logError(error, 'Perdana Island could not activate a notification');
+            if (item.notification)
+                logError(error, 'Perdana Island could not activate a notification');
             try {
+                if (!item.source)
+                    throw new Error('stored message has no live source');
                 item.source.open();
             } catch (_error) {
-                // The source may have disappeared after its notification was listed.
+                // The source may have disappeared; fall back to the owning app.
+                this._openMessageApp(item);
             }
         }
         this._pinned = false;
@@ -6931,18 +7041,23 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _getNotificationReplyAction(item) {
-        const actions = item?.notification?.actions;
-        if (!Array.isArray(actions))
+        try {
+            const actions = item?.notification?.actions;
+            if (!Array.isArray(actions))
+                return null;
+            return actions.find(action => /reply|respond|answer|balas|répond|responder|rispondi|antwort/i.test(
+                String(action?.label || '')
+            ) && typeof action?.activate === 'function') || null;
+        } catch (_error) {
             return null;
-        return actions.find(action => /reply|respond|answer|balas|répond|responder|rispondi|antwort/i.test(
-            String(action?.label || '')
-        ) && typeof action?.activate === 'function') || null;
+        }
     }
 
     _activateNotificationReply(item, action) {
         if (!item || !action || this._getNotificationReplyAction(item) !== action)
             return;
         item.read = true;
+        this._scheduleMessageSave();
         this._updateSummaryRows();
         try {
             // This invokes the reply action provided by the originating app.
@@ -6960,15 +7075,7 @@ export default class PerdanaIslandExtension extends Extension {
         const chats = this._notificationItems.filter(isChatItem)
             .filter(item => this._isNotificationSourceEnabled(item.appKey));
         const compactHeader = contentWidth < 300;
-        const groupsByKey = new Map();
-        for (const item of [...chats].sort((first, second) =>
-            (Number(second.receivedAt) || 0) - (Number(first.receivedAt) || 0))) {
-            const key = `${item.appKey || item.app}\u0000${item.title}`;
-            if (!groupsByKey.has(key))
-                groupsByKey.set(key, {key, sender: item.title, app: item.app, items: []});
-            groupsByKey.get(key).items.push(item);
-        }
-        const groups = [...groupsByKey.values()];
+        const groups = groupConversations(chats);
         const unread = chats.filter(item => !item.read).length;
         const header = new St.BoxLayout({
             style_class: `perdana-island__messages-header${compactHeader
@@ -6989,6 +7096,7 @@ export default class PerdanaIslandExtension extends Extension {
                 if (isChatItem(item) && this._isNotificationSourceEnabled(item.appKey))
                     item.read = true;
             });
+            this._scheduleMessageSave();
             this._updateSummaryRows();
             this._renderPanel();
         }, 'perdana-island__notification-clear');
@@ -7002,111 +7110,67 @@ export default class PerdanaIslandExtension extends Extension {
         place(body, header, 0, 8, contentWidth, 28);
 
         if (!groups.length) {
-            const empty = makeLabel('No chat messages yet', 'perdana-island__empty-media');
+            const empty = makeLabel('No messages', 'perdana-island__empty-media');
             empty.clutter_text.x_align = Clutter.ActorAlign.CENTER;
             place(body, empty, 0, 43, contentWidth, this._bodyHeight() - 47);
             return;
         }
-        const rowHeight = 50;
-        const rowGap = 5;
         const list = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__messages-list',
         });
         const listWidth = Math.max(1, contentWidth - 18);
-        const replyGroupCount = groups.filter(group => {
-            const latest = [...group.items].sort((first, second) =>
-                (Number(second.receivedAt) || 0) - (Number(first.receivedAt) || 0))[0];
-            return Boolean(this._getNotificationReplyAction(latest));
-        }).length;
-        list.set_size(listWidth,
-            groups.length * rowHeight + replyGroupCount * 27 + Math.max(0, groups.length - 1) * rowGap);
+        list.set_width(listWidth);
+        const groupKeys = new Set(groups.map(group => group.key));
+        for (const key of this._expandedMessageGroups) {
+            if (!groupKeys.has(key))
+                this._expandedMessageGroups.delete(key);
+        }
         groups.forEach(group => {
-            const latest = [...group.items].sort((first, second) =>
-                (Number(second.receivedAt) || 0) - (Number(first.receivedAt) || 0))[0];
-            const groupUnread = group.items.filter(item => !item.read).length;
-            const row = new St.BoxLayout({
-                style_class: `perdana-island__message-row${groupUnread ? ' perdana-island__message-row--unread' : ''}`,
-                clip_to_allocation: true,
-                y_align: Clutter.ActorAlign.CENTER,
+            const latest = group.items[0];
+            const sourceIcon = this._makeNotificationIcon(latest, 36, '');
+            const avatarGicon = sourceIcon.gicon;
+            sourceIcon.destroy();
+            const card = new MessageGroup({
+                appName: group.app,
+                gicon: avatarGicon,
+                sender: group.sender || group.app,
+                time: this._notificationAge(latest),
+                messages: [...group.items].reverse().map(item => ({
+                    text: item.body || item.title || 'New message',
+                    time: this._notificationAge(item),
+                    unread: !item.read,
+                })),
+                expanded: this._expandedMessageGroups.has(group.key),
+                canReply: Boolean(this._getNotificationReplyAction(latest)),
             });
-            row.set_size(listWidth, rowHeight);
-            row.add_child(this._makeNotificationIcon(latest, 26, 'perdana-island__message-icon'));
-            const copy = new St.BoxLayout({
-                orientation: Clutter.Orientation.VERTICAL,
-                style_class: 'perdana-island__message-copy',
-                clip_to_allocation: true,
-                x_expand: true,
-                y_align: Clutter.ActorAlign.CENTER,
+            card.set_width(listWidth);
+            card.connect('expanded-changed', (_group, isExpanded) => {
+                if (isExpanded)
+                    this._expandedMessageGroups.add(group.key);
+                else
+                    this._expandedMessageGroups.delete(group.key);
             });
-            const top = new St.BoxLayout({
-                style_class: 'perdana-island__message-top',
-                y_align: Clutter.ActorAlign.CENTER,
+            card.connect('mark-read', () => {
+                group.items.forEach(item => item.read = true);
+                this._scheduleMessageSave();
+                this._updateSummaryRows();
+                this._renderPanel();
             });
-            const sender = makeLabel(group.sender || group.app, 'perdana-island__message-sender');
-            sender.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-            sender.clutter_text.line_wrap = false;
-            sender.x_expand = true;
-            sender.x_align = Clutter.ActorAlign.FILL;
-            top.add_child(sender);
-            const appLabel = makeLabel(group.app, 'perdana-island__message-app');
-            appLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-            appLabel.clutter_text.line_wrap = false;
-            top.add_child(appLabel);
-            copy.add_child(top);
-            const messageBody = makeLabel(latest.body || latest.title || 'New message',
-                'perdana-island__message-body');
-            messageBody.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-            messageBody.clutter_text.line_wrap = false;
-            messageBody.x_expand = true;
-            messageBody.x_align = Clutter.ActorAlign.FILL;
-            copy.add_child(messageBody);
-            row.add_child(copy);
-            const meta = new St.BoxLayout({
-                orientation: Clutter.Orientation.VERTICAL,
-                style_class: 'perdana-island__message-meta',
-                y_align: Clutter.ActorAlign.CENTER,
-            });
-            meta.add_child(makeLabel(this._notificationAge(latest), 'perdana-island__message-time'));
-            if (groupUnread)
-                meta.add_child(makeLabel(String(groupUnread), 'perdana-island__message-badge'));
-            row.add_child(meta);
-            const button = new St.Button({
-                child: row,
-                can_focus: true,
-                reactive: true,
-                track_hover: true,
-                style_class: 'perdana-button perdana-island__message-button',
-                accessible_name: `Open ${group.app} message from ${group.sender}`,
-            });
-            button.set_size(listWidth, rowHeight);
-            button.x_expand = true;
-            button.connect('clicked', () => {
+            card.connect('open', () => {
                 group.items.forEach(item => item.read = true);
                 this._activateNotificationItem(latest);
             });
-            const entry = new St.BoxLayout({
-                orientation: Clutter.Orientation.VERTICAL,
-                style_class: 'perdana-island__message-entry',
+            card.connect('reply', () => {
+                const action = this._getNotificationReplyAction(latest);
+                if (action)
+                    this._activateNotificationReply(latest, action);
             });
-            entry.add_child(button);
-            const replyAction = this._getNotificationReplyAction(latest);
-            if (replyAction) {
-                const reply = new St.Button({
-                    child: makeLabel('Reply', 'perdana-island__message-reply-label'),
-                    can_focus: true,
-                    reactive: true,
-                    track_hover: true,
-                    style_class: 'perdana-button perdana-island__message-reply',
-                    accessible_name: `Reply to ${group.sender} in ${group.app}`,
-                });
-                reply.set_size(62, 24);
-                reply.x_align = Clutter.ActorAlign.END;
-                reply.connect('clicked', () => this._activateNotificationReply(latest, replyAction));
-                entry.add_child(reply);
-            }
-            list.add_child(entry);
+            list.add_child(card);
         });
+        // Only the width is fixed. A fixed height measured while every group is
+        // collapsed would clip the messages once a group expands, so let the
+        // scroll view take the list's natural height on every layout pass.
         const scroll = new St.ScrollView({
             overlay_scrollbars: false,
             style_class: 'perdana-island__notification-scroll',
@@ -8583,14 +8647,28 @@ export default class PerdanaIslandExtension extends Extension {
         const smoothLyrics = this._expanded && this._activePage === 'lyrics';
         const interval = smoothLyrics ? 250 : 1000;
         this._updateRestingLyricsTicker();
-        if (playing && (!this._mediaSource || this._mediaTickerInterval !== interval)) {
+        if (playing && (!this._timeoutAlive('_mediaSource') || this._mediaTickerInterval !== interval)) {
             this._clearTimeout('_mediaSource');
             this._mediaTickerInterval = interval;
             this._mediaSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, interval, () => {
-                if (!this._enabled)
+                if (!this._enabled) {
+                    this._mediaSource = 0;
                     return GLib.SOURCE_REMOVE;
-                this._updateMediaProgress();
-                this._updateCollapsedLabel();
+                }
+                // A thrown error used to remove this source while leaving the
+                // property set, so no later update could ever restart it.
+                try {
+                    this._updateMediaProgress();
+                    this._updateCollapsedLabel();
+                    // Keep the resting lyrics ticker alive even if it died.
+                    this._updateRestingLyricsTicker();
+                    this._mediaTickErrorLogged = false;
+                } catch (error) {
+                    if (!this._mediaTickErrorLogged) {
+                        this._mediaTickErrorLogged = true;
+                        logError(error, 'Perdana Island media tick failed');
+                    }
+                }
                 return GLib.SOURCE_CONTINUE;
             });
         } else if (!playing) {
@@ -8607,24 +8685,40 @@ export default class PerdanaIslandExtension extends Extension {
             this._clearTimeout('_restingLyricsSource');
             return;
         }
-        if (this._restingLyricsSource)
+        if (this._timeoutAlive('_restingLyricsSource'))
             return;
 
+        this._restingLyricsErrorLogged = false;
         this._restingLyricsSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 180, () => {
             if (!this._enabled || !this._preferences?.showRestingLyrics) {
                 this._restingLyricsSource = 0;
                 return GLib.SOURCE_REMOVE;
             }
-            const currentPlayer = this._getSelectedPlayer();
-            if (!currentPlayer || this._getProperty(currentPlayer.proxy, 'PlaybackStatus') !== 'Playing') {
-                this._restingLyricsSource = 0;
-                return GLib.SOURCE_REMOVE;
+            // Never let one bad frame kill the ticker; the next tick retries.
+            try {
+                const currentPlayer = this._getSelectedPlayer();
+                if (!currentPlayer
+                    || this._getProperty(currentPlayer.proxy, 'PlaybackStatus') !== 'Playing') {
+                    this._restingLyricsSource = 0;
+                    return GLib.SOURCE_REMOVE;
+                }
+                const metadata = this._getMetadata(currentPlayer.proxy);
+                this._ensureLyrics(metadata, currentPlayer.name);
+                const lyric = this._currentLyricsText(this._positionForPlayer(currentPlayer));
+                const closing = this._collapseIsAnimating();
+                if (!this._expanded && !closing && !this._systemNoticeActive
+                    && !this._tuckedByBrowser && this._uiActorsAlive) {
+                    this._setCompactTrackText(
+                        lyric || metadata.title || currentPlayer.name.replace(MPRIS_PREFIX, '')
+                    );
+                }
+                this._restingLyricsErrorLogged = false;
+            } catch (error) {
+                if (!this._restingLyricsErrorLogged) {
+                    this._restingLyricsErrorLogged = true;
+                    logError(error, 'Perdana Island resting lyrics tick failed');
+                }
             }
-            const metadata = this._getMetadata(currentPlayer.proxy);
-            this._ensureLyrics(metadata, currentPlayer.name);
-            const lyric = this._currentLyricsText(this._positionForPlayer(currentPlayer));
-            if (!this._expanded && !this._closing && !this._systemNoticeActive && !this._tuckedByBrowser)
-                this._setCompactTrackText(lyric || metadata.title || currentPlayer.name.replace(MPRIS_PREFIX, ''));
             return GLib.SOURCE_CONTINUE;
         });
     }
@@ -9119,7 +9213,7 @@ export default class PerdanaIslandExtension extends Extension {
 
     _setCompactTrackText(text) {
         const label = this._compactTrackTitle;
-        if (!label)
+        if (!label || !this._uiActorsAlive)
             return;
 
         const lyricsMode = Boolean(this._preferences?.showRestingLyrics);
@@ -9217,7 +9311,7 @@ export default class PerdanaIslandExtension extends Extension {
         const desiredWidth = this._focusSource ? PLAYING_WIDTH
             : this._isPlaying() ? this._collapsedWidth() : COLLAPSED_WIDTH;
         const desiredHeight = this._collapsedHeight();
-        const geometryStable = !this._expanded && !this._closing && this._root
+        const geometryStable = !this._expanded && !this._collapseIsAnimating() && this._root
             && Math.round(this._root.width) === desiredWidth
             && Math.round(this._root.height) === desiredHeight;
         if (lyricsMode && textChanged) {
@@ -9277,7 +9371,8 @@ export default class PerdanaIslandExtension extends Extension {
             applyFitClass();
             label.text = displayText;
             this._layoutCompactTrackTitle();
-            if (lyricsMode && previousText && label.visible && !this._expanded && !this._closing)
+            if (lyricsMode && previousText && label.visible && !this._expanded
+                && !this._collapseIsAnimating())
                 label.opacity = 255;
         } else if (this._compactTrackPendingText === displayText) {
             return;
@@ -9313,12 +9408,15 @@ export default class PerdanaIslandExtension extends Extension {
     _updateCollapsedLabel() {
         if (!this._uiActorsAlive || !this._compact || this._systemNoticeActive || this._tuckedByBrowser)
             return;
+        const closing = this._collapseIsAnimating();
+        if (this._closing && !closing && !this._expanded)
+            this._closing = false;
         const player = this._getSelectedPlayer();
         const playing = player && this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing';
         const focusRunning = Boolean(this._focusSource);
         const showMedia = Boolean(playing && !focusRunning);
         const restingWithClock = this._preferences?.restingStyle === 'eyes-clock';
-        const showClock = Boolean(!playing && !focusRunning && !this._expanded && !this._closing
+        const showClock = Boolean(!playing && !focusRunning && !this._expanded && !closing
             && (restingWithClock || this._root?.hover));
         const hideEyesForClock = showClock && !restingWithClock;
         if (playing)
@@ -9409,7 +9507,7 @@ export default class PerdanaIslandExtension extends Extension {
             // The compact layer is hidden while open and clipped through the
             // close animation. Update it once the resting geometry is stable;
             // otherwise the 250 ms lyrics ticker races its fade and relayout.
-            if (!this._expanded && !this._closing)
+            if (!this._expanded && !closing)
                 this._setCompactTrackText(lyric || title);
             const artworkKey = `${player.name}\u001f${metadata.trackId || ''}\u001f${metadata.artUrl || ''}`;
             if (artworkKey !== this._compactArtworkKey) {
@@ -9422,7 +9520,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._loadArtwork(this._compactArtwork, this._compactArtworkIcon, metadata.artUrl, 24, 6);
             }
         } else {
-            if (!this._expanded && !this._closing)
+            if (!this._expanded && !this._collapseIsAnimating())
                 this._setCompactTrackText('');
             if (this._compactArtworkKey !== null) {
                 this._compactArtworkKey = null;
@@ -9434,7 +9532,7 @@ export default class PerdanaIslandExtension extends Extension {
             }
         }
         this._updateHeaderClock();
-        if (!this._expanded && !this._closing) {
+        if (!this._expanded && !this._collapseIsAnimating()) {
             const targetWidth = focusRunning ? PLAYING_WIDTH
                 : playing ? this._collapsedWidth() : COLLAPSED_WIDTH;
             const targetHeight = this._collapsedHeight();
@@ -9512,7 +9610,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _startTodayTicker() {
-        if (this._todaySource || !this._enabled)
+        if (this._timeoutAlive('_todaySource') || !this._enabled)
             return;
         this._updateTodayMetrics();
         this._todaySource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
@@ -9520,11 +9618,15 @@ export default class PerdanaIslandExtension extends Extension {
                 this._todaySource = 0;
                 return GLib.SOURCE_REMOVE;
             }
-            if (new Date().toDateString() !== this._calendarDateKey) {
-                this._renderPanel();
-                return GLib.SOURCE_CONTINUE;
+            try {
+                if (new Date().toDateString() !== this._calendarDateKey) {
+                    this._renderPanel();
+                    return GLib.SOURCE_CONTINUE;
+                }
+                this._updateTodayMetrics();
+            } catch (error) {
+                logError(error, 'Perdana Island Today tick failed');
             }
-            this._updateTodayMetrics();
             return GLib.SOURCE_CONTINUE;
         });
     }
@@ -10407,16 +10509,28 @@ export default class PerdanaIslandExtension extends Extension {
         }
         if (this._tuckedByBrowser)
             this._setBrowserTucked(false);
-        const sameNotice = this._systemNoticeActive && this._systemNoticeType === type;
+        const application = type === 'application';
+        const messageKey = application ? `${data?.appKey || ''}\u0000${data?.title || ''}` : null;
+        const sameConversation = application && messageKey === this._noticeMessageKey;
+        if (application) {
+            if (!sameConversation)
+                this._noticeBurst = [];
+            if (data && !this._noticeBurst.includes(data))
+                this._noticeBurst = [data, ...this._noticeBurst].slice(0, 3);
+            this._noticeMessageKey = messageKey;
+        }
+        const sameNotice = this._systemNoticeActive && this._systemNoticeType === type
+            && (!application || sameConversation);
         this._clearTimeout('_noticeDismissSource');
         this._systemNoticeActive = true;
         this._systemNoticeType = type;
-        this._noticeNotificationItem = type === 'application' ? data : null;
+        this._noticeNotificationItem = application ? data : null;
 
         const duration = ['volume', 'brightness'].includes(type) ? 2
             : ['agenda', 'recap', 'focus-guard'].includes(type) ? 7
                 : type === 'water' || type === 'prayer' ? 6
-                : ['focus', 'application', 'greeting'].includes(type) ? 4 : 3;
+                : application ? 7
+                    : ['focus', 'greeting'].includes(type) ? 4 : 3;
         this._noticeDismissSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, duration, () => {
             this._noticeDismissSource = 0;
             this._dismissSystemNotice(true);
@@ -10427,6 +10541,7 @@ export default class PerdanaIslandExtension extends Extension {
             if (!sameNotice) {
                 const actionable = type === 'application'
                     || ['agenda', 'recap', 'focus-guard', 'water', 'prayer'].includes(type);
+                const noticeHeight = application ? 96 : 76;
                 this._noticeBanner?.destroy();
                 this._root.remove_all_transitions();
                 this._root.add_style_class_name('perdana-island--notice');
@@ -10437,23 +10552,31 @@ export default class PerdanaIslandExtension extends Extension {
                     reactive: actionable,
                     can_focus: actionable,
                     track_hover: actionable,
-                    accessible_name: actionable ? 'Open the matching page' : null,
+                    accessible_name: application ? 'Open the message'
+                        : actionable ? 'Open the matching page' : null,
                 });
                 this._noticeBanner.set_position(0, 0);
-                this._noticeBanner.set_size(394, 76);
+                this._noticeBanner.set_size(394, noticeHeight);
                 this._noticeBanner.opacity = 0;
                 this._noticeBanner.translation_y = 8;
                 if (type === 'application') {
-                    this._noticeBanner.connect('button-release-event', () => {
+                    const openMessage = () => {
                         const item = this._noticeNotificationItem;
                         if (!item)
-                            return Clutter.EVENT_STOP;
-                        try {
-                            item.notification.activate();
-                        } catch (_error) {
-                            item.source.open();
-                        }
+                            return;
+                        this._activateNotificationItem(item);
                         this._dismissSystemNotice(true);
+                    };
+                    this._noticeBanner.connect('button-release-event', () => {
+                        openMessage();
+                        return Clutter.EVENT_STOP;
+                    });
+                    this._noticeBanner.connect('key-press-event', (_actor, event) => {
+                        const symbol = event.get_key_symbol();
+                        if (symbol !== Clutter.KEY_Return && symbol !== Clutter.KEY_KP_Enter
+                            && symbol !== Clutter.KEY_space)
+                            return Clutter.EVENT_PROPAGATE;
+                        openMessage();
                         return Clutter.EVENT_STOP;
                     });
                 } else if (['agenda', 'recap', 'focus-guard', 'water', 'prayer'].includes(type)) {
@@ -10526,8 +10649,24 @@ export default class PerdanaIslandExtension extends Extension {
                     this._noticeTitle.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
                     this._noticeSubtitle.hide();
                 }
-                this._noticeCopy.add_child(this._noticeTitle);
-                this._noticeCopy.add_child(this._noticeSubtitle);
+                if (application) {
+                    this._noticeSource = makeLabel('', 'perdana-island__notice-source');
+                    this._noticeSource.x_expand = true;
+                    this._noticeSource.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                    this._noticeSender = makeLabel('', 'perdana-island__notice-message--title');
+                    this._noticeSender.x_expand = true;
+                    this._noticeSender.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                    this._noticeStack = new St.BoxLayout({
+                        orientation: Clutter.Orientation.VERTICAL,
+                        style_class: 'perdana-island__notice-stack',
+                    });
+                    this._noticeCopy.add_child(this._noticeSource);
+                    this._noticeCopy.add_child(this._noticeSender);
+                    this._noticeCopy.add_child(this._noticeStack);
+                } else {
+                    this._noticeCopy.add_child(this._noticeTitle);
+                    this._noticeCopy.add_child(this._noticeSubtitle);
+                }
                 this._noticeBanner.add_child(this._noticeCopy);
 
                 this._noticeRight = null;
@@ -10541,6 +10680,50 @@ export default class PerdanaIslandExtension extends Extension {
                         style_class: 'perdana-island__notice-right',
                     });
                     this._noticeRight.add_child(makeLabel('View', 'perdana-island__notice-action'));
+                    this._noticeBanner.add_child(this._noticeRight);
+                } else if (application) {
+                    this._noticeRight = new St.BoxLayout({
+                        orientation: Clutter.Orientation.VERTICAL,
+                        y_align: Clutter.ActorAlign.CENTER,
+                        style_class: 'perdana-island__notice-right',
+                    });
+                    const replyAction = this._getNotificationReplyAction(data);
+                    if (replyAction) {
+                        this._noticeReplyButton = new St.Button({
+                            child: makeLabel('Reply', 'perdana-island__notice-action-label'),
+                            can_focus: true,
+                            reactive: true,
+                            track_hover: true,
+                            style_class: 'perdana-button perdana-island__notice-action perdana-island__notice-action--primary',
+                            accessible_name: 'Reply to this message',
+                        });
+                        this._noticeReplyButton.set_size(50, 24);
+                        this._noticeReplyButton.connect('clicked', () => {
+                            const item = this._noticeNotificationItem;
+                            const action = this._getNotificationReplyAction(item);
+                            if (!item || !action)
+                                return;
+                            this._activateNotificationReply(item, action);
+                            this._dismissSystemNotice(true);
+                        });
+                        this._noticeRight.add_child(this._noticeReplyButton);
+                    }
+                    this._noticeOpenButton = new St.Button({
+                        child: makeLabel('Open', 'perdana-island__notice-action-label'),
+                        can_focus: true,
+                        reactive: true,
+                        track_hover: true,
+                        style_class: 'perdana-button perdana-island__notice-action',
+                        accessible_name: 'Open the message',
+                    });
+                    this._noticeOpenButton.set_size(50, 24);
+                    this._noticeOpenButton.connect('clicked', () => {
+                        const item = this._noticeNotificationItem;
+                        if (item)
+                            this._activateNotificationItem(item);
+                        this._dismissSystemNotice(true);
+                    });
+                    this._noticeRight.add_child(this._noticeOpenButton);
                     this._noticeBanner.add_child(this._noticeRight);
                 } else if (!['application', 'greeting'].includes(type)) {
                     this._noticeRight = new St.BoxLayout({
@@ -10567,7 +10750,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._root.add_child(this._noticeBanner);
                 this._root.ease({
                     width: 394,
-                    height: 76,
+                    height: noticeHeight,
                     duration: this._motionDuration(320),
                     mode: Clutter.AnimationMode.EASE_OUT_QUINT,
                     onComplete: () => this._layoutIsland(),
@@ -10623,10 +10806,35 @@ export default class PerdanaIslandExtension extends Extension {
                     .replace(/\s+/g, ' ')
                     .trim();
                 const appName = oneLine(data.app) || 'Notification';
-                const title = oneLine(data.title);
-                const body = oneLine(data.body);
-                this._noticeTitle.text = appName;
-                this._noticeSubtitle.text = [title, body].filter(Boolean).join(' · ');
+                const chat = isChatItem(data);
+                const burst = this._noticeBurst.length ? this._noticeBurst : [data];
+                this._noticeSource.text = chat && burst.length > 1
+                    ? `${appName} · ${burst.length} new` : appName;
+                if (this._noticeSender) {
+                    this._noticeSender.visible = chat;
+                    this._noticeSender.text = chat ? burst[0].title || appName : '';
+                }
+                if (this._noticeReplyButton)
+                    this._noticeReplyButton.visible = Boolean(this._getNotificationReplyAction(data));
+                if (this._noticeStack) {
+                    for (const child of [...this._noticeStack.get_children()])
+                        child.destroy();
+                    const chronological = [...burst].reverse();
+                    chronological.forEach((entry, index) => {
+                        const latest = index === chronological.length - 1;
+                        const title = oneLine(entry.title);
+                        const body = oneLine(entry.body);
+                        const text = chat
+                            ? (body || title || 'New message')
+                            : [title, body].filter(Boolean).join(' · ') || appName;
+                        const line = makeLabel(text, `perdana-island__notice-message${latest
+                            ? ' perdana-island__notice-message--latest' : ''}`);
+                        line.x_expand = true;
+                        line.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                        line.clutter_text.line_wrap = false;
+                        this._noticeStack.add_child(line);
+                    });
+                }
                 const sourceIcon = data.notification?.gicon
                     || data.source?.icon || data.source?.app?.get_icon?.()
                     || Gio.ThemedIcon.new('application-x-executable-symbolic');
@@ -10676,6 +10884,13 @@ export default class PerdanaIslandExtension extends Extension {
         this._systemNoticeActive = false;
         this._systemNoticeType = null;
         this._noticeNotificationItem = null;
+        this._noticeMessageKey = null;
+        this._noticeBurst = [];
+        this._noticeStack = null;
+        this._noticeSource = null;
+        this._noticeSender = null;
+        this._noticeReplyButton = null;
+        this._noticeOpenButton = null;
         const noticeBanner = this._noticeBanner;
         this._root?.remove_style_class_name('perdana-island--notice');
         if (!this._root || !this._content)
@@ -11633,9 +11848,23 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _clearTimeout(property) {
-        if (this[property]) {
-            GLib.source_remove(this[property]);
-            this[property] = 0;
-        }
+        const id = this[property];
+        if (!id)
+            return;
+        this[property] = 0;
+        if (GLib.MainContext.default().find_source_by_id(id))
+            GLib.source_remove(id);
+    }
+
+    // A JS exception inside a timeout callback removes the GLib source but the
+    // stored id stays set, so a plain truthiness check would block restarts.
+    _timeoutAlive(property) {
+        const id = this[property];
+        if (!id)
+            return false;
+        if (GLib.MainContext.default().find_source_by_id(id))
+            return true;
+        this[property] = 0;
+        return false;
     }
 }
