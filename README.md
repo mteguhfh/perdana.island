@@ -16,7 +16,7 @@ Version 76 corrects the Plus Jakarta Sans helper text: the extension uses the sy
 
 ## Feature previews
 
-These images show representative UI states with sample media, files, notifications, and system values. A running extension reads those values from the current desktop session; the screenshots are not runtime captures.
+These images show representative UI states with sample media, files, notifications, and system values. A running extension reads those values from the current desktop session. The Activity previews are runtime captures from a headless GNOME Shell session; the other images are representative scenes.
 
 | Feature | Preview |
 | --- | --- |
@@ -25,6 +25,8 @@ These images show representative UI states with sample media, files, notificatio
 | Music controls | ![Music page with cover art, playback controls, and track progress](assets/screenshots/music.png) |
 | Lyrics | ![Lyrics page with track details, transport controls, and the active synced line](assets/screenshots/lyrics.png) |
 | Focus timer | ![Focus page with presets and custom timer controls](assets/screenshots/focus.png) |
+| Activity | ![Activity page with app and download progress](assets/screenshots/activity.png) |
+| Activity pill | ![Resting island showing a live download progress bar](assets/screenshots/activity-pill.png) |
 | Shelf grid | ![Shelf Grid view with file thumbnails](assets/screenshots/shelf.png) |
 | Shelf list | ![Shelf List view with filenames](assets/screenshots/shelf-list.png) |
 | To-do | ![To-do page with task completion and editing controls](assets/screenshots/todo.png) |
@@ -44,6 +46,7 @@ These images show representative UI states with sample media, files, notificatio
 - Music uses MPRIS metadata and supports seeking, previous, play/pause, and next when the player exposes those controls.
 - Smart music detection checks player service and track metadata before showing playback. It recognizes common music services such as Spotify, YouTube Music, YouTube, Deezer, SoundCloud, and Apple Music, while filtering spoken programs, films, social video, and ambiguous sessions. Turn it off under **Settings → Music**.
 - Lyrics follow playback timestamps. When a player does not provide synced lyrics, the extension looks up track metadata with LRCLIB. The Lyrics page includes playback controls and a toggle to show the current lyric in the resting island; long lines wrap inside the fixed layout.
+- Activity shows short-lived work while it runs. File downloads in `~/Downloads` are detected from partial-file suffixes (`.part`, `.crdownload`, `.download`, `.opdownload`) and aria2 control files, while apps and scripts can report their own progress over the session D-Bus interface `org.perdana.Island`. The resting pill shows the active item with a thin progress bar; the Activity page lists running items and keeps completed rows for a few seconds. The watcher reads only file names, sizes, and aria2 control metadata.
 - Focus offers Focus, Short, Long, and custom durations in seconds or minutes. Completion shows a temporary notice. While a session runs, Focus guard checks the focused window and shows one notice after five minutes in YouTube, Netflix, Twitch, TikTok, Instagram, Facebook, Reddit, or X. It reads only the window class and title, keeps the counter in memory, and can be turned off in Settings.
 - Shelf offers Grid and List views, image thumbnails, a scrollable list capped at 10 visible items, and a local folder that refreshes when files change. A capture button saves the current screen into that folder through the desktop screenshot portal.
 - To-do supports adding, completing, editing, and deleting tasks. Tasks persist between sessions. A task can carry a time (24 hour) and a priority (High, Med, Low); timed tasks sort to the top, and the list marks tasks whose day has passed as late.
@@ -71,7 +74,7 @@ These images show representative UI states with sample media, files, notificatio
 ![GLib and Gio](https://img.shields.io/badge/system-GLib%20%2B%20Gio-555555)
 ![Gvc audio](https://img.shields.io/badge/audio-Gvc%20%2B%20Shell%20VolumeStatus-555555)
 
-The extension runs inside GNOME Shell through the GJS `Extension` lifecycle. Its interface is built from Shell `St` actors and Clutter layouts/animations, attached to GNOME Shell's chrome layer. GLib and Gio provide timers, file access, and filesystem monitoring. Media metadata and playback controls use MPRIS on the session D-Bus; output volume uses GNOME's Gvc mixer API and Shell volume status module. CPU, memory, disk, and battery readings are collected from Linux system interfaces when available.
+The extension runs inside GNOME Shell through the GJS `Extension` lifecycle. Its interface is built from Shell `St` actors and Clutter layouts/animations, attached to GNOME Shell's chrome layer. GLib and Gio provide timers, file access, and filesystem monitoring. Media metadata and playback controls use MPRIS on the session D-Bus; output volume uses GNOME's Gvc mixer API and Shell volume status module. The activity service exports `org.perdana.Island` on the session bus, and a `Gio.FileMonitor` watches `~/Downloads` for in-progress files. CPU, memory, disk, and battery readings are collected from Linux system interfaces when available.
 
 The GNOME extension declares GNOME Shell **50.x and 51.x** compatibility. This GNOME package does not run on KDE Plasma, Cinnamon, Xfce, or other desktop environments that do not use GNOME Shell. The separate KDE widget and its requirements are documented in [README-KDE.md](README-KDE.md).
 
@@ -114,6 +117,8 @@ Click the island to open it. When media or a focus timer is active, hovering ove
 ## Data and limitations
 
 Tasks, notes, preferences, clipboard history, and Shelf files are stored in `~/.local/share/perdana.island/`. Task data is reconciled with `~/.local/share/pulo-island/tasks.json` and synchronized to both locations, so changes survive switching between the old and new extension UUIDs. Shelf files are copied from the previous location when a matching destination file is absent. Clipboard history is stored locally with user-only permissions and limited to four unique entries. It is monitored while the extension is enabled; repeated copies do not create duplicate rows. Clipboard text is not sent to third parties. LRCLIB lyric lookup sends the current track title, artist, optional album, and duration to `lrclib.net`.
+
+The Activity watcher reads only the names, sizes, and aria2 control metadata of files in `~/Downloads`; it never opens the downloaded content. App-reported activities stay in memory and are cleared when the extension is disabled. The D-Bus interface is session-local and optional.
 
 GNOME Shell does not provide the dragged desktop file list to these island actors. Add files through **Add files**, or copy them into the Shelf folder; direct drop onto the island is unavailable.
 
