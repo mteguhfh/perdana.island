@@ -7,6 +7,8 @@
 [![Activity API](https://img.shields.io/badge/activity-session%20D--Bus-5267a8)](docs/releases/v79.md)
 [![Fedora 44](https://img.shields.io/badge/target-Fedora%2044-51a2da?logo=fedora&logoColor=white)](https://fedoraproject.org/)
 
+Website: [island.perdana.ai.id](https://island.perdana.ai.id)
+
 Perdana Island is a GNOME Shell extension for Shell 50 and 51. It places media controls, synced lyrics, a focus timer, a file shelf, tasks, notes, clipboard history, notifications, settings, and system information in a compact Notch or floating Pill. The repository also retains a separate KDE Plasma 6 widget and guide; this v79 build script packages the GNOME extension. On GNOME, **Ctrl+Alt+X** hides or shows the island.
 
 ## GNOME v79
