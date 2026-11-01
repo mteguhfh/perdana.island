@@ -32,6 +32,7 @@ import {
     restoreMessages,
 } from './message-history.js';
 import {MessageGroup} from './message-group.js';
+import {MessageList} from './message-list.js';
 import {parseCapture} from './quick-capture.js';
 import {buildBackup, backupFileName, validateBackup, summarizeBackup} from './backup-utils.js';
 import {
@@ -1155,6 +1156,7 @@ export default class PerdanaIslandExtension extends Extension {
         const luminance = 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue);
         const foreground = luminance > 0.179 ? '#111111' : '#ffffff';
         const soft = `rgba(${red}, ${green}, ${blue}, 0.24)`;
+        const softOpen = `rgba(${red}, ${green}, ${blue}, 0.32)`;
         const styles = new Map([
             ['perdana-island__focus-compact-icon', `color: ${color};`],
             ['perdana-island__clipboard-notice', `color: ${color};`],
@@ -1167,6 +1169,10 @@ export default class PerdanaIslandExtension extends Extension {
             ['perdana-button--lyrics-resting-active', `background-color: ${soft}; color: #ffffff;`],
             ['perdana-island__reminder-next', `background-color: ${soft};`],
             ['perdana-island__message-row--unread', `background-color: ${soft};`],
+            ['msg-group--unread', `background-color: ${soft};`],
+            ['msg-group--unread-open', `background-color: ${softOpen};`],
+            ['msg-dot--unread', `background-color: ${color};`],
+            ['msg-action-primary', `background-color: ${color}; color: ${foreground};`],
             ['perdana-island__message-badge', `background-color: ${color}; color: ${foreground};`],
             ['perdana-island__notice-action--primary', `background-color: ${soft};`],
             ['perdana-island__activity-fill', `background-color: ${color};`],
@@ -7012,14 +7018,16 @@ export default class PerdanaIslandExtension extends Extension {
         return new Intl.DateTimeFormat('en-GB', {day: '2-digit', month: 'short'}).format(item.receivedAt);
     }
 
-    _activateNotificationItem(item) {
+    _activateNotificationItem(item, {markRead = true} = {}) {
         if (!item)
             return;
-        item.read = true;
-        this._scheduleMessageSave();
-        this._updateSummaryRows();
-        if (this._expanded)
-            this._renderPanel();
+        if (markRead) {
+            item.read = true;
+            this._scheduleMessageSave();
+            this._updateSummaryRows();
+            if (this._expanded)
+                this._renderPanel();
+        }
         try {
             if (!item.notification)
                 throw new Error('stored message has no live notification');
@@ -7076,6 +7084,11 @@ export default class PerdanaIslandExtension extends Extension {
             .filter(item => this._isNotificationSourceEnabled(item.appKey));
         const compactHeader = contentWidth < 300;
         const groups = groupConversations(chats);
+        for (const group of groups) {
+            const latest = group.items[0];
+            group.sender = this._normalizeNotificationText(latest.title, latest.appKey)
+                || group.app;
+        }
         const unread = chats.filter(item => !item.read).length;
         const header = new St.BoxLayout({
             style_class: `perdana-island__messages-header${compactHeader
@@ -7107,7 +7120,7 @@ export default class PerdanaIslandExtension extends Extension {
             this._clearNotifications(isChatItem), 'perdana-island__notification-clear');
         clear.set_size(compactHeader ? 48 : 54, 26);
         header.add_child(clear);
-        place(body, header, 0, 8, contentWidth, 28);
+        place(body, header, 0, 7, contentWidth, 28);
 
         if (!groups.length) {
             const empty = makeLabel('No messages', 'perdana-island__empty-media');
@@ -7115,41 +7128,39 @@ export default class PerdanaIslandExtension extends Extension {
             place(body, empty, 0, 43, contentWidth, this._bodyHeight() - 47);
             return;
         }
-        const list = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
-            style_class: 'perdana-island__messages-list',
-        });
-        const listWidth = Math.max(1, contentWidth - 18);
-        list.set_width(listWidth);
-        const groupKeys = new Set(groups.map(group => group.key));
-        for (const key of this._expandedMessageGroups) {
-            if (!groupKeys.has(key))
-                this._expandedMessageGroups.delete(key);
+        const listTop = 7 + 28 + 5;
+        const listHeight = Math.max(1, this._bodyHeight() - listTop - 4);
+        const list = new MessageList({maxHeight: listHeight});
+        const senderKeys = new Set(groups.map(group => group.sender || group.app));
+        for (const sender of this._expandedMessageGroups) {
+            if (!senderKeys.has(sender))
+                this._expandedMessageGroups.delete(sender);
         }
         groups.forEach(group => {
             const latest = group.items[0];
-            const sourceIcon = this._makeNotificationIcon(latest, 36, '');
+            const sourceIcon = this._makeNotificationIcon(latest, 30, '');
             const avatarGicon = sourceIcon.gicon;
             sourceIcon.destroy();
+            const sender = group.sender || group.app;
             const card = new MessageGroup({
                 appName: group.app,
                 gicon: avatarGicon,
-                sender: group.sender || group.app,
+                sender,
                 time: this._notificationAge(latest),
                 messages: [...group.items].reverse().map(item => ({
-                    text: item.body || item.title || 'New message',
+                    text: this._normalizeNotificationText(item.body || item.title, item.appKey)
+                        || 'New message',
                     time: this._notificationAge(item),
                     unread: !item.read,
                 })),
-                expanded: this._expandedMessageGroups.has(group.key),
-                canReply: Boolean(this._getNotificationReplyAction(latest)),
+                expanded: this._expandedMessageGroups.has(sender),
             });
-            card.set_width(listWidth);
             card.connect('expanded-changed', (_group, isExpanded) => {
                 if (isExpanded)
-                    this._expandedMessageGroups.add(group.key);
+                    this._expandedMessageGroups.add(sender);
                 else
-                    this._expandedMessageGroups.delete(group.key);
+                    this._expandedMessageGroups.delete(sender);
+                this._applyAccentStyles(card);
             });
             card.connect('mark-read', () => {
                 group.items.forEach(item => item.read = true);
@@ -7158,26 +7169,11 @@ export default class PerdanaIslandExtension extends Extension {
                 this._renderPanel();
             });
             card.connect('open', () => {
-                group.items.forEach(item => item.read = true);
-                this._activateNotificationItem(latest);
+                this._activateNotificationItem(latest, {markRead: false});
             });
-            card.connect('reply', () => {
-                const action = this._getNotificationReplyAction(latest);
-                if (action)
-                    this._activateNotificationReply(latest, action);
-            });
-            list.add_child(card);
+            list.addGroup(card);
         });
-        // Only the width is fixed. A fixed height measured while every group is
-        // collapsed would clip the messages once a group expands, so let the
-        // scroll view take the list's natural height on every layout pass.
-        const scroll = new St.ScrollView({
-            overlay_scrollbars: false,
-            style_class: 'perdana-island__notification-scroll',
-        });
-        scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
-        scroll.add_child(list);
-        place(body, scroll, 0, 43, contentWidth, Math.max(0, this._bodyHeight() - 47));
+        place(body, list, 0, listTop, contentWidth, listHeight);
     }
 
     _renderActivityPanel(body, top = 52) {

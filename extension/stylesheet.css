@@ -2208,119 +2208,156 @@
   background-color: rgba(255, 255, 255, 0.075);
 }
 
-/* Messages: one card per conversation (message-group.js). */
-.msg-group {
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
+/* Messages page: vertical cards own their natural height; only the list scrolls. */
+.msg-scroll {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
 }
-.msg-group:expanded {
-  background-color: rgba(255, 255, 255, 0.07);
+.msg-list {
+  spacing: 8px;
+  padding-right: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+.msg-scroll StScrollBar {
+  min-width: 4px;
+  padding: 0;
+  background-color: transparent;
+}
+.msg-scroll StScrollBar StBin#trough {
+  border-radius: 2px;
+  background-color: transparent;
+}
+.msg-scroll StScrollBar > .vhandle {
+  min-width: 4px;
+  border: 0;
+  border-radius: 2px;
+  background-color: rgba(255, 255, 255, 0.25);
+}
+.msg-group {
+  min-width: 0;
+  border: 0;
+  border-radius: 13px;
+  background-color: rgba(255, 255, 255, 0.075);
+}
+.msg-group--open {
+  background-color: rgba(255, 255, 255, 0.11);
 }
 .msg-header {
+  min-width: 0;
+  min-height: 48px;
   padding: 9px 12px;
-  min-height: 0;
-  border-radius: 14px;
+  border-radius: 13px;
   background-color: transparent;
   box-shadow: none;
 }
-.msg-header:hover,
+.msg-header-row {
+  spacing: 11px;
+  min-width: 0;
+}
+.msg-header:hover {
+  background-color: rgba(255, 255, 255, 0.045);
+}
 .msg-header:focus {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
 }
-.msg-group:expanded .msg-header {
-  border-radius: 14px 14px 0 0;
+.msg-group--open .msg-header {
+  border-radius: 13px 13px 0 0;
 }
-.msg-avatar {
-  border-radius: 16px;
-  margin-right: 10px;
+.msg-icon {
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 9px;
 }
-.msg-text-col {
-  spacing: 2px;
-}
-.msg-sender {
-  color: #f2f4f8;
-  font-size: 13px;
-  font-weight: bold;
+.msg-copy {
+  spacing: 3px;
+  min-width: 0;
 }
 .msg-meta {
-  color: rgba(255, 255, 255, 0.5);
+  min-width: 0;
+}
+.msg-sender {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: bold;
+}
+.msg-sub {
+  min-width: 0;
+  max-width: 140px;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.48);
   font-size: 10px;
 }
 .msg-preview {
-  color: rgba(255, 255, 255, 0.72);
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.68);
   font-size: 11px;
-  padding-top: 1px;
-}
-.msg-badge {
-  min-width: 16px;
-  margin-left: 6px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background-color: #5b8def;
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: bold;
-  text-align: center;
 }
 .msg-chevron {
-  margin-left: 6px;
+  min-width: 14px;
+  margin-left: 1px;
   color: rgba(255, 255, 255, 0.5);
 }
 .msg-body {
-  padding: 0 12px 8px 12px;
+  min-width: 0;
+  padding: 0 11px 9px;
 }
-/* 44px = avatar 32 + margin 10 + 2, so message text lines up with the sender. */
-.msg-row {
-  padding: 5px 0 5px 44px;
-  spacing: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+.msg-line {
+  min-width: 0;
+  min-height: 28px;
+  padding: 6px 0 6px 40px;
+  spacing: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
-.msg-row-last {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-.msg-body-text {
-  color: #e6e9ef;
-  font-size: 12px;
-}
-.msg-row-time {
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
+.msg-line-last {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 .msg-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 3px;
-  background-color: #5b8def;
-}
-.msg-dot-read {
+  min-width: 7px;
+  min-height: 7px;
+  border-radius: 4px;
   background-color: transparent;
 }
+.msg-dot--unread {
+  background-color: #ffffff;
+}
+.msg-text {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+}
+.msg-time {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 10px;
+}
 .msg-footer {
+  min-width: 0;
   padding-top: 8px;
   spacing: 6px;
 }
-.msg-btn {
-  min-height: 0;
-  padding: 4px 12px;
+.msg-action {
+  min-height: 24px;
+  padding: 0 12px;
   border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 11px;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 10px;
 }
-.msg-btn:hover,
-.msg-btn:focus {
-  background-color: rgba(255, 255, 255, 0.15);
+.msg-action:hover,
+.msg-action:focus {
+  background-color: rgba(255, 255, 255, 0.17);
 }
-.msg-btn-primary {
-  background-color: #5b8def;
-  color: #ffffff;
+.msg-action:focus {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+.msg-action-primary {
   font-weight: bold;
-}
-.msg-btn-primary:hover,
-.msg-btn-primary:focus {
-  background-color: #7aa2f7;
 }
 .perdana-island__message-row--unread,
 .perdana-island__notification-row--unread {

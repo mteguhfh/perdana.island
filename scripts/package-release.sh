@@ -2,8 +2,8 @@
 set -euo pipefail
 
 RELEASE_TAG="${1:-}"
-if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+$ && ! "$RELEASE_TAG" =~ ^plasma-v[0-9]+$ ]]; then
-    printf 'Usage: %s v<gnome-version> | plasma-v<plasma-version>\n' "$0" >&2
+if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+([.][0-9]+)?$ && ! "$RELEASE_TAG" =~ ^plasma-v[0-9]+$ ]]; then
+    printf 'Usage: %s v<gnome-version>[.<patch>] | plasma-v<plasma-version>\n' "$0" >&2
     exit 2
 fi
 
@@ -16,7 +16,7 @@ if ! command -v zip >/dev/null 2>&1; then
     exit 1
 fi
 
-if [[ "$RELEASE_TAG" =~ ^v([0-9]+)$ ]]; then
+if [[ "$RELEASE_TAG" =~ ^v([0-9]+([.][0-9]+)?)$ ]]; then
     VERSION="${BASH_REMATCH[1]}"
     GNOME_VERSION_NAME="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("version-name", ""))' "$PROJECT_ROOT/extension/metadata.json")"
     if [[ "$GNOME_VERSION_NAME" != "v$VERSION" ]]; then

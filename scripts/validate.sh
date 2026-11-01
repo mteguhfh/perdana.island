@@ -28,7 +28,7 @@ GNOME_VERSION_NAME="$(python3 -c 'import json, sys; print(json.load(open(sys.arg
 GNOME_VERSION="${GNOME_VERSION_NAME#v}"
 PLASMA_VERSION="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["KPlugin"]["Version"])' plasma-widget/metadata.json)"
 
-[[ "$GNOME_VERSION_NAME" == "v$GNOME_VERSION" ]] || fail "GNOME version-name must look like v<number>, got '$GNOME_VERSION_NAME'"
+[[ "$GNOME_VERSION_NAME" =~ ^v[0-9]+([.][0-9]+)?$ ]] || fail "GNOME version-name must look like v<number>[.<patch>], got '$GNOME_VERSION_NAME'"
 [[ "$PLASMA_VERSION" =~ ^[0-9]+$ ]] || fail "KDE version must be numeric, got '$PLASMA_VERSION'"
 
 ./scripts/package-release.sh "v$GNOME_VERSION"
