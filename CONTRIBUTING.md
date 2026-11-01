@@ -1,6 +1,6 @@
 # Contributing to Perdana Island
 
-Perdana Island ships two independent packages from one repository: a GNOME Shell 50 extension in `extension/` and a KDE Plasma 6 widget in `plasma-widget/`. The project uses one release number for both.
+Perdana Island ships two independent packages from one repository: a GNOME Shell 50/51 extension in `extension/` and a KDE Plasma 6 widget in `plasma-widget/`. Each package has its own version and release track.
 
 ## Before you start
 
@@ -36,22 +36,15 @@ npm test
 ./scripts/validate.sh
 ```
 
-`validate.sh` checks JavaScript syntax, JSON metadata, the GSettings schema, the shared GNOME/KDE version, and the contents of both release archives. Both commands also run in CI.
+`validate.sh` checks JavaScript syntax, JSON metadata, the GSettings schema, tests, and the contents of each package archive. It verifies GNOME and KDE versions independently. Both commands also run in CI.
 
 ## GNOME development loop
 
-`gnome-extensions pack` only includes known extension files, so extra root modules must be passed explicitly. The clipboard helpers use this path:
+Build the versioned GNOME package with:
 
 ```sh
-gnome-extensions pack ./extension \
-  --extra-source=./LICENSE \
-  --extra-source=clipboard-utils.js \
-  --extra-source=layout-utils.js \
-  --extra-source=progress-utils.js \
-  --out-dir ./dist
-gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.zip
-gnome-extensions disable perdana.island@perdana
-gnome-extensions enable perdana.island@perdana
+./scripts/build-gnome.sh
+gnome-extensions install --force ./dist/Perdana-Island-GNOME-v79.shell-extension.zip
 ```
 
 On Wayland, sign out and back in when Shell keeps using cached modules. See [Installation](docs/INSTALLATION.md) for troubleshooting.
@@ -73,13 +66,13 @@ systemctl --user restart plasma-plasmashell
 
 ## Versions and releases
 
-Both packages share one version number:
+The packages have independent version numbers:
 
-- `extension/metadata.json` uses `"version-name": "v<number>"`.
-- `plasma-widget/metadata.json` uses `"Version": "<number>"`.
-- Release notes live in `docs/releases/v<number>.md`.
+- GNOME `extension/metadata.json` uses `"version-name": "v<number>"` and release tags use `v<number>`.
+- KDE `plasma-widget/metadata.json` uses `"Version": "<number>"` and release tags use `plasma-v<number>`.
+- Release notes match the tag, for example `docs/releases/v79.md` or `docs/releases/plasma-v76.md`.
 
-A maintainer tags `v<number>` after both metadata files and the release notes are ready. The release workflow builds and publishes the GNOME and KDE archives.
+A maintainer tags one package after its metadata and release notes are ready. The release workflow builds and publishes only the package named by the tag. A GNOME release does not require a KDE version change, and vice versa.
 
 ## Code style
 

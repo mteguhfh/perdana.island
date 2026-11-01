@@ -4,6 +4,8 @@
 
 Perdana Island is a GNOME Shell extension that presents media controls and desktop information in a single top-attached island. It has compact resting, media, and focus states, plus an expanded panel whose pages share one stable frame.
 
+The repository ships feature screenshots and release documentation as the product reference; standalone HTML preview files are kept out of the clean source tree.
+
 ## Users and goals
 
 The extension is for GNOME users who want quick media controls and short focus sessions without opening a separate utility window. Its goals are to:
@@ -25,15 +27,18 @@ The extension is for GNOME users who want quick media controls and short focus s
 
 ### Pages and notices
 
+- **Summary:** music controls with Focus, To-do, Messages, and reminder summaries.
 - **Music:** MPRIS metadata, artwork, position, seek, previous, play/pause, and next.
 - **Lyrics:** synced lyrics from the active player or LRCLIB, with playback controls and wrapping for long lines. Track metadata is sent to LRCLIB for lookups.
 - **Focus:** Focus, Short, Long, and custom durations; Start/Pause, Reset, and Skip; completion notice and daily session count.
 - **Shelf:** file chooser, local file copy, open-folder action, filesystem refresh, persisted Grid/List view, image thumbnails, and a scrollable 10-item view.
 - **To-do:** add, complete, and delete tasks; persist the list as JSON.
-- **Clipboard:** observe clipboard owner changes while the extension is enabled; skip explicit sensitive MIME types and recognizable credential formats; allow recopy and delete; persist up to four unique entries locally between sessions. Normalize repeated text and URL forms to prevent duplicate rows.
+- **Clipboard:** available from the Shelf page; observe clipboard owner changes while the extension is enabled; skip explicit sensitive MIME types and recognizable credential formats; allow recopy and delete; persist up to 25 unique entries locally between sessions. Normalize repeated text and URL forms to prevent duplicate rows.
+- **Messages:** show supported chat notifications separately from system alerts.
 - **Today:** local date plus available processor, memory, disk, and battery metrics.
-- **Notifications:** recent desktop notifications, activation of the originating notification, and clear action.
-- **Settings:** side sections for Island appearance, session greetings, reminders, and visible page tabs. Greeting settings choose Linux account/device/custom name, editable welcome and returning text with a `{name}` token, preview actions, and a once-per-login greeting.
+- **Reminders:** daily agenda, prayer times, hourly water reminders, and focus guard.
+- **Notifications:** recent desktop notifications split into Alerts and Activity, activation of the originating notification, and clear action.
+- **Settings:** scrollable side sections for Island, Greeting, Music, Messages, Reminders, Notifications, Tabs, and Data. Greeting settings choose Linux account/device/custom name, editable welcome and returning text with a `{name}` token, preview actions, and a once-per-login greeting. Data provides backup and restore.
 - **System notices:** charger connect/disconnect and output-volume changes; each notice dismisses automatically.
 
 ## Data and upgrade behavior
@@ -49,8 +54,8 @@ The extension is for GNOME users who want quick media controls and short focus s
 
 - GNOME Shell 50.x and 51.x, GJS, St, Clutter, Gio, GLib, Pango, Gvc, and GNOME Shell volume status integration.
 - MPRIS on the current user's session D-Bus for media controls.
-- Development runtime validated on Fedora Linux 44, GNOME Shell 50.6, Wayland.
-- Ubuntu 26.10, GNOME Shell 51.0, Wayland: headless smoke test covering enable/disable, every page, notices, and preferences.
+- Development environment: Fedora Linux 44, GNOME Shell 50.6, Wayland. The active session was not reloaded for the v79 source update.
+- Ubuntu 26.10, GNOME Shell 51.0, Wayland: earlier baseline headless smoke test covering enable/disable, every page, notices, and preferences; v79 was not independently tested there.
 - Ubuntu 26.04 LTS and Debian testing (Forky) have GNOME Shell 50.x packages; runtime validation on those systems remains outstanding.
 - Non-GNOME desktops and GNOME Shell versions outside 50.x and 51.x are out of scope for this release.
 

@@ -6,5 +6,10 @@
       <summary>Toggle Perdana Island visibility</summary>
       <description>Hide or show Perdana Island with the global keyboard shortcut.</description>
     </key>
+    <key name="quick-capture" type="as">
+      <default>['&lt;Control&gt;&lt;Alt&gt;n']</default>
+      <summary>Open Perdana Island quick capture</summary>
+      <description>Open the quick capture panel to add a task or note by typing a sentence.</description>
+    </key>
   </schema>
 </schemalist>

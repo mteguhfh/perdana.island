@@ -76,22 +76,21 @@ export function formatActivityValue(activity) {
     const progress = normalizeProgress(activity?.progress);
     if (progress !== null)
         return `${Math.round(progress * 100)}%`;
-    const received = Number(activity?.receivedBytes);
+    const received = Number(activity?.bytes ?? activity?.receivedBytes);
     if (Number.isFinite(received) && received > 0)
         return formatBytes(received);
     return 'Working';
 }
 
 export function formatActivityDetail(activity) {
-    const received = Number(activity?.receivedBytes);
-    const total = Number(activity?.totalBytes);
+    const received = Number(activity?.bytes ?? activity?.receivedBytes);
+    const total = Number(activity?.total ?? activity?.totalBytes);
     if (Number.isFinite(received) && received > 0 && Number.isFinite(total) && total > 0) {
-        const suffix = Number.isFinite(Number(activity?.speedBytes))
-            ? ` · ${formatBytes(activity.speedBytes)}/s`
-            : '';
+        const speed = Number(activity?.speedBytes);
+        const suffix = Number.isFinite(speed) && speed > 0 ? ` · ${formatBytes(speed)}/s` : '';
         return `${formatBytes(received)} of ${formatBytes(total)}${suffix}`;
     }
-    const subtitle = cleanActivityText(activity?.subtitle);
+    const subtitle = cleanActivityText(activity?.sub ?? activity?.subtitle);
     if (subtitle)
         return subtitle;
     if (Number.isFinite(received) && received > 0)
@@ -104,13 +103,8 @@ export function selectActivity(activities) {
         .filter(activity => activity?.state === 'running');
     if (!running.length)
         return null;
-    // Keep the pill on the oldest running item so parallel downloads do not
-    // make it hop between rows as each one reports progress.
-    return running.reduce((oldest, activity) => {
-        if (!oldest)
-            return activity;
-        return (activity.startedAt || 0) < (oldest.startedAt || 0) ? activity : oldest;
-    }, null);
+    return running.reduce((oldest, activity) => !oldest
+        || (activity.startedAt || 0) < (oldest.startedAt || 0) ? activity : oldest, null);
 }
 
 export function aria2TotalLength(contents) {

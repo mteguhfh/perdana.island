@@ -44,6 +44,8 @@ export function classifyMedia(media, {enabled = true, requirePlaying = true} = {
     // A provider with a strong music identity can legitimately use film words
     // in song titles (for example, a soundtrack release). Keep title-only
     // heuristics for ambiguous browser/media sessions instead.
+    if (/\b(podcast|episode)\b/i.test(title))
+        return {kind: 'ignored', reason: 'The title identifies podcast or episode content.'};
     if (SPOKEN_CONTENT.test(title) && !MUSIC_SERVICES.test(mediaHint))
         return {kind: 'ignored', reason: 'The title identifies podcast, episode, film, or spoken content.'};
     if (/\b(podcast|episode)\b/i.test(text(media.trackId)))

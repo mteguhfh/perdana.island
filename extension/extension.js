@@ -24,19 +24,9 @@ import {
     maskClipboardPreview,
     normalizeClipboardHistoryKey,
 } from './clipboard-utils.js';
-import {
-    POSITION_MODES,
-    chooseMonitor,
-    clampUnit,
-    monitorForPoint,
-    monitorKey,
-    monitorsBounds,
-    normalizeTabOrder,
-    positionRatios,
-    positionTarget,
-    snapToMonitor,
-} from './layout-utils.js';
 import {classifyMedia} from './music-classifier.js';
+import {parseCapture} from './quick-capture.js';
+import {buildBackup, backupFileName, validateBackup, summarizeBackup} from './backup-utils.js';
 import {
     aria2TotalLength,
     cleanActivityIcon,
@@ -45,6 +35,7 @@ import {
     downloadTitle,
     formatActivityDetail,
     formatActivityValue,
+    formatBytes,
     isAria2Control,
     normalizeProgress,
     partialSuffix,
@@ -56,6 +47,135 @@ const MPRIS_PATH = '/org/mpris/MediaPlayer2';
 const MPRIS_PLAYER_IFACE = 'org.mpris.MediaPlayer2.Player';
 const MUTTER_DISPLAY_CONFIG = 'org.gnome.Mutter.DisplayConfig';
 const MUTTER_DISPLAY_CONFIG_PATH = '/org/gnome/Mutter/DisplayConfig';
+const DEFAULT_FOCUS_SECONDS = 25 * 60;
+const DEFAULT_BREAK_SECONDS = 5 * 60;
+const DEFAULT_ACCENT_COLOR = '#5577B8';
+const FONT_FAMILIES = ['cantarell', 'noto-sans', 'plus-jakarta-sans'];
+const AGENDA_BRIEFING_MINUTES = 8 * 60;
+const AGENDA_RECAP_MINUTES = 17 * 60;
+const TASK_PRIORITIES = ['high', 'medium', 'low'];
+const CLIPBOARD_LIMIT = 25;
+const TASK_PRIORITY_LABELS = {high: 'High', medium: 'Med', low: 'Low'};
+const FOCUS_DISTRACTIONS = [
+    ['youtube', 'YouTube'],
+    ['netflix', 'Netflix'],
+    ['twitch', 'Twitch'],
+    ['tiktok', 'TikTok'],
+    ['instagram', 'Instagram'],
+    ['facebook', 'Facebook'],
+    ['reddit', 'Reddit'],
+    ['x.com', 'X'],
+    ['twitter', 'X'],
+];
+const FOCUS_GUARD_SECONDS = 5 * 60;
+const WATER_REMINDER_SECONDS = 60 * 60;
+const WATER_WINDOW_START = 8 * 60;
+const WATER_WINDOW_END = 21 * 60;
+const PRAYER_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+const PRAYER_METHODS = [[20, 'Kemenag'], [3, 'MWL'], [2, 'ISNA'], [4, 'Umm al-Qura']];
+const DEFAULT_THEME = 'midnight';
+const MAX_SHELF_ITEMS = 10;
+const MAX_NOTES = 60;
+const MAX_LYRIC_LINES = 500;
+const MAX_LYRIC_SOURCE_LENGTH = 100000;
+const VISIBLE_LYRIC_CONTEXT = 4;
+const NOTE_MAX_CHARS = 12000;
+const NOTE_AUTOSAVE_MS = 600;
+const NOTE_UNDO_MS = 7000;
+const DEFAULT_NOTIFICATION_SOURCES = {
+    whatsapp: true,
+    discord: true,
+    telegramWeb: true,
+    telegramDesktop: true,
+    googleChat: true,
+    'browser-edge': true,
+    'browser-chrome': true,
+    'browser-firefox': true,
+    'browser-brave': true,
+    'browser-opera': true,
+    'browser-vivaldi': true,
+    software: true,
+    calendar: true,
+    battery: true,
+    downloads: true,
+};
+const CHAT_SOURCE_OPTIONS = [
+    ['whatsapp', 'WhatsApp Web', 'whatsapp'],
+    ['discord', 'Discord', 'discord'],
+    ['telegramWeb', 'Telegram Web', 'telegram'],
+    ['telegramDesktop', 'Telegram Desktop', 'telegram'],
+    ['googleChat', 'Google Chat', 'google-chat'],
+];
+const SYSTEM_SOURCE_OPTIONS = [
+    ['software', 'Software updates', 'system-software-update-symbolic'],
+    ['calendar', 'Calendar', 'x-office-calendar-symbolic'],
+    ['battery', 'Battery and charger', 'battery-symbolic'],
+    ['downloads', 'Downloads', 'folder-download-symbolic'],
+];
+const NOTIFICATION_SOURCE_OPTIONS = [
+    ['whatsapp', 'WhatsApp Web', 'whatsapp'],
+    ['discord', 'Discord', 'discord'],
+    ['telegramWeb', 'Telegram Web', 'telegram'],
+    ['telegramDesktop', 'Telegram Desktop', 'telegram'],
+    ['googleChat', 'Google Chat', 'google-chat'],
+    ['browser-edge', 'Microsoft Edge', 'web-browser-symbolic'],
+    ['browser-chrome', 'Google Chrome', 'web-browser-symbolic'],
+    ['browser-firefox', 'Firefox', 'web-browser-symbolic'],
+    ['browser-brave', 'Brave', 'web-browser-symbolic'],
+    ['browser-opera', 'Opera', 'web-browser-symbolic'],
+    ['browser-vivaldi', 'Vivaldi', 'web-browser-symbolic'],
+];
+// Idle (8) and suspend (4) inhibitors from org.gnome.SessionManager.
+const KEEP_AWAKE_FLAGS = 12;
+const MICROSECONDS_PER_SECOND = 1_000_000;
+const LEGACY_DATA_DIRECTORY = 'pulo-island';
+const COLLAPSED_WIDTH = 150;
+const PLAYING_WIDTH = 236;
+const RESTING_LYRICS_WIDTH = 460;
+const COLLAPSED_HEIGHT = 38;
+const RESTING_LYRICS_HEIGHT = 64;
+const ISLAND_EAR_SIZE = 12;
+const CONTENT_WIDTH = 460;
+// Open widths, same as the preview's --open-width for each page
+const PAGE_WIDTHS = {
+    summary: 720,
+    media: 720,
+    lyrics: 740,
+    focus: 680,
+    shelf: 640,
+    tasks: 600,
+    notes: 840,
+    messages: 600,
+    today: 900,
+    reminders: 600,
+    notifications: 560,
+    settings: 1160,
+};
+const OPEN_HEIGHT = 256;
+const HEADER_HEIGHT = 42;
+const TABBAR_HEIGHT = 46;
+const DRAG_THRESHOLD = 10;
+const EDGE_SNAP_DISTANCE = 44;
+const POSITION_MODES = ['top', 'bottom', 'left', 'right', 'free'];
+const PAGE_INSET = 28;
+const MEDIA_ART_SIZE = 58;
+const MEDIA_COPY_GAP = 22;
+const MEDIA_COPY_RIGHT_INSET = 38;
+const PAGES = [
+    {key: 'summary', label: 'Summary', icon: 'view-grid-symbolic'},
+    {key: 'media', label: 'Music', icon: 'audio-x-generic-symbolic'},
+    {key: 'lyrics', label: 'Lyrics', icon: 'text-x-generic-symbolic'},
+    {key: 'focus', label: 'Focus', icon: 'alarm-symbolic'},
+    {key: 'shelf', label: 'Shelf', icon: 'folder-symbolic'},
+    {key: 'tasks', label: 'To-do', icon: 'checkbox-checked-symbolic'},
+    {key: 'messages', label: 'Messages', icon: 'chat-message-new-symbolic'},
+    {key: 'notes', label: 'Notes', icon: 'accessories-text-editor-symbolic'},
+    {key: 'today', label: 'Today', icon: 'x-office-calendar-symbolic'},
+    {key: 'reminders', label: 'Reminders', icon: 'appointment-soon-symbolic'},
+    {key: 'notifications', label: 'Notifications', icon: 'preferences-system-notifications-symbolic'},
+    {key: 'settings', label: 'Settings', icon: 'preferences-system-symbolic'},
+];
+const PAGE_KEYS = new Set(PAGES.map(page => page.key));
 const ACTIVITY_DBUS_NAME = 'org.perdana.Island';
 const ACTIVITY_DBUS_PATH = '/org/perdana/Island';
 const ACTIVITY_DBUS_XML = `
@@ -83,104 +203,35 @@ const ACTIVITY_DBUS_XML = `
     <signal name="ActivityChanged"/>
   </interface>
 </node>`;
-const DEFAULT_FOCUS_SECONDS = 25 * 60;
-const DEFAULT_BREAK_SECONDS = 5 * 60;
-const DEFAULT_ACCENT_COLOR = '#5577B8';
-const FONT_FAMILIES = ['cantarell', 'noto-sans', 'plus-jakarta-sans'];
-const AGENDA_BRIEFING_MINUTES = 8 * 60;
-const AGENDA_RECAP_MINUTES = 17 * 60;
-const TASK_PRIORITIES = ['high', 'medium', 'low'];
-const TASK_PRIORITY_LABELS = {high: 'High', medium: 'Med', low: 'Low'};
-const FOCUS_DISTRACTIONS = [
-    ['youtube', 'YouTube'],
-    ['netflix', 'Netflix'],
-    ['twitch', 'Twitch'],
-    ['tiktok', 'TikTok'],
-    ['instagram', 'Instagram'],
-    ['facebook', 'Facebook'],
-    ['reddit', 'Reddit'],
-    ['x.com', 'X'],
-    ['twitter', 'X'],
-];
-const FOCUS_GUARD_SECONDS = 5 * 60;
-const WATER_REMINDER_SECONDS = 60 * 60;
-const WATER_WINDOW_START = 8 * 60;
-const WATER_WINDOW_END = 21 * 60;
-const PRAYER_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
-const PRAYER_METHODS = [[20, 'Kemenag'], [3, 'MWL'], [2, 'ISNA'], [4, 'Umm al-Qura']];
-const DEFAULT_THEME = 'midnight';
-const MAX_SHELF_ITEMS = 10;
-const MAX_NOTES = 60;
-const NOTE_MAX_CHARS = 12000;
-const NOTE_AUTOSAVE_MS = 600;
-const NOTE_UNDO_MS = 7000;
-const DEFAULT_NOTIFICATION_SOURCES = {
-    whatsapp: true,
-    discord: true,
-    telegramWeb: true,
-    telegramDesktop: true,
-    googleChat: true,
-};
-const NOTIFICATION_SOURCE_OPTIONS = [
-    ['whatsapp', 'WhatsApp Web', 'whatsapp'],
-    ['discord', 'Discord', 'discord'],
-    ['telegramWeb', 'Telegram Web', 'telegram'],
-    ['telegramDesktop', 'Telegram Desktop', 'telegram'],
-    ['googleChat', 'Google Chat', 'google-chat'],
-];
-// Idle (8) and suspend (4) inhibitors from org.gnome.SessionManager.
-const KEEP_AWAKE_FLAGS = 12;
-const MICROSECONDS_PER_SECOND = 1_000_000;
-const LEGACY_DATA_DIRECTORY = 'pulo-island';
-const COLLAPSED_WIDTH = 150;
-const PLAYING_WIDTH = 236;
-const ACTIVITY_WIDTH = 236;
-const ACTIVITY_EXPIRY_MS = 4500;
-const ACTIVITY_DOWNLOAD_DEBOUNCE_MS = 250;
-const ACTIVITY_DOWNLOAD_FINISH_MS = 700;
-const RESTING_LYRICS_WIDTH = 460;
-const COLLAPSED_HEIGHT = 38;
-const RESTING_LYRICS_HEIGHT = 64;
-const ISLAND_EAR_SIZE = 12;
-const CONTENT_WIDTH = 460;
-const PAGE_WIDTHS = {
-    media: 460,
-    lyrics: 740,
-    focus: 680,
-    activity: 600,
-    shelf: 640,
-    tasks: 600,
-    notes: 720,
-    clipboard: 600,
-    today: 900,
-    reminders: 600,
-    notifications: 560,
-    settings: 860,
-};
-const OPEN_HEIGHT = 256;
-const HEADER_HEIGHT = 42;
-const TABBAR_HEIGHT = 46;
-const DRAG_THRESHOLD = 10;
-const EDGE_SNAP_DISTANCE = 44;
-const PAGE_INSET = 28;
-const MEDIA_ART_SIZE = 58;
-const MEDIA_COPY_GAP = 22;
-const MEDIA_COPY_RIGHT_INSET = 38;
-const PAGES = [
-    {key: 'media', label: 'Music', icon: 'audio-x-generic-symbolic'},
-    {key: 'lyrics', label: 'Lyrics', icon: 'text-x-generic-symbolic'},
-    {key: 'focus', label: 'Focus', icon: 'alarm-symbolic'},
-    {key: 'activity', label: 'Activity', icon: 'folder-download-symbolic'},
-    {key: 'shelf', label: 'Shelf', icon: 'folder-symbolic'},
-    {key: 'tasks', label: 'To-do', icon: 'view-list-symbolic'},
-    {key: 'notes', label: 'Notes', icon: 'accessories-text-editor-symbolic'},
-    {key: 'clipboard', label: 'Clipboard', icon: 'edit-copy-symbolic'},
-    {key: 'today', label: 'Today', icon: 'x-office-calendar-symbolic'},
-    {key: 'reminders', label: 'Reminders', icon: 'appointment-soon-symbolic'},
-    {key: 'notifications', label: 'Notifications', icon: 'preferences-system-notifications-symbolic'},
-    {key: 'settings', label: 'Settings', icon: 'preferences-system-symbolic'},
-];
-const PAGE_KEYS = new Set(PAGES.map(page => page.key));
+const ACTIVITY_LIMIT = 32;
+const APP_ACTIVITY_EXPIRY_MS = 4500;
+// Chat apps belong on Messages; every other source stays on Notifications (as in the preview).
+const CHAT_SOURCE_KEYS = new Set(['whatsapp', 'discord', 'telegramWeb', 'telegramDesktop', 'googleChat']);
+const isChatItem = item => CHAT_SOURCE_KEYS.has(item?.appKey);
+
+// Tab order, same as the preview. 'media' and 'clipboard' are reached from Summary and Shelf,
+// so they are not part of the tab bar order.
+const TAB_BAR_KEYS = ['summary', 'lyrics', 'focus', 'tasks', 'notes', 'shelf', 'messages', 'notifications', 'today', 'reminders', 'settings'];
+
+function normalizeTabOrder(value) {
+    const order = [];
+    for (const key of Array.isArray(value) ? value : []) {
+        if (TAB_BAR_KEYS.includes(key) && !order.includes(key))
+            order.push(key);
+    }
+    for (const key of TAB_BAR_KEYS) {
+        if (!order.includes(key))
+            order.push(key);
+    }
+    return order;
+}
+
+function clampUnit(value, fallback = 0) {
+    const number = Number(value);
+    if (!Number.isFinite(number))
+        return fallback;
+    return Math.min(1, Math.max(0, number));
+}
 const THEMES = [
     {
         key: 'midnight',
@@ -240,8 +291,8 @@ const THEMES = [
 ];
 
 function taskScheduleKey(task) {
-    return Number.isInteger(task?.due) && task?.dueDate
-        ? `${task.dueDate} ${String(task.due).padStart(4, '0')}`
+    return task?.dueDate
+        ? `${task.dueDate} ${Number.isInteger(task.due) ? String(task.due).padStart(4, '0') : '9999'}`
         : '9999-99-99 9999';
 }
 
@@ -449,8 +500,8 @@ export default class PerdanaIslandExtension extends Extension {
         this._userHidden = false;
         this._keybindingSettings = this.getSettings();
         this._pageBody = null;
-        this._outgoingPageBodies = new Set();
-        this._tabSwitching = false;
+        this._pageTransitionUntil = 0;
+        this._pageTransitionDirection = 1;
         this._tabDrag = null;
         this._tabDragSuppressUntil = 0;
         this._islandDrag = null;
@@ -462,25 +513,17 @@ export default class PerdanaIslandExtension extends Extension {
         this._progressLine = null;
         this._progressFill = null;
         this._mediaEqualizer = null;
+        this._summaryMediaBody = null;
+        this._summaryMediaEmpty = null;
+        this._summaryTitle = null;
+        this._summaryArtist = null;
+        this._summaryLyric = null;
+        this._summaryIconActors = [];
+        this._shelfClipboardCountLabel = null;
+        this._shelfFilesCountLabel = null;
         this._progressSeeking = false;
         this._progressSeekRatio = 0;
         this._progressCanSeek = false;
-        this._activities = new Map();
-        this._activityRows = [];
-        this._activityExpirySources = new Map();
-        this._activityDbus = null;
-        this._activityDbusOwnerId = 0;
-        this._downloadActivities = new Map();
-        this._downloadRefreshSources = new Map();
-        this._downloadFinishSources = new Map();
-        this._downloadsMonitor = null;
-        this._downloadsDirectory = null;
-        this._activityCompact = null;
-        this._activityCompactIcon = null;
-        this._activityCompactLabel = null;
-        this._activityCompactValue = null;
-        this._activityCompactTrack = null;
-        this._activityCompactFill = null;
         this._lyricsSession = null;
         this._lyricsCancellable = null;
         this._artworkSession = new Soup.Session();
@@ -508,6 +551,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._lyricsRail = null;
         this._lyricsWaitLabel = null;
         this._lyricsRenderedLines = null;
+        this._lyricsWindowStart = -1;
         this._lyricsLineLabels = [];
         this._lyricsLayoutWidth = 0;
         this._lyricsLayoutHeight = 0;
@@ -540,9 +584,19 @@ export default class PerdanaIslandExtension extends Extension {
         this._clipboardInFlight = false;
         this._clipboardSelection = null;
         this._clipboardOwnerChangedSignal = 0;
+        this._clipboardPollSource = 0;
         this._clipboardRequestGeneration = 0;
         this._clipboardRequestTimeoutSource = 0;
         this._clipboardReadFailed = false;
+        this._shelfClipboardCountLabel = null;
+        this._shelfFilesCountLabel = null;
+        this._summaryMediaBody = null;
+        this._summaryMediaEmpty = null;
+        this._summaryTitle = null;
+        this._summaryArtist = null;
+        this._summaryLyric = null;
+        this._summaryIconActors = [];
+        this._summaryRows = {};
         this._shelfItems = [];
         this._shelfNotice = null;
         this._shelfNoticeSource = 0;
@@ -553,6 +607,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._taskDraftPriority = null;
         this._reportCopied = false;
         this._reportCopiedSource = 0;
+        this._shelfSegment = 'files';
         this._screenshotRequest = false;
         this._screenshotSubscription = 0;
         this._screenshotTimeout = 0;
@@ -562,7 +617,6 @@ export default class PerdanaIslandExtension extends Extension {
         this._prayerFetching = false;
         this._prayerError = null;
         this._prayerRetryAt = 0;
-        this._previousPageIndex = 0;
         this._focusRemaining = DEFAULT_FOCUS_SECONDS;
         this._focusDuration = DEFAULT_FOCUS_SECONDS;
         this._focusSessionsToday = 0;
@@ -588,6 +642,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._clockSource = 0;
         this._mediaSource = 0;
         this._mediaTickerInterval = 0;
+        this._restingLyricsSource = 0;
         this._todaySource = 0;
         this._chargingSource = 0;
         this._noticeDismissSource = 0;
@@ -644,6 +699,10 @@ export default class PerdanaIslandExtension extends Extension {
         this._shelfDirectory = GLib.build_filenamev([this._taskDirectory, 'shelf']);
         this._migrateLegacyData();
         this._preferences = this._loadPreferences();
+        if (this._waterReminderBaselineNeedsSave) {
+            this._savePreferences();
+            this._waterReminderBaselineNeedsSave = false;
+        }
         this._activePage = this._visiblePages()[0]?.key || 'settings';
         this._tasks = this._loadTasks();
         this._focusLog = this._loadFocusLog();
@@ -667,8 +726,16 @@ export default class PerdanaIslandExtension extends Extension {
         this._playersLoaded = false;
         this._playersError = false;
 
+        this._activities = [];
+        this._activityRows = new Map();
+        this._activityExpirySources = new Map();
+        this._activityDbus = null;
+        this._activityDbusOwnerId = 0;
+        this._noticeTab = 'alerts';
+        this._startDownloadWatch();
         this._buildInterface();
         this._uiActorsAlive = true;
+        this._connectActivityService();
         Main.wm.addKeybinding(
             'toggle-island-visibility',
             this._keybindingSettings,
@@ -676,16 +743,17 @@ export default class PerdanaIslandExtension extends Extension {
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
             () => this._toggleIslandVisibility()
         );
+        Main.wm.addKeybinding(
+            'quick-capture',
+            this._keybindingSettings,
+            Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+            () => this._openQuickCapture()
+        );
         this._applyTheme();
         this._applyGlassPreference();
         this._applyKeepAwake();
         this._monitorSignal = Main.layoutManager.connect('monitors-changed', () => {
-            const monitors = Main.layoutManager.monitors || [];
-            if (this._preferences.positionMonitor
-                && !monitors.some(monitor => monitorKey(monitor) === this._preferences.positionMonitor)) {
-                this._preferences.positionMonitor = '';
-                this._savePreferences();
-            }
             if (this._expanded)
                 this._root.set_size(this._expandedWidth(), this._expandedHeight());
             this._layoutIsland();
@@ -740,12 +808,11 @@ export default class PerdanaIslandExtension extends Extension {
         );
         this._discoverPlayers();
         this._connectClipboardMonitor();
-        this._connectActivityService();
-        this._connectDownloadWatcher();
         this._queueSessionGreeting();
     }
 
     _loadPreferences() {
+        this._waterReminderBaselineNeedsSave = false;
         const visiblePages = Object.fromEntries(PAGES.map(page => [page.key, true]));
         const defaults = {
             glass: false,
@@ -770,6 +837,8 @@ export default class PerdanaIslandExtension extends Extension {
             prayerCity: 'Jakarta, Indonesia',
             prayerMethod: 20,
             lastWaterAt: 0,
+            lastWaterLogAt: 0,
+            lastWaterReminderAt: 0,
             lastPrayerNotice: '',
             shelfView: 'grid',
             greetingEnabled: true,
@@ -780,11 +849,10 @@ export default class PerdanaIslandExtension extends Extension {
             greetingWelcomeShown: false,
             greetingLastSession: '',
             visiblePages,
-            tabOrder: normalizeTabOrder([], PAGE_KEYS),
+            tabOrder: normalizeTabOrder([]),
             positionMode: 'top',
             positionX: 0.5,
             positionY: 0,
-            positionMonitor: '',
         };
         try {
             const stored = JSON.parse(this._readText(this._preferencesFile) || '{}');
@@ -833,6 +901,14 @@ export default class PerdanaIslandExtension extends Extension {
                 ? stored.prayerMethod
                 : 20;
             defaults.lastWaterAt = Number.isFinite(stored.lastWaterAt) ? stored.lastWaterAt : 0;
+            defaults.lastWaterLogAt = Number.isFinite(stored.lastWaterLogAt)
+                ? stored.lastWaterLogAt : 0;
+            const hasWaterReminderBaseline = Number.isFinite(stored.lastWaterReminderAt)
+                && stored.lastWaterReminderAt > 0;
+            defaults.lastWaterReminderAt = hasWaterReminderBaseline
+                ? stored.lastWaterReminderAt
+                : defaults.waterReminder ? Math.floor(Date.now() / 1000) : 0;
+            this._waterReminderBaselineNeedsSave = defaults.waterReminder && !hasWaterReminderBaseline;
             defaults.lastPrayerNotice = typeof stored.lastPrayerNotice === 'string'
                 ? stored.lastPrayerNotice
                 : '';
@@ -856,13 +932,11 @@ export default class PerdanaIslandExtension extends Extension {
             defaults.greetingLastSession = typeof stored.greetingLastSession === 'string'
                 ? stored.greetingLastSession
                 : '';
-            defaults.tabOrder = normalizeTabOrder(stored.tabOrder, PAGE_KEYS);
+            defaults.tabOrder = normalizeTabOrder(stored.tabOrder);
             defaults.positionMode = POSITION_MODES.includes(stored.positionMode)
                 ? stored.positionMode : 'top';
             defaults.positionX = clampUnit(stored.positionX, 0.5);
             defaults.positionY = clampUnit(stored.positionY, 0);
-            defaults.positionMonitor = typeof stored.positionMonitor === 'string'
-                ? stored.positionMonitor.slice(0, 64) : '';
         } catch (_error) {
             // Corrupt or missing preferences fall back to the default appearance.
         }
@@ -873,9 +947,11 @@ export default class PerdanaIslandExtension extends Extension {
     _savePreferences() {
         try {
             GLib.mkdir_with_parents(this._taskDirectory, 0o755);
-            GLib.file_set_contents(this._preferencesFile, JSON.stringify(this._preferences, null, 2));
+            return GLib.file_set_contents(this._preferencesFile,
+                JSON.stringify(this._preferences, null, 2));
         } catch (error) {
             logError(error, 'Perdana Island could not save preferences');
+            return false;
         }
     }
 
@@ -895,8 +971,9 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _visiblePages() {
-        return this._orderedPages().filter(page => page.key === 'settings'
-            || this._preferences?.visiblePages?.[page.key] !== false);
+        // 'clipboard' lives inside Shelf and 'media' lives inside Summary (as in the preview).
+        return this._orderedPages().filter(page => page.key !== 'clipboard' && page.key !== 'media' && (page.key === 'settings'
+            || this._preferences?.visiblePages?.[page.key] !== false));
     }
 
     _setPreference(key, value, render = true) {
@@ -920,8 +997,10 @@ export default class PerdanaIslandExtension extends Extension {
         }
         if (key === 'browserOverlap' && !value)
             this._setBrowserTucked(false);
-        if (key === 'waterReminder' && value)
-            this._preferences.lastWaterAt = Math.floor(Date.now() / 1000);
+        if (key === 'waterReminder' && value) {
+            this._preferences.lastWaterReminderAt = Math.floor(Date.now() / 1000);
+            this._savePreferences();
+        }
         if (key === 'prayerReminder' || key === 'prayerCity' || key === 'prayerMethod') {
             this._prayerRetryAt = 0;
             this._fetchPrayerTimes();
@@ -934,6 +1013,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._applyKeepAwake();
         if (key === 'accentColor') {
             this._focusRing?.queue_repaint();
+            for (const icon of this._summaryIconActors || [])
+                icon.queue_repaint();
             this._applyAccentStyles();
         }
         if (key === 'fontFamily')
@@ -1178,18 +1259,43 @@ export default class PerdanaIslandExtension extends Extension {
         this._renderNotificationsIfVisible();
     }
 
+    _normalizeNotificationText(value, appKey = null) {
+        let text = String(value || '')
+            .replace(/[\r\n\t\u2028\u2029]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (CHAT_SOURCE_KEYS.has(appKey)) {
+            text = text.replace(/(?:https?:\/\/)?(?:web\.)?whatsapp\.com(?:\/\S*)?/ig, ' ')
+                .replace(/(?:https?:\/\/)?web(?:k|a)?\.telegram\.org(?:\/\S*)?/ig, ' ')
+                .replace(/(?:https?:\/\/)?chat\.google\.com(?:\/\S*)?/ig, ' ')
+                .replace(/(?:https?:\/\/)?chat\.googleusercontent\.com(?:\/\S*)?/ig, ' ')
+                .replace(/(?:https?:\/\/)?mail\.google\.com\/chat(?:\/\S*)?/ig, ' ')
+                .replace(/(?:https?:\/\/)?mail\.google\.com\/mail\/\S*#chat\S*/ig, ' ')
+                .replace(/\s+/g, ' ')
+                .replace(/^[\s·•|:–—]+|[\s·•|:–—]+$/g, '')
+                .trim();
+        }
+        return text;
+    }
+
     _trackNotification(source, notification, fresh = false) {
         if (!notification)
             return;
         const sourceDetails = this._notificationSourceDetails(source, notification);
+        const title = this._normalizeNotificationText(
+            notification.title || source.title || 'Notification', sourceDetails.key
+        ) || 'Notification';
+        const body = this._normalizeNotificationText(notification.body, sourceDetails.key);
         let item = this._notificationItems.find(entry => entry.notification === notification);
         if (item) {
             item.app = sourceDetails.label;
             item.appKey = sourceDetails.key;
             item.appIconName = sourceDetails.iconName;
             item.appIconFile = sourceDetails.iconFile;
-            item.title = String(notification.title || source.title || 'Notification');
-            item.body = String(notification.body || '');
+            item.title = title;
+            item.body = body;
+            item.receivedAt = Date.now();
+            this._notificationItems = [item, ...this._notificationItems.filter(entry => entry !== item)];
         } else {
             item = {
                 id: ++this._notificationSequence,
@@ -1199,8 +1305,10 @@ export default class PerdanaIslandExtension extends Extension {
                 appKey: sourceDetails.key,
                 appIconName: sourceDetails.iconName,
                 appIconFile: sourceDetails.iconFile,
-                title: String(notification.title || source.title || 'Notification'),
-                body: String(notification.body || ''),
+                title,
+                body,
+                read: false,
+                receivedAt: Date.now(),
             };
             this._notificationItems.unshift(item);
             this._notificationItems = this._notificationItems.slice(0, 100);
@@ -1217,12 +1325,35 @@ export default class PerdanaIslandExtension extends Extension {
             source?.title,
             app?.get_name?.(),
             app?.get_id?.(),
+            app?.get_app_info?.()?.get_id?.(),
+            app?.get_app_info?.()?.get_name?.(),
             app?.id,
+            notification?.appName,
+            notification?.appId,
+            notification?.desktopEntry,
+            notification?.desktopEntryId,
             notification?.title,
         ].filter(value => typeof value === 'string' && value.trim())
             .join(' ').toLowerCase();
         if (/whatsapp/.test(identity))
             return {key: 'whatsapp', label: 'WhatsApp', iconName: 'whatsapp'};
+        const browserSource = /microsoft\s*edge|msedge|\bedge\b|google\s*chrome|chromium|\bchrome\b|firefox|floorp|librewolf|zen browser|\bbrave\b|\bopera\b|vivaldi/i.test(identity);
+        const payload = `${notification?.title || ''} ${notification?.body || ''}`;
+        if (browserSource && /\b(?:web\.)?whatsapp\.com\b/i.test(payload))
+            return {key: 'whatsapp', label: 'WhatsApp', iconName: 'whatsapp'};
+        const identitySlug = identity.replace(/[^a-z0-9]/g, '');
+        const googleChatSite = /(?:chat\.google\.com|mail\.google\.com\/(?:chat|mail\/\S*#chat)|chat\.googleusercontent\.com)/i;
+        // The installed Edge PWA reports this desktop app ID instead of its URL.
+        const googleChatPwaId = identitySlug.includes('pommaclcbfghclhalboakcipcmmndhcj');
+        if (identitySlug.includes('googlechat') || googleChatPwaId || googleChatSite.test(identity)
+            || (browserSource && googleChatSite.test(payload)))
+            return {
+                key: 'googleChat',
+                label: 'Google Chat',
+                iconFile: `${this.path}/assets/google-chat.png`,
+            };
+        if (browserSource && /\bweb(?:k|a)?\.telegram\.org\b/i.test(payload))
+            return {key: 'telegramWeb', label: 'Telegram Web', iconName: 'telegram'};
         if (/discord/.test(identity))
             return {key: 'discord', label: 'Discord', iconName: 'discord'};
         if (/telegram/.test(identity)) {
@@ -1233,12 +1364,29 @@ export default class PerdanaIslandExtension extends Extension {
                 iconName: 'telegram',
             };
         }
-        if (/google[\s-]?chat|chat\.google\.com/.test(identity))
+        if (/google[\s._-]*chat|chat\.google\.com|chat\.googleusercontent\.com/i.test(identity))
             return {
                 key: 'googleChat',
                 label: 'Google Chat',
                 iconFile: `${this.path}/assets/google-chat.png`,
             };
+        // Browser alerts show the logo of the browser that sent them, as in the preview.
+        const browser = [
+            [/microsoft\s*edge|msedge|\bedge\b/, 'browser-edge', 'Microsoft Edge'],
+            [/google\s*chrome|chromium|\bchrome\b/, 'browser-chrome', 'Google Chrome'],
+            [/firefox|floorp|librewolf|zen browser/, 'browser-firefox', 'Firefox'],
+            [/\bbrave\b/, 'browser-brave', 'Brave'],
+            [/\bopera\b/, 'browser-opera', 'Opera'],
+            [/vivaldi/, 'browser-vivaldi', 'Vivaldi'],
+        ].find(([pattern]) => pattern.test(identity));
+        if (browser) {
+            const [, key, label] = browser;
+            return {
+                key,
+                label,
+                iconFile: `${this.path}/assets/browsers/${key}.svg`,
+            };
+        }
 
         return {
             key: null,
@@ -1261,21 +1409,24 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _renderNotificationsIfVisible() {
+        this._updateSummaryRows();
         if (!this._clearingNotifications && this._enabled
-            && this._activePage === 'notifications' && this._pageViewport)
+            && ['notifications', 'messages'].includes(this._activePage) && this._pageViewport)
             this._renderPanel();
     }
 
-    _clearNotifications() {
+    _clearNotifications(predicate = () => true) {
         this._clearingNotifications = true;
-        for (const item of [...this._notificationItems]) {
+        const targets = this._notificationItems.filter(predicate);
+        for (const item of targets) {
             try {
                 item.notification.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
             } catch (_error) {
                 this._untrackNotification(item.notification);
             }
         }
-        this._notificationItems = [];
+        const removed = new Set(targets);
+        this._notificationItems = this._notificationItems.filter(item => !removed.has(item));
         this._clearingNotifications = false;
         this._renderNotificationsIfVisible();
     }
@@ -1306,6 +1457,13 @@ export default class PerdanaIslandExtension extends Extension {
     disable() {
         this._enabled = false;
         this._uiActorsAlive = false;
+        this._stopDownloadWatch();
+        this._disconnectActivityService();
+        this._activities = [];
+        if (this._clipboardArmTimer) {
+            GLib.source_remove(this._clipboardArmTimer);
+            this._clipboardArmTimer = 0;
+        }
         this._tuckedByBrowser = false;
         this._tabDrag = null;
         this._islandDrag = null;
@@ -1317,10 +1475,13 @@ export default class PerdanaIslandExtension extends Extension {
         this._clearTimeout('_notesUndoSource');
         this._clearTimeout('_notesFocusSource');
         this._clearTimeout('_notesResizeSource');
+        this._clearTimeout('_notesScrollSource');
+        this._clearTimeout('_settingsNavScrollSource');
         this._notesUndo = null;
         this._keepAwakeGeneration++;
         this._releaseKeepAwake();
         Main.wm.removeKeybinding('toggle-island-visibility');
+        Main.wm.removeKeybinding('quick-capture');
         this._keybindingSettings = null;
         if (this._stageSignal) {
             global.stage.disconnect(this._stageSignal);
@@ -1352,6 +1513,8 @@ export default class PerdanaIslandExtension extends Extension {
         this._mediaSource && GLib.source_remove(this._mediaSource);
         this._mediaSource = 0;
         this._mediaTickerInterval = 0;
+        this._restingLyricsSource && GLib.source_remove(this._restingLyricsSource);
+        this._restingLyricsSource = 0;
         this._lyricsFallbackSource && GLib.source_remove(this._lyricsFallbackSource);
         this._lyricsFallbackSource = 0;
         this._lyricsRetrySource && GLib.source_remove(this._lyricsRetrySource);
@@ -1371,16 +1534,6 @@ export default class PerdanaIslandExtension extends Extension {
         this._blinkSource && GLib.source_remove(this._blinkSource);
         this._blinkSource = 0;
         this._disconnectClipboardMonitor();
-        this._disconnectActivityService();
-        this._disconnectDownloadWatcher();
-        this._activities.clear();
-        this._activityRows = [];
-        this._activityCompact = null;
-        this._activityCompactIcon = null;
-        this._activityCompactLabel = null;
-        this._activityCompactValue = null;
-        this._activityCompactTrack = null;
-        this._activityCompactFill = null;
         this._shelfRefreshSource && GLib.source_remove(this._shelfRefreshSource);
         this._shelfRefreshSource = 0;
         this._shelfNoticeSource && GLib.source_remove(this._shelfNoticeSource);
@@ -1450,13 +1603,6 @@ export default class PerdanaIslandExtension extends Extension {
         this._volumeStream = null;
         this._volumeControl = null;
 
-        for (const body of this._outgoingPageBodies) {
-            body.remove_all_transitions();
-            if (body.get_parent())
-                body.destroy();
-        }
-        this._outgoingPageBodies.clear();
-
         for (const equalizer of this._equalizers)
             this._setEqualizerPlaying(equalizer, false);
         this._equalizers.clear();
@@ -1523,11 +1669,21 @@ export default class PerdanaIslandExtension extends Extension {
         this._progressLine = null;
         this._progressFill = null;
         this._mediaEqualizer = null;
+        this._summaryMediaBody = null;
+        this._summaryMediaEmpty = null;
+        this._summaryTitle = null;
+        this._summaryArtist = null;
+        this._summaryLyric = null;
+        this._summaryIconActors = [];
+        this._summaryRows = {};
+        this._shelfClipboardCountLabel = null;
+        this._shelfFilesCountLabel = null;
         this._lyricsStatusLabel = null;
         this._lyricsViewport = null;
         this._lyricsRail = null;
         this._lyricsWaitLabel = null;
         this._lyricsRenderedLines = null;
+        this._lyricsWindowStart = -1;
         this._lyricsLineLabels = [];
         this._lyricsLayoutWidth = 0;
         this._lyricsLayoutHeight = 0;
@@ -1639,6 +1795,11 @@ export default class PerdanaIslandExtension extends Extension {
         this._compactTrackTitle.x_expand = true;
         this._compactTrackTitle.y_align = Clutter.ActorAlign.CENTER;
         this._compactTrackTitle.visible = false;
+        this._compactTextSpacer = new St.Widget({
+            x_expand: true,
+            y_expand: true,
+            reactive: false,
+        });
 
         this._compactCenter = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
@@ -1666,10 +1827,11 @@ export default class PerdanaIslandExtension extends Extension {
         this._compactCenter.add_child(this._compactClockLabel);
         this._compactCenter.connect('notify::allocation', () => this._layoutCompactCenter());
         this._compactContents.add_child(this._compact);
+        this._compactContents.add_child(this._compactTrackTitle);
         this._compactContents.add_child(this._compactCenter);
         this._equalizer = this._makeEqualizer();
         this._compact.add_child(this._compactLeading);
-        this._compact.add_child(this._compactTrackTitle);
+        this._compact.add_child(this._compactTextSpacer);
         this._focusCompact = new St.BoxLayout({
             visible: false,
             x_expand: true,
@@ -1687,33 +1849,14 @@ export default class PerdanaIslandExtension extends Extension {
         this._focusCompact.add_child(this._focusCompactLabel);
         this._focusCompact.add_child(this._focusCompactTime);
         this._compact.add_child(this._focusCompact);
-        this._activityCompact = new St.Widget({
-            layout_manager: new Clutter.FixedLayout(),
-            visible: false,
-            x_expand: true,
-            y_expand: true,
-            style_class: 'perdana-island__activity-compact',
-        });
-        this._activityCompactIcon = new St.Icon({
-            icon_name: 'folder-download-symbolic',
-            style_class: 'perdana-island__activity-compact-icon',
-        });
+        this._activityCompact = new St.BoxLayout({style_class: 'perdana-island__activity-compact', visible: false});
         this._activityCompactLabel = makeLabel('', 'perdana-island__activity-compact-label');
-        this._activityCompactLabel.clutter_text.line_wrap = false;
-        this._activityCompactValue = makeLabel('', 'perdana-island__activity-compact-value');
-        this._activityCompactValue.clutter_text.x_align = Clutter.ActorAlign.END;
-        this._activityCompactTrack = new St.Widget({
-            style_class: 'perdana-island__activity-compact-track',
-        });
-        this._activityCompactFill = new St.Widget({
-            style_class: 'perdana-island__activity-compact-fill',
-        });
-        this._activityCompactTrack.add_child(this._activityCompactFill);
-        this._activityCompact.add_child(this._activityCompactIcon);
+        this._activityCompactLabel.x_expand = true;
+        this._activityCompactBar = new St.Widget({style_class: 'perdana-island__activity-compact-bar'});
+        this._activityCompactFill = new St.Widget({style_class: 'perdana-island__activity-compact-fill'});
+        this._activityCompactBar.add_child(this._activityCompactFill);
         this._activityCompact.add_child(this._activityCompactLabel);
-        this._activityCompact.add_child(this._activityCompactValue);
-        this._activityCompact.add_child(this._activityCompactTrack);
-        this._activityCompact.connect('notify::allocation', () => this._layoutActivityCompact());
+        this._activityCompact.add_child(this._activityCompactBar);
         this._compact.add_child(this._activityCompact);
         this._compact.add_child(this._equalizer);
         this._compactButton.set_child(this._compactContents);
@@ -1734,15 +1877,17 @@ export default class PerdanaIslandExtension extends Extension {
                 return Clutter.EVENT_PROPAGATE;
             return Clutter.EVENT_STOP;
         });
-        this._header.connect('button-press-event', () => {
-            this._pinned = false;
-            this._setExpanded(false);
-            return Clutter.EVENT_STOP;
-        });
         this._dateLabel = makeLabel('', 'perdana-island__date');
         this._header.add_child(this._dateLabel);
         this._clockLabel = makeLabel('', 'perdana-island__clock');
         this._header.add_child(this._clockLabel);
+        this._captureButton = makeIconButton(
+            'list-add-symbolic',
+            'Quick capture (Ctrl+Alt+N)',
+            () => this._openQuickCapture(),
+            'perdana-island__capture-open'
+        );
+        this._header.add_child(this._captureButton);
         this._content.add_child(this._header);
 
         this._panel = new St.Widget({
@@ -1815,6 +1960,7 @@ export default class PerdanaIslandExtension extends Extension {
         if (this._compactContents) {
             this._compactContents.set_position(0, 0);
             this._compactContents.set_size(width, height);
+            this._layoutCompactTrackTitle();
         }
         if (this._compact) {
             this._compact.set_position(0, 0);
@@ -1831,10 +1977,19 @@ export default class PerdanaIslandExtension extends Extension {
         if (this._header) {
             this._header.set_position(0, 0);
             this._header.set_size(width, HEADER_HEIGHT);
-            this._dateLabel.set_size(170, 22);
+            const captureWidth = 24;
+            const captureGap = 10;
+            const rightInset = 28;
+            const clockWidth = 58;
+            const captureX = Math.max(0, width - rightInset - captureWidth);
+            const clockX = Math.max(28, captureX - captureGap - clockWidth);
+            const dateWidth = Math.max(0, Math.min(170, clockX - 28 - 12));
+            this._dateLabel.set_size(dateWidth, 22);
             this._clockLabel.set_size(58, 22);
+            this._captureButton.set_size(captureWidth, captureWidth);
             this._dateLabel.set_position(28, 8);
-            this._clockLabel.set_position(Math.max(28, width - 86), 8);
+            this._clockLabel.set_position(clockX, 8);
+            this._captureButton.set_position(captureX, 8);
         }
         if (this._panel) {
             const panelY = HEADER_HEIGHT;
@@ -1843,7 +1998,6 @@ export default class PerdanaIslandExtension extends Extension {
         }
         this._layoutPanel(width);
         this._layoutCompactCenter();
-        this._layoutActivityCompact();
         this._positionIsland();
     }
 
@@ -1888,68 +2042,67 @@ export default class PerdanaIslandExtension extends Extension {
         }
     }
 
-    _layoutActivityCompact() {
-        if (!this._uiActorsAlive || !this._activityCompact || !this._activityCompactIcon
-            || !this._activityCompactLabel || !this._activityCompactValue
-            || !this._activityCompactTrack || !this._activityCompactFill)
+    _layoutCompactTrackTitle() {
+        if (!this._compactContents || !this._compactTrackTitle)
             return;
-        const width = Math.max(0, Math.round(this._activityCompact.width));
-        const height = Math.max(0, Math.round(this._activityCompact.height));
-        if (width <= 0 || height <= 0)
-            return;
-        const iconSize = 16;
-        const valueWidth = 48;
-        const labelX = 24;
-        const labelWidth = Math.max(1, width - labelX - valueWidth - 8);
-        const trackWidth = Math.max(1, width - labelX - 6);
-        const trackHeight = 3;
-        this._activityCompactIcon.set_size(iconSize, iconSize);
-        this._activityCompactIcon.set_position(2, Math.round((height - trackHeight - iconSize) / 2));
-        this._activityCompactLabel.set_position(labelX, 1);
-        this._activityCompactLabel.set_size(labelWidth, Math.max(1, height - 10));
-        this._activityCompactValue.set_position(width - valueWidth - 2, 1);
-        this._activityCompactValue.set_size(valueWidth, Math.max(1, height - 10));
-        this._activityCompactTrack.set_position(labelX, height - 7);
-        this._activityCompactTrack.set_size(trackWidth, trackHeight);
-        const activity = this._selectedRunningActivity();
-        const progress = normalizeProgress(activity?.progress);
-        const fillWidth = progress === null ? 0 : Math.max(1, Math.round(trackWidth * progress));
-        this._activityCompactFill.remove_all_transitions();
-        this._activityCompactFill.set_position(0, 0);
-        this._activityCompactFill.set_size(Math.max(0, fillWidth), trackHeight);
+        const width = Math.max(0, Math.round(this._compactContents.width));
+        const height = Math.max(0, Math.round(this._compactContents.height));
+        const sideInset = Math.min(51, Math.floor(width / 2));
+        const textWidth = Math.max(1, width - sideInset * 2);
+        const safeHeight = Math.max(1, height - 12);
+        const lyricsMode = Boolean(this._preferences?.showRestingLyrics);
+        const lyricsMetrics = {
+            'perdana-island__compact-track-title--lyrics-small': 15,
+            'perdana-island__compact-track-title--lyrics-smaller': 12,
+            'perdana-island__compact-track-title--lyrics-tiny': 10,
+        };
+        const lineHeight = lyricsMode
+            ? lyricsMetrics[this._compactLyricsAppliedFitClass] || 16
+            : 18;
+        const naturalHeight = lyricsMode
+            ? this._measureCompactLyricsHeight(
+                this._compactTrackTitle.text,
+                textWidth,
+                this._compactLyricsAppliedFitClass,
+                lineHeight
+            )
+            : 18;
+        const textHeight = Math.min(safeHeight, naturalHeight);
+        this._compactTrackTitle.set_position(sideInset, Math.round((height - textHeight) / 2));
+        this._compactTrackTitle.set_size(textWidth, textHeight);
     }
 
-    _updateActivityCompact() {
-        if (!this._uiActorsAlive || !this._activityCompact || !this._activityCompactLabel)
-            return;
-        const activity = this._selectedRunningActivity();
-        if (!activity)
-            return;
-        this._activityCompactLabel.text = cleanActivityText(activity.title, 80);
-        this._activityCompactValue.text = formatActivityValue(activity);
-        if (this._activityCompactIcon.icon_name !== activity.icon)
-            this._activityCompactIcon.icon_name = activity.icon;
-        this._updateActivityFill();
-    }
+    _measureCompactLyricsHeight(text, width, fitClass, fallbackHeight) {
+        const label = this._compactTrackTitle;
+        if (!label || !text)
+            return fallbackHeight;
 
-    _updateActivityFill() {
-        if (!this._activityCompactTrack || !this._activityCompactFill)
-            return;
-        const activity = this._selectedRunningActivity();
-        const progress = normalizeProgress(activity?.progress);
-        const trackWidth = Math.max(1, Math.round(this._activityCompactTrack.width));
-        const fillWidth = progress === null ? 0 : Math.max(1, Math.round(trackWidth * progress));
-        const duration = this._motionDuration(240);
-        if (this._reducedMotion || !this._activityCompactFill.width) {
-            this._activityCompactFill.remove_all_transitions();
-            this._activityCompactFill.width = fillWidth;
-            return;
+        const fitClasses = [
+            'perdana-island__compact-track-title--lyrics-small',
+            'perdana-island__compact-track-title--lyrics-smaller',
+            'perdana-island__compact-track-title--lyrics-tiny',
+        ];
+        const previousFitClasses = fitClasses.filter(name => label.has_style_class_name(name));
+        const previousText = label.text;
+        const safeWidth = Math.max(1, Math.round(width));
+        try {
+            for (const name of fitClasses)
+                label.remove_style_class_name(name);
+            if (fitClass)
+                label.add_style_class_name(fitClass);
+            label.text = text;
+            label.set_width(safeWidth);
+            const [, naturalHeight] = label.get_preferred_height(safeWidth);
+            return Math.max(fallbackHeight, Math.ceil(naturalHeight));
+        } catch (_error) {
+            return fallbackHeight;
+        } finally {
+            label.text = previousText;
+            for (const name of fitClasses)
+                label.remove_style_class_name(name);
+            for (const name of previousFitClasses)
+                label.add_style_class_name(name);
         }
-        this._activityCompactFill.ease({
-            width: fillWidth,
-            duration,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-        });
     }
 
     _makeEqualizer() {
@@ -1979,8 +2132,11 @@ export default class PerdanaIslandExtension extends Extension {
 
         const shouldAnimate = Boolean(playing && this._enabled && !this._reducedMotion);
         equalizer._perdanaPlaying = Boolean(playing);
-        if (equalizer._perdanaAnimating === shouldAnimate)
+        if (equalizer._perdanaAnimating === shouldAnimate) {
+            if (!shouldAnimate)
+                this._setEqualizerStaticLevels(equalizer, playing);
             return;
+        }
 
         equalizer._perdanaAnimating = shouldAnimate;
         for (const bar of equalizer._perdanaBars) {
@@ -1990,8 +2146,12 @@ export default class PerdanaIslandExtension extends Extension {
             }
             bar.remove_all_transitions();
             if (!shouldAnimate) {
+                if (this._reducedMotion) {
+                    this._setEqualizerStaticLevels(equalizer, playing);
+                    break;
+                }
                 bar.ease({
-                    scale_y: playing ? 0.52 : 0.22,
+                    scale_y: 0.22,
                     duration: this._motionDuration(130),
                     mode: Clutter.AnimationMode.EASE_OUT_QUAD,
                 });
@@ -2002,6 +2162,16 @@ export default class PerdanaIslandExtension extends Extension {
             equalizer._perdanaBars.forEach((bar, index) =>
                 this._animateEqualizerBar(equalizer, bar, index));
         }
+    }
+
+    _setEqualizerStaticLevels(equalizer, playing) {
+        const levels = playing && this._enabled
+            ? [0.42, 0.78, 0.54, 0.9]
+            : [0.22, 0.22, 0.22, 0.22];
+        equalizer._perdanaBars.forEach((bar, index) => {
+            bar.remove_all_transitions();
+            bar.scale_y = levels[index] ?? levels[0];
+        });
     }
 
     _animateEqualizerBar(equalizer, bar, index) {
@@ -2192,14 +2362,8 @@ export default class PerdanaIslandExtension extends Extension {
         return this._reducedMotion ? 1 : milliseconds;
     }
 
-    _islandMonitor() {
-        return chooseMonitor(Main.layoutManager.monitors,
-            this._preferences?.positionMonitor || '',
-            Main.layoutManager.primaryMonitor);
-    }
-
     _positionIsland() {
-        if (!this._uiActorsAlive || !this._root || !this._islandMonitor())
+        if (!this._uiActorsAlive || !this._root || !Main.layoutManager.primaryMonitor)
             return;
         if (this._islandDrag?.moved || this._positionAnimating)
             return;
@@ -2209,7 +2373,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _restingLyricsPillWidth() {
-        const monitorWidth = this._islandMonitor()?.width;
+        const monitorWidth = Main.layoutManager.primaryMonitor?.width;
         if (!monitorWidth)
             return RESTING_LYRICS_WIDTH;
         return Math.max(PLAYING_WIDTH, Math.min(RESTING_LYRICS_WIDTH, monitorWidth - 32));
@@ -2223,8 +2387,6 @@ export default class PerdanaIslandExtension extends Extension {
                 ? this._restingLyricsPillWidth()
                 : PLAYING_WIDTH;
         }
-        if (this._selectedRunningActivity())
-            return ACTIVITY_WIDTH;
         return COLLAPSED_WIDTH;
     }
 
@@ -2237,7 +2399,7 @@ export default class PerdanaIslandExtension extends Extension {
 
     _expandedWidth() {
         const preferred = PAGE_WIDTHS[this._activePage] || CONTENT_WIDTH;
-        const monitorWidth = this._islandMonitor()?.width;
+        const monitorWidth = Main.layoutManager.primaryMonitor?.width;
         return monitorWidth ? Math.max(1, Math.min(preferred, monitorWidth - 32)) : preferred;
     }
 
@@ -2282,7 +2444,7 @@ export default class PerdanaIslandExtension extends Extension {
 
     _browserWindowOverlapsIsland() {
         const window = global.display.get_focus_window();
-        const monitor = this._islandMonitor();
+        const monitor = Main.layoutManager.primaryMonitor;
         if (!window || !monitor || window.is_fullscreen?.())
             return false;
         const identity = `${window.get_wm_class?.() || ''} ${window.get_title?.() || ''} ${window.get_gtk_application_id?.() || ''}`;
@@ -2292,18 +2454,13 @@ export default class PerdanaIslandExtension extends Extension {
             const frame = window.get_frame_rect();
             const width = this._collapsedWidth();
             const height = this._collapsedHeight();
-            const position = positionTarget({
-                monitor,
-                width,
-                height,
-                mode: this._preferences?.positionMode || 'top',
-                positionX: this._preferences?.positionX,
-                positionY: this._preferences?.positionY,
-                pillOffset: this._preferences?.islandShape === 'pill'
-                    && !this._tuckedByBrowser ? 8 : 0,
-            });
-            const x = position.x;
-            const y = position.y;
+            const spanX = Math.max(0, monitor.width - width);
+            const centeredX = monitor.x + Math.round(spanX / 2);
+            const mode = this._preferences?.positionMode || 'top';
+            const x = mode === 'top' || mode === 'bottom'
+                ? centeredX
+                : monitor.x + Math.round(spanX * clampUnit(this._preferences?.positionX, 0.5));
+            const y = monitor.y + (this._preferences?.islandShape === 'pill' && !this._tuckedByBrowser ? 8 : 0);
             const overlapWidth = frame.x < x + width && frame.x + frame.width > x;
             const overlapHeight = frame.y < y + height && frame.y + frame.height > y;
             return overlapWidth && overlapHeight;
@@ -2313,7 +2470,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _updateBrowserTuckFromPointer(pointerX = null, pointerY = null) {
-        const monitor = this._islandMonitor();
+        const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor || !this._root)
             return;
         if (pointerX === null || pointerY === null) {
@@ -2616,28 +2773,186 @@ export default class PerdanaIslandExtension extends Extension {
         this._clockLabel.text = headerFormatter.format(now);
     }
 
+    _renderQuickCapturePanel(body) {
+        const width = this._pageWidth();
+        const closeWidth = Math.min(70, Math.max(54, Math.round(width * 0.16)));
+        place(body, makeLabel('Quick capture', 'perdana-island__todo-heading'), 0, 6,
+            Math.max(1, width - closeWidth - 10), 22);
+        place(body, makeTextButton('Close', 'Close quick capture',
+            () => this._closeQuickCapture(), 'perdana-island__clipboard-action'),
+        width - closeWidth, 4, closeWidth, 24);
+
+        const entry = new St.Entry({
+            hint_text: 'telepon ibu besok jam 5 penting',
+            text: this._captureDraft || '',
+            can_focus: true,
+            style_class: 'perdana-island__task-entry',
+        });
+        entry.clutter_text.connect('text-changed', () => {
+            this._captureDraft = entry.get_text();
+            this._captureMessage = '';
+            this._updateQuickCapturePreview();
+            this._updateQuickCaptureStatus();
+        });
+        entry.clutter_text.connect('key-press-event', (_actor, event) => {
+            const key = event.get_key_symbol();
+            const ctrl = (event.get_state() & Clutter.ModifierType.CONTROL_MASK) !== 0;
+            if (key === Clutter.KEY_Escape) {
+                this._closeQuickCapture();
+                return Clutter.EVENT_STOP;
+            }
+            if (key === Clutter.KEY_Return || key === Clutter.KEY_KP_Enter) {
+                this._saveQuickCapture(ctrl);
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+        place(body, entry, 0, 38, width, 32);
+
+        this._capturePreview = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            style_class: 'perdana-island__capture-preview',
+        });
+        this._capturePreviewWidth = width;
+        place(body, this._capturePreview, 0, 76, width, 42);
+        this._captureStatusLabel = makeLabel('', 'perdana-island__muted perdana-island__capture-status');
+        place(body, this._captureStatusLabel, 0, 120, width, 14);
+        this._updateQuickCapturePreview();
+        this._updateQuickCaptureStatus();
+
+        const actionGap = 8;
+        const actionWidth = Math.min(84, Math.max(64, Math.floor((width - actionGap) / 2)));
+        const actionsWidth = actionWidth * 2 + actionGap;
+        const actionsX = Math.max(0, width - actionsWidth);
+        place(body, makeTextButton('Add task', 'Add task',
+            () => this._saveQuickCapture(false), 'perdana-island__color-apply'),
+        actionsX, 136, actionWidth, 30);
+        place(body, makeTextButton('Save note', 'Save note',
+            () => this._saveQuickCapture(true), 'perdana-island__color-apply'),
+        actionsX + actionWidth + actionGap, 136, actionWidth, 30);
+        entry.grab_key_focus();
+    }
+
+    _updateQuickCapturePreview() {
+        const preview = this._capturePreview;
+        const width = this._capturePreviewWidth || 0;
+        if (!preview || width <= 0)
+            return;
+
+        for (const child of preview.get_children())
+            child.destroy();
+
+        const result = parseCapture(this._captureDraft || '', new Date());
+        let x = 0;
+        let row = 0;
+        const rowHeight = 20;
+        const rowGap = 2;
+        const gap = 6;
+        const titleLimit = Math.min(250, Math.max(120, Math.round(width * 0.52)));
+        for (const [index, chip] of this._captureSummary(result).entries()) {
+            const chipStyle = chip.style ? ` perdana-island__capture-chip--${chip.style}` : '';
+            const label = makeLabel(chip.text, `perdana-island__capture-chip${chipStyle}`);
+            label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            const naturalWidth = Math.max(40, chip.text.length * 6 + 18);
+            const chipWidth = Math.min(width, index === 1 ? titleLimit : naturalWidth);
+            if (x > 0 && x + chipWidth > width) {
+                row++;
+                x = 0;
+            }
+            if (row > 1)
+                break;
+            place(preview, label, x, row * (rowHeight + rowGap), chipWidth, rowHeight);
+            x += chipWidth + gap;
+        }
+    }
+
+    _updateQuickCaptureStatus() {
+        if (!this._captureStatusLabel)
+            return;
+        this._captureStatusLabel.text = this._captureMessage
+            || 'Enter menambah tugas · Ctrl+Enter menyimpan catatan · Esc menutup';
+        if (this._captureMessage)
+            this._captureStatusLabel.add_style_class_name('perdana-island__capture-status--error');
+        else
+            this._captureStatusLabel.remove_style_class_name('perdana-island__capture-status--error');
+    }
+
+    _openQuickCapture() {
+        if (!this._uiActorsAlive)
+            return;
+        this._captureOpen = true;
+        this._captureDraft = '';
+        this._captureMessage = '';
+        this._setExpanded(true);
+        this._renderPanel();
+    }
+
+    _closeQuickCapture() {
+        this._captureOpen = false;
+        this._captureDraft = '';
+        this._captureMessage = '';
+        this._renderPanel();
+    }
+
+    _captureSummary(result) {
+        const chips = [
+            {text: result.mode === 'note' ? 'Catatan' : 'Tugas', style: ''},
+            {text: result.title || 'Judul kosong', style: 'title'},
+        ];
+        if (result.day)
+            chips.push({text: result.day.toLocaleDateString('id-ID', {
+                weekday: 'short', day: 'numeric', month: 'short',
+            }), style: ''});
+        if (result.time)
+            chips.push({text: `${String(result.time.h).padStart(2, '0')}:${String(result.time.m).padStart(2, '0')}`, style: ''});
+        if (result.priority)
+            chips.push({text: `! ${result.priority}`, style: 'priority'});
+        if (result.period)
+            chips.push({text: result.period, style: ''});
+        return chips;
+    }
+
+    _saveQuickCapture(asNote) {
+        const result = parseCapture(this._captureDraft, new Date());
+        if (!result.title) {
+            this._captureMessage = 'Tulis judulnya dulu, misalnya: telepon ibu besok jam 5.';
+            this._updateQuickCaptureStatus();
+            return;
+        }
+        this._captureOpen = false;
+        this._captureDraft = '';
+        this._captureMessage = '';
+        if (asNote || result.mode === 'note') {
+            const when = result.day
+                ? `Jadwal: ${result.day.toLocaleDateString('id-ID', {weekday: 'short', day: 'numeric', month: 'short'})}${result.time ? ` ${String(result.time.h).padStart(2, '0')}:${String(result.time.m).padStart(2, '0')}` : ''}`
+                : '';
+            this._notes = [{id: GLib.uuid_string_random(), text: `${result.title}${when ? `\n${when}` : ''}`, updated: Date.now()}, ...(this._notes ?? [])];
+            this._saveNotes?.();
+            this._renderPanel();
+        } else {
+            this._addTask(
+                result.title,
+                result.time ? result.time.h * 60 + result.time.m : null,
+                result.priority ? result.priority.toLowerCase() : null,
+                result.day ? dateKey(result.day) : null
+            );
+        }
+    }
+
     _selectPage(key) {
-        if (!this._visiblePages().some(page => page.key === key))
+        const pages = this._visiblePages();
+        const nextIndex = pages.findIndex(page => page.key === key);
+        if (nextIndex < 0)
             return;
         if (this._activePage === key)
             return;
+        const currentIndex = pages.findIndex(page => page.key === this._activePage);
+        this._pageTransitionDirection = nextIndex >= currentIndex ? 1 : -1;
         if (this._activePage === 'notes')
             this._leaveNotes();
-        const pages = this._visiblePages();
-        const previousIndex = pages.findIndex(page => page.key === this._activePage);
-        const nextIndex = pages.findIndex(page => page.key === key);
-        this._previousPageIndex = previousIndex;
-        const forward = (nextIndex - previousIndex + pages.length) % pages.length;
-        const backward = (previousIndex - nextIndex + pages.length) % pages.length;
-        const direction = forward <= backward ? 1 : -1;
         this._activePage = key;
         this._updateMediaTicker();
-        this._tabSwitching = true;
-        try {
-            this._renderPanel(true, direction);
-        } finally {
-            this._tabSwitching = false;
-        }
+        this._renderPanel(true);
         if (this._expanded) {
             this._root.ease({
                 width: this._expandedWidth(),
@@ -2750,8 +3065,7 @@ export default class PerdanaIslandExtension extends Extension {
             if (inside && event.get_button() === 1)
                 this._beginPointerDrag(pointerX, pointerY);
         } else if (event.type() === Clutter.EventType.BUTTON_RELEASE) {
-            const [pointerX, pointerY] = event.get_coords();
-            this._endPointerDrag(pointerX, pointerY);
+            this._endPointerDrag();
         }
         return Clutter.EVENT_PROPAGATE;
     }
@@ -2850,14 +3164,14 @@ export default class PerdanaIslandExtension extends Extension {
             this._root.set_scale(1.01, 1.01);
         }
         this._islandClickSuppressUntil = GLib.get_monotonic_time() + 100_000;
-        const bounds = monitorsBounds(Main.layoutManager.monitors);
-        if (!bounds)
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!monitor)
             return;
-        const maxX = bounds.x + Math.max(0, bounds.width - this._root.width);
-        const maxY = bounds.y + Math.max(0, bounds.height - this._root.height);
+        const maxX = monitor.x + Math.max(0, monitor.width - this._root.width);
+        const maxY = monitor.y + Math.max(0, monitor.height - this._root.height);
         this._root.set_position(
-            Math.max(bounds.x, Math.min(maxX, drag.rootX + pointerX - drag.startX)),
-            Math.max(bounds.y, Math.min(maxY, drag.rootY + pointerY - drag.startY))
+            Math.max(monitor.x, Math.min(maxX, drag.rootX + pointerX - drag.startX)),
+            Math.max(monitor.y, Math.min(maxY, drag.rootY + pointerY - drag.startY))
         );
     }
 
@@ -2906,7 +3220,7 @@ export default class PerdanaIslandExtension extends Extension {
             this._pageButtons.get(page.key)?.slot.remove_all_transitions();
         if (!drag.moved)
             return;
-        this._preferences.tabOrder = normalizeTabOrder(this._preferences.tabOrder, PAGE_KEYS);
+        this._preferences.tabOrder = normalizeTabOrder(this._preferences.tabOrder);
         this._savePreferences();
         this._tabDragSuppressUntil = GLib.get_monotonic_time() + 100_000;
         this._layoutTabs(this._expandedWidth());
@@ -2914,40 +3228,44 @@ export default class PerdanaIslandExtension extends Extension {
             this._renderPanel();
     }
 
-    _endPointerDrag(pointerX = null, pointerY = null) {
+    _endPointerDrag() {
         if (this._tabDrag)
             this._endTabDrag();
         if (this._islandDrag)
-            this._endIslandDrag(pointerX, pointerY);
+            this._endIslandDrag();
     }
 
-    _endIslandDrag(pointerX = null, pointerY = null) {
+    _endIslandDrag() {
         const drag = this._islandDrag;
         if (!drag)
             return;
         this._islandDrag = null;
         if (!drag.moved)
             return;
-        const monitors = Main.layoutManager.monitors;
-        const monitor = Number.isFinite(pointerX) && Number.isFinite(pointerY)
-            ? monitorForPoint(monitors, pointerX, pointerY)
-            : this._islandMonitor();
+        const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor)
             return;
         const width = this._root.width;
         const height = this._root.height;
-        const snap = snapToMonitor({
-            monitor,
-            x: this._root.x,
-            y: this._root.y,
-            width,
-            height,
-            threshold: EDGE_SNAP_DISTANCE,
-        });
-        this._preferences.positionX = snap.positionX;
-        this._preferences.positionY = snap.positionY;
-        this._preferences.positionMode = snap.mode;
-        this._preferences.positionMonitor = monitorKey(monitor);
+        const distances = {
+            top: this._root.y - monitor.y,
+            bottom: monitor.y + monitor.height - (this._root.y + height),
+            left: this._root.x - monitor.x,
+            right: monitor.x + monitor.width - (this._root.x + width),
+        };
+        let mode = 'free';
+        let nearest = EDGE_SNAP_DISTANCE;
+        for (const edge of ['top', 'bottom', 'left', 'right']) {
+            if (distances[edge] <= nearest) {
+                nearest = distances[edge];
+                mode = edge;
+            }
+        }
+        const spanX = Math.max(1, monitor.width - width);
+        const spanY = Math.max(1, monitor.height - height);
+        this._preferences.positionX = clampUnit((this._root.x - monitor.x) / spanX, 0.5);
+        this._preferences.positionY = clampUnit((this._root.y - monitor.y) / spanY, 0);
+        this._preferences.positionMode = mode;
         this._savePreferences();
         this._clearTimeout('_hoverOpenSource');
         this._islandClickSuppressUntil = GLib.get_monotonic_time() + 100_000;
@@ -2958,37 +3276,46 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _islandPositionTarget() {
-        const monitor = this._islandMonitor();
+        const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor || !this._root)
             return {x: 0, y: 0};
         const width = this._root.width || this._root.get_preferred_width(-1)[1];
         const height = this._root.height || this._root.get_preferred_height(-1)[1];
-        return positionTarget({
-            monitor,
-            width,
-            height,
-            mode: this._preferences?.positionMode || 'top',
-            positionX: this._preferences?.positionX,
-            positionY: this._preferences?.positionY,
-            pillOffset: this._preferences?.islandShape === 'pill'
-                && !this._tuckedByBrowser ? 8 : 0,
-        });
+        const mode = this._preferences?.positionMode || 'top';
+        const spanX = Math.max(0, monitor.width - width);
+        const spanY = Math.max(0, monitor.height - height);
+        const centeredX = monitor.x + Math.round(spanX / 2);
+        const preferredX = mode === 'top' || mode === 'bottom'
+            ? centeredX
+            : monitor.x + Math.round(spanX * clampUnit(this._preferences?.positionX, 0.5));
+        const preferredY = monitor.y + Math.round(spanY * clampUnit(this._preferences?.positionY, 0));
+        let x = preferredX;
+        let y = preferredY;
+        if (mode === 'top') {
+            x = centeredX;
+            y = monitor.y + (this._preferences?.islandShape === 'pill' && !this._tuckedByBrowser ? 8 : 0);
+        } else if (mode === 'bottom') {
+            x = centeredX;
+            y = monitor.y + monitor.height - height;
+        } else if (mode === 'left')
+            x = monitor.x;
+        else if (mode === 'right')
+            x = monitor.x + monitor.width - width;
+        return {
+            x: Math.max(monitor.x, Math.min(monitor.x + spanX, x)),
+            y: Math.max(monitor.y, Math.min(monitor.y + spanY, y)),
+        };
     }
 
     _storeIslandPosition() {
-        const monitor = this._islandMonitor();
+        const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor || !this._root)
             return;
-        const ratios = positionRatios({
-            monitor,
-            x: this._root.x,
-            y: this._root.y,
-            width: this._root.width,
-            height: this._root.height,
-        });
-        this._preferences.positionX = clampUnit(ratios.positionX,
+        const spanX = Math.max(1, monitor.width - this._root.width);
+        const spanY = Math.max(1, monitor.height - this._root.height);
+        this._preferences.positionX = clampUnit((this._root.x - monitor.x) / spanX,
             this._preferences.positionX);
-        this._preferences.positionY = clampUnit(ratios.positionY,
+        this._preferences.positionY = clampUnit((this._root.y - monitor.y) / spanY,
             this._preferences.positionY);
     }
 
@@ -3226,17 +3553,129 @@ export default class PerdanaIslandExtension extends Extension {
         });
     }
 
+    _makeTabIcon(pageKey) {
+        const icon = new St.DrawingArea({style_class: 'perdana-island__tab-icon'});
+        icon.connect('repaint', area => {
+            const [width, height] = area.get_surface_size();
+            if (width <= 0 || height <= 0)
+                return;
+            const cr = area.get_context();
+            cr.scale(width / 24, height / 24);
+            cr.setLineWidth(1.7);
+            cr.setLineCap(1);
+            cr.setLineJoin(1);
+            cr.setSourceRGBA(1, 1, 1, this._activePage === pageKey ? 1 : 0.64);
+            const roundedRect = (x, y, w, h, r) => {
+                cr.moveTo(x + r, y);
+                cr.lineTo(x + w - r, y);
+                cr.curveTo(x + w, y, x + w, y, x + w, y + r);
+                cr.lineTo(x + w, y + h - r);
+                cr.curveTo(x + w, y + h, x + w, y + h, x + w - r, y + h);
+                cr.lineTo(x + r, y + h);
+                cr.curveTo(x, y + h, x, y + h, x, y + h - r);
+                cr.lineTo(x, y + r);
+                cr.curveTo(x, y, x, y, x + r, y);
+                cr.closePath();
+            };
+
+            switch (pageKey) {
+            case 'summary':
+                roundedRect(3.5, 4.5, 7, 6, 1.5);
+                roundedRect(13.5, 4.5, 7, 6, 1.5);
+                roundedRect(3.5, 13.5, 7, 6, 1.5);
+                roundedRect(13.5, 13.5, 7, 6, 1.5);
+                break;
+            case 'media':
+                cr.moveTo(9, 18); cr.lineTo(9, 6); cr.lineTo(19, 4); cr.lineTo(19, 16);
+                cr.arc(6.5, 18, 2.5, 0, Math.PI * 2);
+                cr.arc(16.5, 16, 2.5, 0, Math.PI * 2);
+                break;
+            case 'lyrics':
+            case 'notes':
+                roundedRect(5, 3.5, 14, 17, 1.2);
+                if (pageKey === 'lyrics') {
+                    cr.moveTo(13, 3.5); cr.lineTo(13, 8); cr.lineTo(19, 8);
+                    cr.moveTo(8, 12); cr.lineTo(16, 12);
+                    cr.moveTo(8, 15.5); cr.lineTo(16, 15.5);
+                } else {
+                    cr.moveTo(8, 8); cr.lineTo(16, 8);
+                    cr.moveTo(8, 12); cr.lineTo(16, 12);
+                    cr.moveTo(8, 16); cr.lineTo(13, 16);
+                }
+                break;
+            case 'focus':
+            case 'reminders':
+                cr.arc(12, 13, 7.5, 0, Math.PI * 2);
+                cr.moveTo(12, 9); cr.lineTo(12, 13); cr.lineTo(15, 14.8);
+                if (pageKey === 'focus') {
+                    cr.moveTo(9.5, 2.7); cr.lineTo(14.5, 2.7);
+                } else {
+                    cr.moveTo(5, 5); cr.lineTo(3, 7);
+                    cr.moveTo(19, 5); cr.lineTo(21, 7);
+                }
+                break;
+            case 'shelf':
+                cr.moveTo(3, 7.5); cr.curveTo(3, 6.5, 3.7, 6, 4.7, 6);
+                cr.lineTo(9, 6); cr.lineTo(11, 8.5); cr.lineTo(19.3, 8.5);
+                cr.curveTo(20.3, 8.5, 21, 9.2, 21, 10.2); cr.lineTo(21, 18);
+                cr.curveTo(21, 19, 20.3, 19.5, 19.3, 19.5); cr.lineTo(4.7, 19.5);
+                cr.curveTo(3.7, 19.5, 3, 18.8, 3, 18); cr.closePath();
+                break;
+            case 'tasks':
+                cr.arc(12, 12, 8.5, 0, Math.PI * 2);
+                cr.moveTo(8.2, 12.1); cr.lineTo(10.7, 14.6); cr.lineTo(15.9, 9.4);
+                break;
+            case 'messages':
+                cr.moveTo(5, 5.5); cr.lineTo(19, 5.5);
+                cr.curveTo(20.4, 5.5, 21, 6.1, 21, 7.5); cr.lineTo(21, 14.8);
+                cr.curveTo(21, 16.2, 20.3, 17, 18.8, 17); cr.lineTo(12, 17);
+                cr.lineTo(7.5, 20.2); cr.lineTo(7.5, 17); cr.lineTo(5, 17);
+                cr.curveTo(3.6, 17, 3, 16.3, 3, 14.8); cr.lineTo(3, 7.8);
+                cr.curveTo(3, 6.2, 3.8, 5.5, 5, 5.5); cr.closePath();
+                break;
+            case 'today':
+                roundedRect(3.5, 5, 17, 15.5, 2.5);
+                cr.moveTo(3.5, 10); cr.lineTo(20.5, 10);
+                cr.moveTo(8, 3); cr.lineTo(8, 7);
+                cr.moveTo(16, 3); cr.lineTo(16, 7);
+                break;
+            case 'notifications':
+                cr.moveTo(18, 9); cr.curveTo(18, 5.7, 15.4, 3, 12, 3);
+                cr.curveTo(8.6, 3, 6, 5.7, 6, 9); cr.curveTo(6, 15, 4, 16, 4, 18);
+                cr.lineTo(20, 18); cr.curveTo(20, 16, 18, 15, 18, 9);
+                cr.moveTo(10, 21); cr.curveTo(11, 22.5, 13, 22.5, 14, 21);
+                break;
+            case 'settings': {
+                const teeth = 16;
+                for (let i = 0; i < teeth; i++) {
+                    const angle = -Math.PI / 2 + (Math.PI * 2 * i) / teeth;
+                    const radius = i % 2 === 0 ? 9 : 7.4;
+                    const x = 12 + Math.cos(angle) * radius;
+                    const y = 12 + Math.sin(angle) * radius;
+                    if (i === 0)
+                        cr.moveTo(x, y);
+                    else
+                        cr.lineTo(x, y);
+                }
+                cr.closePath();
+                cr.arc(12, 12, 3.1, 0, Math.PI * 2);
+                break;
+            }
+            }
+            cr.stroke();
+            cr.$dispose();
+        });
+        icon.set_size(18, 18);
+        return icon;
+    }
+
     _buildTabs() {
         for (const page of PAGES) {
             const contents = new St.BoxLayout({
                 style_class: 'perdana-island__tab-content',
                 y_align: Clutter.ActorAlign.CENTER,
             });
-            const icon = new St.Icon({
-                icon_name: page.icon,
-                style_class: 'perdana-island__tab-icon',
-            });
-            icon.set_size(18, 18);
+            const icon = this._makeTabIcon(page.key);
             const label = makeLabel(page.label, 'perdana-island__tab-label');
             label.visible = false;
             contents.add_child(icon);
@@ -3254,7 +3693,7 @@ export default class PerdanaIslandExtension extends Extension {
                     return;
                 this._selectPage(page.key);
             });
-            attachButtonMotion(button, {hoverScale: 1.07, pressScale: 0.93});
+            attachButtonMotion(button, {hoverScale: 1, pressScale: 0.98});
             const pill = new St.Widget({
                 reactive: false,
                 style_class: 'perdana-island__tab-pill',
@@ -3319,6 +3758,7 @@ export default class PerdanaIslandExtension extends Extension {
             entry.slot.visible = true;
             const active = page.key === this._activePage;
             const buttonWidth = widths[visibleIndex];
+            entry.icon.queue_repaint();
             const slotY = Math.round((TABBAR_HEIGHT - buttonHeight) / 2);
             const drag = this._tabDrag;
             if (drag?.moved && drag.key === page.key) {
@@ -3395,24 +3835,10 @@ export default class PerdanaIslandExtension extends Extension {
                     } else if (wasSelected) {
                         entry.label.remove_all_transitions();
                         entry.pill.remove_all_transitions();
-                        entry.label.ease({
-                            opacity: 0,
-                            duration: 130,
-                            mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                            onComplete: () => {
-                                if (!entry.selected)
-                                    entry.label.visible = false;
-                            },
-                        });
-                        entry.pill.ease({
-                            opacity: 0,
-                            duration: 170,
-                            mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                            onComplete: () => {
-                                if (!entry.selected)
-                                    entry.pill.visible = false;
-                            },
-                        });
+                        entry.label.opacity = 0;
+                        entry.label.visible = false;
+                        entry.pill.opacity = 0;
+                        entry.pill.visible = false;
                     }
                 }
             }
@@ -3421,18 +3847,13 @@ export default class PerdanaIslandExtension extends Extension {
         this._tabsPainted = true;
     }
 
-    _renderPanel(animate = false, direction = 1) {
+    _renderPanel(animate = false) {
         if (!this._pageViewport)
             return;
 
+        this._clearTimeout('_settingsNavScrollSource');
+        this._clearTimeout('_notesScrollSource');
         this._clearTimeout('_taskFocusSource');
-
-        for (const outgoing of this._outgoingPageBodies) {
-            outgoing.remove_all_transitions();
-            if (outgoing.get_parent())
-                outgoing.destroy();
-        }
-        this._outgoingPageBodies.clear();
 
         if (this._mediaEqualizer) {
             this._setEqualizerPlaying(this._mediaEqualizer, false);
@@ -3454,6 +3875,15 @@ export default class PerdanaIslandExtension extends Extension {
         this._progressLine = null;
         this._progressFill = null;
         this._mediaEqualizer = null;
+        this._summaryMediaBody = null;
+        this._summaryMediaEmpty = null;
+        this._summaryTitle = null;
+        this._summaryArtist = null;
+        this._summaryLyric = null;
+        this._summaryIconActors = [];
+        this._summaryRows = {};
+        this._shelfClipboardCountLabel = null;
+        this._shelfFilesCountLabel = null;
         this._progressSeeking = false;
         this._progressCanSeek = false;
         this._lyricsStatusLabel = null;
@@ -3461,6 +3891,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._lyricsRail = null;
         this._lyricsWaitLabel = null;
         this._lyricsRenderedLines = null;
+        this._lyricsWindowStart = -1;
         this._lyricsLineLabels = [];
         this._lyricsLayoutWidth = 0;
         this._lyricsLayoutHeight = 0;
@@ -3475,7 +3906,21 @@ export default class PerdanaIslandExtension extends Extension {
         this._notesSaveLabel = null;
         this._notesUndoBanner = null;
         this._notesRowLabels = null;
-        this._activityRows = [];
+        this._reminderRows = null;
+        this._reminderNextCaption = null;
+        this._reminderNextName = null;
+        this._reminderNextTime = null;
+        this._reminderNextIn = null;
+        this._reminderCityLabel = null;
+        this._reminderWaterCaption = null;
+        this._reminderWaterValue = null;
+        this._reminderWaterDetail = null;
+        this._reminderWaterFill = null;
+        this._reminderRefreshButton = null;
+        this._reminderWaterTrackWidth = 0;
+        this._capturePreview = null;
+        this._capturePreviewWidth = 0;
+        this._captureStatusLabel = null;
         const previous = this._pageBody;
         const body = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
@@ -3487,22 +3932,28 @@ export default class PerdanaIslandExtension extends Extension {
         // editor can resolve its theme node and preferred height.
         this._pageBody = body;
         this._pageViewport.add_child(body);
-        if (this._activePage === 'media')
+        if (this._captureOpen) {
+            this._renderQuickCapturePanel(body);
+        } else if (this._activePage === 'media')
             this._renderMediaPage(body);
         else if (this._activePage === 'lyrics')
             this._renderLyricsPage(body);
         else if (this._activePage === 'focus')
             this._renderFocusPage(body);
-        else if (this._activePage === 'activity')
-            this._renderActivityPage(body);
         else if (this._activePage === 'tasks')
             this._renderTasksPage(body);
         else if (this._activePage === 'notes')
             this._renderNotesPage(body);
-        else if (this._activePage === 'shelf')
-            this._renderShelfPage(body);
-        else if (this._activePage === 'clipboard')
-            this._renderClipboardPage(body);
+        else if (this._activePage === 'shelf' || this._clipboardVisible()) {
+            // Keep the Shelf tabs and content in one viewport. A second nested
+            // page used to offset and clip the bottom of both Files and Clipboard.
+            if (this._activePage === 'clipboard' || this._shelfSegment === 'clipboard') {
+                this._shelfSegment = 'clipboard';
+                this._renderClipboardPage(body);
+            } else {
+                this._renderShelfPage(body);
+            }
+        }
         else if (this._activePage === 'today')
             this._renderTodayPage(body);
         else if (this._activePage === 'reminders')
@@ -3512,49 +3963,46 @@ export default class PerdanaIslandExtension extends Extension {
         this._layoutPanel(this._content?.width || CONTENT_WIDTH);
         this._setEqualizerPlaying(
             this._mediaEqualizer,
-            Boolean(this._expanded && ['media', 'lyrics'].includes(this._activePage) && this._isPlaying())
+            Boolean(this._expanded && ['media', 'lyrics', 'summary'].includes(this._activePage) && this._isPlaying())
         );
         if (previous && previous !== body) {
             previous.remove_all_transitions();
+            previous.destroy();
             if (this._reducedMotion) {
-                previous.destroy();
+                this._pageTransitionUntil = 0;
                 body.opacity = 255;
             } else if (animate) {
-                const distance = Math.min(18, Math.round(this._pageWidth() * 0.03));
-                this._outgoingPageBodies.add(previous);
-                previous.ease({
-                    translation_x: -direction * distance * 0.6,
-                    opacity: 0,
-                    duration: 190,
-                    mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                    onComplete: () => {
-                        this._outgoingPageBodies.delete(previous);
-                        if (previous.get_parent())
-                            previous.destroy();
-                    },
-                });
-                body.set_pivot_point(0.5, 0.5);
-                body.translation_x = direction * distance;
-                body.set_scale(0.985, 0.985);
+                this._pageTransitionUntil = GLib.get_monotonic_time() + 250000;
+                body.translation_x = (this._pageTransitionDirection || 1) * 10;
                 body.opacity = 0;
                 body.ease({
-                    translation_x: 0,
                     opacity: 255,
-                    scale_x: 1,
-                    scale_y: 1,
-                    duration: 300,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUINT,
+                    translation_x: 0,
+                    duration: 250,
+                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
                 });
             } else if (this._expanded) {
-                previous.destroy();
-                body.opacity = 0;
-                body.ease({
-                    opacity: 255,
-                    duration: 140,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                });
+                const remaining = Math.max(0,
+                    this._pageTransitionUntil - GLib.get_monotonic_time());
+                if (remaining > 0) {
+                    body.translation_x = (this._pageTransitionDirection || 1) * 10;
+                    body.opacity = 0;
+                    body.ease({
+                        opacity: 255,
+                        translation_x: 0,
+                        duration: Math.max(1, Math.ceil(remaining / 1000)),
+                        mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                    });
+                } else {
+                    this._pageTransitionUntil = 0;
+                    body.opacity = 0;
+                    body.ease({
+                        opacity: 255,
+                        duration: 140,
+                        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                    });
+                }
             } else {
-                previous.destroy();
                 body.opacity = 255;
             }
         }
@@ -3791,12 +4239,17 @@ export default class PerdanaIslandExtension extends Extension {
     _parseLyricsText(text, source) {
         const lines = [];
         let synced = false;
-        for (const rawLine of String(text || '').split(/\r?\n/)) {
+        const boundedText = String(text || '').slice(0, MAX_LYRIC_SOURCE_LENGTH);
+        for (const rawLine of boundedText.split(/\r?\n/)) {
+            if (lines.length >= MAX_LYRIC_LINES)
+                break;
             const stamps = [...rawLine.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
             const lyricText = rawLine.replace(/\[[^\]]+\]/g, '').trim();
             if (stamps.length) {
                 synced = true;
                 for (const stamp of stamps) {
+                    if (lines.length >= MAX_LYRIC_LINES)
+                        break;
                     const fraction = stamp[3] || '';
                     const seconds = Number(stamp[1]) * 60 + Number(stamp[2])
                         + (fraction ? Number(`0.${fraction}`) : 0);
@@ -3944,6 +4397,8 @@ export default class PerdanaIslandExtension extends Extension {
                 const selected = this._getSelectedPlayer();
                 this._updateLyricsLines(selected ? this._positionForPlayer(selected) : 0);
             }
+            if (this._expanded && this._activePage === 'summary')
+                this._updateSummaryMedia();
             this._updateCollapsedLabel();
         };
         const failed = (message, status) => {
@@ -3969,6 +4424,8 @@ export default class PerdanaIslandExtension extends Extension {
             const selected = this._getSelectedPlayer();
             if (this._expanded && this._activePage === 'lyrics')
                 this._updateLyricsLines(selected ? this._positionForPlayer(selected) : 0);
+            if (this._expanded && this._activePage === 'summary')
+                this._updateSummaryMedia();
         };
         const parseResult = json => {
             if (!json || typeof json !== 'object')
@@ -4115,27 +4572,6 @@ export default class PerdanaIslandExtension extends Extension {
         }
 
         this._lyricsStatusLabel.visible = false;
-        const width = this._lyricsViewport.width;
-        const viewportHeight = this._lyricsViewport.height || this._bodyHeight() - 16;
-        const linesChanged = this._lyricsRenderedLines !== lines;
-
-        if (linesChanged) {
-            this._lyricsRail.remove_all_children();
-            this._lyricsLineLabels = lines.map(line => {
-                const label = makeLabel(line.text, 'perdana-island__lyrics-line perdana-island__lyrics-line--far');
-                label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
-                label.clutter_text.line_wrap = true;
-                label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
-                label.opacity = 0;
-                label.set_position(0, 0);
-                label.set_size(width, 24);
-                this._lyricsRail.add_child(label);
-                return label;
-            });
-            this._lyricsRail.set_size(width, 0);
-            this._lyricsRenderedLines = lines;
-        }
-
         let activeIndex = 0;
         let displayGap = false;
         if (data.synced) {
@@ -4149,6 +4585,47 @@ export default class PerdanaIslandExtension extends Extension {
             // LRC timestamps mark lyric starts, not when the current line ends.
             if (activeIndex < 0)
                 displayGap = true;
+        }
+
+        const windowCapacity = VISIBLE_LYRIC_CONTEXT * 2 + 1;
+        const maxWindowStart = Math.max(0, lines.length - windowCapacity);
+        const windowStart = activeIndex < 0
+            ? 0
+            : Math.max(0, Math.min(activeIndex - VISIBLE_LYRIC_CONTEXT, maxWindowStart));
+        const visibleLines = lines.slice(windowStart, windowStart + windowCapacity);
+        const width = this._lyricsViewport.width;
+        const viewportHeight = this._lyricsViewport.height || this._bodyHeight() - 16;
+        const linesChanged = this._lyricsWindowStart !== windowStart
+            || this._lyricsRenderedLines?.length !== visibleLines.length
+            || visibleLines.some((line, index) => this._lyricsRenderedLines?.[index] !== line);
+
+        if (linesChanged) {
+            this._lyricsRail.remove_all_transitions();
+            while (this._lyricsLineLabels.length < visibleLines.length) {
+                const label = makeLabel('', 'perdana-island__lyrics-line perdana-island__lyrics-line--far');
+                label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+                label.clutter_text.line_wrap = true;
+                label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+                label.set_position(0, 0);
+                this._lyricsRail.add_child(label);
+                this._lyricsLineLabels.push(label);
+            }
+            for (let index = 0; index < this._lyricsLineLabels.length; index++) {
+                const label = this._lyricsLineLabels[index];
+                label.remove_all_transitions();
+                label.visible = index < visibleLines.length;
+                if (index >= visibleLines.length)
+                    continue;
+                label.text = visibleLines[index].text;
+                label.opacity = 0;
+                label.remove_style_class_name('perdana-island__lyrics-line--current');
+                label.remove_style_class_name('perdana-island__lyrics-line--near');
+                label.add_style_class_name('perdana-island__lyrics-line--far');
+                label.set_size(width, 24);
+            }
+            this._lyricsRail.set_size(width, 0);
+            this._lyricsRenderedLines = visibleLines;
+            this._lyricsWindowStart = windowStart;
         }
         const layoutChanged = linesChanged
             || width !== this._lyricsLayoutWidth
@@ -4168,9 +4645,10 @@ export default class PerdanaIslandExtension extends Extension {
         const offsets = [];
         const heights = [];
         let railHeight = 0;
-        for (let index = 0; index < this._lyricsLineLabels.length; index++) {
+        for (let index = 0; index < visibleLines.length; index++) {
             const label = this._lyricsLineLabels[index];
-            const distance = activeIndex < 0 ? Infinity : Math.abs(index - activeIndex);
+            const lineIndex = windowStart + index;
+            const distance = activeIndex < 0 ? Infinity : Math.abs(lineIndex - activeIndex);
             const style = distance === 0
                 ? 'perdana-island__lyrics-line--current'
                 : (distance === 1 ? 'perdana-island__lyrics-line--near' : 'perdana-island__lyrics-line--far');
@@ -4192,12 +4670,13 @@ export default class PerdanaIslandExtension extends Extension {
             label.set_size(width, height);
             railHeight += height + 5;
         }
-        if (this._lyricsLineLabels.length)
+        if (visibleLines.length)
             railHeight -= 5;
         this._lyricsRail.set_size(width, railHeight);
+        const activeWindowIndex = activeIndex - windowStart;
         const targetY = activeIndex < 0
             ? (viewportHeight - 24) / 2
-            : viewportHeight / 2 - offsets[activeIndex] - heights[activeIndex] / 2;
+            : viewportHeight / 2 - offsets[activeWindowIndex] - heights[activeWindowIndex] / 2;
         const duration = this._reducedMotion ? 160 : 620;
         if (this._reducedMotion) {
             const rail = this._lyricsRail;
@@ -4230,9 +4709,9 @@ export default class PerdanaIslandExtension extends Extension {
             duration: this._reducedMotion ? 160 : 260,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
         });
-        for (let index = 0; index < this._lyricsLineLabels.length; index++) {
+        for (let index = 0; index < visibleLines.length; index++) {
             const label = this._lyricsLineLabels[index];
-            const distance = activeIndex < 0 ? Infinity : Math.abs(index - activeIndex);
+            const distance = activeIndex < 0 ? Infinity : Math.abs(windowStart + index - activeIndex);
             label.ease({
                 opacity: distance === 0 ? 255 : (distance === 1 ? 176 : 74),
                 duration: this._reducedMotion ? 160 : 320,
@@ -4504,7 +4983,7 @@ export default class PerdanaIslandExtension extends Extension {
         );
         const actionGap = 10;
         const actionWidth = (controlsWidth - 2 * actionGap) / 3;
-        place(body, this._focusToggleButton, controlsX, 112, actionWidth, 36);
+        place(body, this._focusToggleButton, controlsX, 104, actionWidth, 34);
         place(body, makeActionButton(
             'view-refresh-symbolic',
             'Reset',
@@ -4528,7 +5007,7 @@ export default class PerdanaIslandExtension extends Extension {
             this._focusSessionsToday + ' focus sessions today',
             'perdana-island__focus-stats-label'
         );
-        place(body, this._focusSessionsLabel, controlsX, 166, controlsWidth, 20);
+        place(body, this._focusSessionsLabel, controlsX, 146, controlsWidth, 20);
         this._focusRing.queue_repaint();
     }
 
@@ -4536,26 +5015,23 @@ export default class PerdanaIslandExtension extends Extension {
         this._taskTextEntry = null;
         this._taskTimeEntry = null;
         const todayKey = dateKey();
-        const agenda = this._agendaTasks(todayKey);
         const open = this._tasks.filter(task => !task.done)
             .sort((first, second) => taskScheduleKey(first).localeCompare(taskScheduleKey(second)));
         const completed = this._tasks.filter(task => task.done);
         const ordered = [...open, ...completed];
         const doneToday = this._tasksDoneToday().length;
-        const focusMinutes = Math.round(this._focusSecondsToday() / 60);
         const rightX = 190;
         const rightWidth = this._pageWidth() - rightX;
 
-        place(body, makeLabel('To-do', 'perdana-island__todo-heading'), 0, 4, 160, 22);
-        place(body, makeLabel(String(open.length), 'perdana-island__todo-count'), 0, 26, 120, 44);
-        place(body, makeLabel(
-            agenda.length
-                ? `${agenda.length} scheduled today · next ${formatClockTime(agenda[0].due)}`
-                : 'No timed tasks today',
-            'perdana-island__todo-subtitle'
-        ), 2, 72, 184, 17);
-        place(body, makeLabel(`${doneToday} done today · ${focusMinutes} min focus`,
-            'perdana-island__todo-subtitle'), 2, 90, 184, 17);
+        place(body, makeLabel('To-do', 'perdana-island__todo-heading'), 0, 8, 160, 22);
+        place(body, makeLabel(`${completed.length}/${this._tasks.length}`, 'perdana-island__todo-count'),
+            0, 30, 160, 44);
+        const progressCaption = doneToday
+            ? `${doneToday} task${doneToday === 1 ? '' : 's'} done today`
+            : open.length
+                ? `${open.length} task${open.length === 1 ? '' : 's'} remaining`
+                : this._tasks.length ? 'All tasks done' : 'No tasks yet';
+        place(body, makeLabel(progressCaption, 'perdana-island__todo-subtitle'), 2, 76, 184, 17);
 
         if (this._taskAdding) {
             const entry = new St.Entry({
@@ -4606,10 +5082,10 @@ export default class PerdanaIslandExtension extends Extension {
                 }
                 return Clutter.EVENT_PROPAGATE;
             });
-            place(body, entry, 0, 110, 180, 26);
-            place(body, timeEntry, 0, 140, 52, 26);
-            place(body, priorityButton, 56, 140, 64, 26);
-            place(body, addButton, 124, 140, 56, 26);
+            place(body, entry, 0, 108, 180, 26);
+            place(body, timeEntry, 0, 138, 52, 26);
+            place(body, priorityButton, 56, 138, 64, 26);
+            place(body, addButton, 124, 138, 56, 26);
             this._taskTextEntry = entry;
             this._taskTimeEntry = timeEntry;
             this._taskFocusSource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
@@ -4639,21 +5115,20 @@ export default class PerdanaIslandExtension extends Extension {
                 },
                 'perdana-action--todo'
             ));
-            place(body, actions, 0, 108, 180, 30);
-            place(body, makeTextButton(this._reportCopied ? 'Copied' : 'Copy report',
-                'Copy today report', () => this._copyDailyReport(),
-                'perdana-island__todo-report'), 0, 142, 180, 24);
+            place(body, actions, 0, 102, 180, 30);
         }
 
         if (!ordered.length) {
-            place(body, makeLabel('Your list is clear', 'perdana-island__muted'), rightX, 16, rightWidth, 20);
+            const empty = makeLabel('Your list is clear', 'perdana-island__muted');
+            empty.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+            place(body, empty, rightX, 16, rightWidth, this._bodyHeight() - 24);
             return;
         }
 
         const rowHeight = 36;
         const rowGap = 7;
         const listHeight = ordered.length * (rowHeight + rowGap) - rowGap;
-        const listWidth = Math.max(1, rightWidth - 16);
+        const listWidth = Math.max(1, rightWidth - 8);
         const scroll = new St.ScrollView({
             overlay_scrollbars: false,
             style_class: 'perdana-island__task-scroll',
@@ -4695,15 +5170,19 @@ export default class PerdanaIslandExtension extends Extension {
             label.x_expand = true;
             row.add_child(label);
 
-            const timed = Number.isInteger(task.due) && task.dueDate;
-            const late = timed && !task.done && task.dueDate < todayKey;
-            const dateText = timed && task.dueDate !== todayKey
-                ? new Intl.DateTimeFormat('en-GB', {day: '2-digit', month: 'short'})
-                    .format(new Date(`${task.dueDate}T00:00:00`)) + ' '
+            const scheduled = typeof task.dueDate === 'string';
+            const timed = scheduled && Number.isInteger(task.due);
+            const late = scheduled && !task.done && task.dueDate < todayKey;
+            const dateText = scheduled && (task.dueDate !== todayKey || !timed)
+                ? (task.dueDate === todayKey
+                    ? 'Today'
+                    : new Intl.DateTimeFormat('en-GB', {day: '2-digit', month: 'short'})
+                        .format(new Date(`${task.dueDate}T00:00:00`))) + (timed ? ' ' : '')
                 : '';
-            const chipWidth = timed
-                ? (task.dueDate !== todayKey ? 88 : late ? 62 : 44)
-                : 0;
+            const scheduleText = scheduled
+                ? `${late ? 'Late ' : ''}${dateText}${timed ? formatClockTime(task.due) : ''}`.trim()
+                : '';
+            const chipWidth = scheduled ? Math.max(44, scheduleText.length * 6 + 14) : 0;
             const priorityWidth = task.priority ? 42 : 0;
 
             if (this._taskEditing) {
@@ -4746,9 +5225,9 @@ export default class PerdanaIslandExtension extends Extension {
                     () => this._removeTask(task.id), 'perdana-button--task-delete'));
                 label.clutter_text.max_width = Math.max(60, listWidth - 24 - 7 - 52 - 44 - 18 - 14);
             } else {
-                if (timed) {
+                if (scheduled) {
                     const timeLabel = makeLabel(
-                        `${late ? 'Late ' : dateText}${formatClockTime(task.due)}`,
+                        `${late ? 'Late ' : ''}${dateText}${timed ? formatClockTime(task.due) : ''}`,
                         `perdana-island__task-time${late ? ' perdana-island__task-time--late' : ''}`
                     );
                     timeLabel.x_align = Clutter.ActorAlign.CENTER;
@@ -4765,30 +5244,38 @@ export default class PerdanaIslandExtension extends Extension {
             list.add_child(row);
         });
         scroll.add_child(list);
-        place(body, scroll, rightX, 4, rightWidth, this._bodyHeight() - 8);
+        place(body, scroll, rightX, 16, rightWidth, this._bodyHeight() - 24);
     }
 
     _renderNotesPage(body) {
         const pageWidth = this._pageWidth();
         const height = this._bodyHeight();
-        const safeInset = Math.min(12, Math.max(8, Math.round(pageWidth * 0.018)));
+        // The island body already has PAGE_INSET on both sides; add only the
+        // 4px preview padding here so Notes keeps the preview's full columns.
+        const safeInset = 4;
         const contentWidth = Math.max(1, pageWidth - safeInset * 2);
-        const columnGap = Math.max(14, Math.min(20, Math.round(contentWidth * 0.03)));
+        const columnGap = Math.max(18, Math.min(24, Math.round(contentWidth * 0.03)));
         const listWidth = Math.max(1, Math.min(
-            238,
-            Math.max(148, Math.round(contentWidth * 0.36)),
-            Math.max(112, contentWidth - columnGap - 220)
+            260,
+            Math.max(158, Math.round(contentWidth * 0.34)),
+            Math.max(144, contentWidth - columnGap - 280)
         ));
         const editorX = safeInset + listWidth + columnGap;
         const editorWidth = Math.max(1, contentWidth - listWidth - columnGap);
-        const editorContentWidth = Math.max(1, editorWidth - 12);
+        // St.ScrollView reserves a non-overlay scrollbar inside this width.
+        // Keep the text actor clear of the scrollbar and the editor surface border.
+        const editorScrollWidth = editorWidth;
+        const editorContentWidth = Math.max(1, editorScrollWidth - 18);
         const notes = [...this._notes].sort((first, second) => second.updatedAt - first.updatedAt);
-        const listContentWidth = Math.max(1, listWidth - 14);
+        const listScrollWidth = listWidth;
+        const listContentWidth = Math.max(1, listWidth - 18);
         const undoVisible = Boolean(this._notesUndo);
         const listTop = 30;
         const listBottomInset = undoVisible ? 40 : 10;
         const listHeight = Math.max(1, height - listTop - listBottomInset);
         const statusY = height - 20;
+        const editorTop = listTop;
+        const editorBottom = statusY - 8;
         const statusState = this._notesSaveSource ? 'Saving…' : 'Saved locally';
         this._notesStatusValue = statusState;
         this._notesRowLabels = new Map();
@@ -4796,15 +5283,45 @@ export default class PerdanaIslandExtension extends Extension {
         const heading = makeLabel(notes.length ? `Notes · ${notes.length}` : 'Notes',
             'perdana-island__notes-heading');
         heading.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        place(body, heading, safeInset, 4, Math.max(1, listWidth - 42), 22);
-        place(body, makeIconButton('list-add-symbolic', 'New note', () => this._addNote(),
-            'perdana-island__notes-add'), safeInset + listWidth - 28, 2, 28, 24);
+        const addButtonWidth = Math.min(68, listWidth);
+        const headingNaturalWidth = Math.ceil(heading.get_preferred_width(-1)[1]);
+        const headingWidth = Math.max(1, Math.min(
+            headingNaturalWidth,
+            listWidth - addButtonWidth - 8
+        ));
+        heading.clutter_text.max_width = headingWidth;
+        const newNoteContents = new St.BoxLayout({
+            style_class: 'perdana-island__notes-add-content',
+        });
+        newNoteContents.add_child(new St.Icon({
+            icon_name: 'list-add-symbolic',
+            style_class: 'perdana-island__icon',
+        }));
+        newNoteContents.add_child(makeLabel('New', 'perdana-island__notes-add-label'));
+        const newNoteButton = new St.Button({
+            child: newNoteContents,
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+            style_class: 'perdana-button perdana-island__notes-add',
+            accessible_name: 'New note',
+        });
+        newNoteButton.connect('clicked', () => this._addNote());
+        attachButtonMotion(newNoteButton);
+        newNoteButton.set_size(addButtonWidth, 26);
+        const headingRow = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            style_class: 'perdana-island__notes-heading-row',
+        });
+        place(headingRow, heading, 0, 0, headingWidth, 28);
+        place(headingRow, newNoteButton, headingWidth + 8, 1, addButtonWidth, 26);
+        place(body, headingRow, safeInset, 2, listWidth, 28);
 
         if (!this._notes.some(note => note.id === this._notesSelectedId))
             this._notesSelectedId = notes[0]?.id || null;
 
         if (!notes.length) {
-            place(body, makeLabel('No notes yet · tap + to start', 'perdana-island__notes-empty'),
+            place(body, makeLabel('Your notes will appear here', 'perdana-island__notes-empty'),
                 safeInset, listTop + 12, listWidth - 10, 22);
         } else {
             const rowHeight = 44;
@@ -4860,7 +5377,26 @@ export default class PerdanaIslandExtension extends Extension {
                 list.add_child(button);
             });
             scroll.add_child(list);
-            place(body, scroll, safeInset, listTop, listWidth, listHeight);
+            place(body, scroll, safeInset, listTop, listScrollWidth, listHeight);
+            const selectedIndex = notes.findIndex(note => note.id === this._notesSelectedId);
+            if (selectedIndex >= 0) {
+                this._notesScrollSource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                    this._notesScrollSource = 0;
+                    const adjustment = scroll.get_vadjustment?.();
+                    if (!scroll.get_stage() || !adjustment || adjustment.page_size <= 0)
+                        return GLib.SOURCE_REMOVE;
+                    const rowTop = selectedIndex * (rowHeight + rowGap);
+                    const rowBottom = rowTop + rowHeight;
+                    const currentTop = adjustment.value;
+                    const currentBottom = currentTop + adjustment.page_size;
+                    const maxValue = Math.max(0, adjustment.upper - adjustment.page_size);
+                    if (rowTop < currentTop)
+                        adjustment.value = rowTop;
+                    else if (rowBottom > currentBottom)
+                        adjustment.value = Math.min(maxValue, rowBottom - adjustment.page_size);
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
         }
 
         if (undoVisible) {
@@ -4886,23 +5422,39 @@ export default class PerdanaIslandExtension extends Extension {
 
         const note = this._notes.find(item => item.id === this._notesSelectedId);
         if (!note) {
-            place(body, makeLabel('Select a note, or create a new one', 'perdana-island__notes-empty'),
-                editorX, listTop + 12, editorContentWidth, 24);
-            this._notesSaveLabel = place(body, makeLabel('', 'perdana-island__note-status'),
-                editorX, statusY, editorContentWidth, 14);
+            const emptyCard = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                style_class: 'perdana-island__notes-empty-card',
+            });
+            const emptyLabel = makeLabel('No notes yet. Select New to create one.',
+                'perdana-island__notes-empty');
+            emptyLabel.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+            emptyLabel.clutter_text.line_wrap = true;
+            emptyLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+            const emptyTop = 8;
+            const emptyHeight = Math.max(1, height - emptyTop - 10);
+            const emptyLabelWidth = Math.max(1, editorWidth - 32);
+            place(body, emptyCard, editorX, emptyTop, editorWidth, emptyHeight);
+            emptyCard.add_child(emptyLabel);
+            const emptyLabelHeight = Math.max(18,
+                emptyLabel.get_preferred_height(emptyLabelWidth)[1]);
+            const emptyLabelY = Math.max(0, Math.round((emptyHeight - emptyLabelHeight) / 2));
+            emptyLabel.set_position(16, emptyLabelY);
+            emptyLabel.set_size(emptyLabelWidth, emptyLabelHeight);
+            this._notesSaveLabel = null;
             return;
         }
 
         place(body, makeLabel(`Updated ${this._noteDateText(note.updatedAt)}`,
             'perdana-island__note-meta'), editorX, 4,
-            Math.max(1, editorContentWidth - 34), 18);
+            Math.max(1, editorScrollWidth - 40), 18);
         place(body, makeIconButton('user-trash-symbolic', 'Delete note',
             () => this._deleteNote(note.id), 'perdana-button--note-delete'),
-            editorX + editorContentWidth - 26, 2, 26, 24);
+            editorX + editorScrollWidth - 32, 2, 26, 24);
 
         const scroll = new St.ScrollView({
             overlay_scrollbars: false,
-            style_class: 'perdana-island__notes-scroll',
+            style_class: 'perdana-island__notes-scroll perdana-island__notes-editor-scroll',
         });
         scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
         const editorBox = new St.BoxLayout({
@@ -4920,6 +5472,10 @@ export default class PerdanaIslandExtension extends Extension {
         entry.clutter_text.set_line_wrap(true);
         entry.clutter_text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
         entry.clutter_text.connect('text-changed', () => this._onNoteTextChanged(entry, note.id));
+        entry.connect('key-focus-in', () =>
+            scroll.add_style_class_name('perdana-island__notes-editor-scroll--focused'));
+        entry.connect('key-focus-out', () =>
+            scroll.remove_style_class_name('perdana-island__notes-editor-scroll--focused'));
         entry.clutter_text.connect('activate', () => this._insertNoteLineBreak(entry, note.id));
         entry.clutter_text.connect('key-press-event', (_actor, event) => {
             if (event.get_key_symbol() !== Clutter.KEY_Escape)
@@ -4930,9 +5486,7 @@ export default class PerdanaIslandExtension extends Extension {
         });
         editorBox.add_child(entry);
         scroll.add_child(editorBox);
-        const editorTop = listTop;
-        const editorBottom = statusY - 8;
-        place(body, scroll, editorX, editorTop, editorWidth,
+        place(body, scroll, editorX, editorTop, editorScrollWidth,
             Math.max(1, editorBottom - editorTop));
         this._notesEditorScroll = scroll;
         this._notesEditorBox = editorBox;
@@ -4947,59 +5501,132 @@ export default class PerdanaIslandExtension extends Extension {
 
     _renderRemindersPage(body) {
         this._ensurePrayerTimes();
+        this._remindersTab = this._remindersTab === 'water' ? 'water' : 'prayer';
         const now = new Date();
         const pageWidth = this._pageWidth();
-        const scale = Math.min(1, pageWidth / 600);
-        const columnGap = Math.round(26 * scale);
-        const leftWidth = Math.round((pageWidth - columnGap) * 0.56);
-        const rightX = leftWidth + columnGap;
-        const rightWidth = pageWidth - rightX;
-        const prayerOn = this._preferences.prayerReminder === true;
-        const [city] = splitCity(this._preferences.prayerCity);
-        const method = PRAYER_METHODS.find(([value]) => value === this._preferences.prayerMethod);
-
-        place(body, makeLabel('Prayer', 'perdana-island__reminder-heading'), 0, 0, 90, 16);
-        place(body, makeLabel(this._prayerPageSubtitle(city, method ? method[1] : 'Kemenag'),
-            'perdana-island__reminder-subtitle'), 0, 18, Math.max(0, leftWidth - 72), 16);
-        if (prayerOn)
-            place(body, makeTextButton('Refresh', 'Fetch prayer times again', () => {
-                this._prayerRetryAt = 0;
-                this._prayerError = null;
-                this._fetchPrayerTimes();
-                this._renderPanel();
-            }, 'perdana-island__reminder-action'), leftWidth - 64, 10, 64, 24);
-
-        const times = prayerOn ? this._prayerTimesForToday() : null;
-        this._reminderRows = [];
-        PRAYER_NAMES.forEach((name, index) => {
-            const y = 42 + index * 24;
-            const nameLabel = makeLabel(name, 'perdana-island__prayer-name');
-            const timeLabel = makeLabel(times ? formatClockTime(times[name]) : '—',
-                'perdana-island__prayer-time');
-            timeLabel.clutter_text.x_align = Clutter.ActorAlign.END;
-            place(body, nameLabel, 0, y, Math.round(leftWidth * 0.5), 20);
-            place(body, timeLabel, 0, y, leftWidth, 20);
-            this._reminderRows.push({name, nameLabel, timeLabel});
-        });
-
-        place(body, new St.Widget({style_class: 'perdana-island__reminder-divider'}),
-            leftWidth + Math.round(columnGap / 2), 0, 1, 158);
-
-        const summary = this._waterSummary(now);
-        place(body, makeLabel('Water', 'perdana-island__reminder-heading'), rightX, 0, rightWidth, 16);
-        this._reminderWaterCaption = place(body, makeLabel(summary.caption,
-            'perdana-island__reminder-caption'), rightX, 20, rightWidth, 16);
-        this._reminderWaterValue = place(body, makeLabel(summary.value,
-            'perdana-island__water-value'), rightX, 36, rightWidth, 34);
-        this._reminderWaterDetail = place(body, makeLabel(summary.detail,
-            'perdana-island__reminder-subtitle'), rightX, 72, rightWidth, 16);
-        place(body, makeTextButton('Log glass', 'Log a glass of water', () => {
-            this._preferences.lastWaterAt = Math.floor(Date.now() / 1000);
-            this._savePreferences();
+        const initialWaterSummary = this._waterSummary(now);
+        // Keep the two sections on one compact, stable panel like island-pages-v2.
+        const tabBar = new St.BoxLayout({style_class: 'perdana-island__rem-tabs'});
+        const tabStyle = key => `perdana-island__rem-tab${this._remindersTab === key ? ' perdana-island__rem-tab--on' : ''}`;
+        const prayerTab = makeTextButton('Prayer', 'Prayer times', () => {
+            this._remindersTab = 'prayer';
             this._renderPanel();
-        }, 'perdana-island__color-apply'), rightX, 96, 104, 30);
-        place(body, makeLabel('Every hour, 08:00-21:00', 'perdana-island__reminder-caption'),
-            rightX, 136, rightWidth, 16);
+        }, tabStyle('prayer'));
+        const waterTabLabel = makeLabel(this._waterTabLabel(initialWaterSummary.value),
+            'perdana-island__rem-tab-label');
+        const waterTab = new St.Button({
+            child: waterTabLabel,
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+            style_class: `perdana-button ${tabStyle('water')}`,
+            accessible_name: 'Water reminder',
+        });
+        waterTab.connect('clicked', () => {
+            this._remindersTab = 'water';
+            this._renderPanel();
+        });
+        attachButtonMotion(waterTab);
+        prayerTab.set_size(62, 22);
+        waterTab.set_size(98, 22);
+        tabBar.add_child(prayerTab);
+        tabBar.add_child(waterTab);
+        place(body, tabBar, 0, 6, 170, 28);
+        this._reminderWaterTab = waterTab;
+        this._reminderWaterTabLabel = waterTabLabel;
+        this._reminderRefreshButton = makeTextButton('Refresh', 'Fetch prayer times again', () => {
+            this._prayerRetryAt = 0;
+            this._prayerError = null;
+            this._fetchPrayerTimes();
+            this._renderPanel();
+        }, 'perdana-island__reminder-action');
+        this._reminderRefreshButton.visible = this._remindersTab === 'prayer'
+            && this._preferences.prayerReminder === true;
+        place(body, this._reminderRefreshButton, pageWidth - 78, 7, 78, 26);
+
+        this._reminderRows = [];
+        this._reminderNextCaption = null;
+        this._reminderNextName = null;
+        this._reminderNextTime = null;
+        this._reminderNextIn = null;
+        this._reminderCityLabel = null;
+        this._reminderWaterCaption = null;
+        this._reminderWaterValue = null;
+        this._reminderWaterDetail = null;
+        this._reminderWaterFill = null;
+        this._reminderWaterTrackWidth = 0;
+
+        if (this._remindersTab === 'prayer') {
+            const nextCard = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                style_class: 'perdana-island__reminder-next',
+            });
+            place(body, nextCard, 0, 40, pageWidth, 64);
+            this._reminderNextCaption = makeLabel('', 'perdana-island__reminder-caption');
+            this._reminderNextName = makeLabel('—', 'perdana-island__reminder-next-name');
+            this._reminderNextTime = makeLabel('—', 'perdana-island__reminder-next-time');
+            this._reminderNextIn = makeLabel('', 'perdana-island__reminder-next-in');
+            this._reminderCityLabel = makeLabel('', 'perdana-island__reminder-city');
+            place(nextCard, this._reminderNextCaption, 14, 7, pageWidth - 160, 15);
+            place(nextCard, this._reminderCityLabel, 14, 23, pageWidth - 160, 14);
+            place(nextCard, this._reminderNextName, 14, 38, pageWidth - 160, 22);
+            place(nextCard, this._reminderNextTime, pageWidth - 142, 11, 126, 22);
+            place(nextCard, this._reminderNextIn, pageWidth - 142, 34, 126, 16);
+
+            const stripTop = 112;
+            const stripInset = 12;
+            const gap = 5;
+            const stripWidth = Math.max(1, pageWidth - stripInset * 2);
+            const cellWidth = (stripWidth - gap * (PRAYER_NAMES.length - 1)) / PRAYER_NAMES.length;
+            PRAYER_NAMES.forEach((name, index) => {
+                const cell = new St.Widget({
+                    layout_manager: new Clutter.FixedLayout(),
+                    style_class: 'perdana-island__prayer-cell',
+                });
+                const nameLabel = makeLabel(name, 'perdana-island__prayer-name');
+                const timeLabel = makeLabel('—', 'perdana-island__prayer-time');
+                nameLabel.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+                timeLabel.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+                place(cell, nameLabel, 2, 7, cellWidth - 4, 14);
+                place(cell, timeLabel, 2, 23, cellWidth - 4, 17);
+                place(body, cell, stripInset + index * (cellWidth + gap), stripTop, cellWidth, 46);
+                this._reminderRows.push({name, cell, nameLabel, timeLabel});
+            });
+        } else {
+            const card = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                style_class: 'perdana-island__reminder-card',
+            });
+            place(body, card, 0, 40, pageWidth, 122);
+            const summary = this._waterSummary(now);
+            this._reminderWaterCaption = place(card, makeLabel(summary.caption,
+                'perdana-island__reminder-caption'), 14, 9, pageWidth - 28, 15);
+            this._reminderWaterValue = place(card, makeLabel(summary.value,
+                'perdana-island__water-value'), 14, 26, pageWidth - 28, 34);
+            this._reminderWaterTrackWidth = Math.max(1, pageWidth - 28);
+            const track = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                clip_to_allocation: true,
+                style_class: 'perdana-island__water-track',
+            });
+            place(card, track, 14, 62, this._reminderWaterTrackWidth, 4);
+            this._reminderWaterFill = new St.Widget({style_class: 'perdana-island__water-fill'});
+            place(track, this._reminderWaterFill, 0, 0,
+                Math.round(this._reminderWaterTrackWidth * summary.progress), 4);
+            this._reminderWaterDetail = place(card, makeLabel(summary.detail,
+                'perdana-island__reminder-subtitle'), 120, 72, pageWidth - 134, 14);
+            place(card, makeTextButton('Log glass', 'Log a glass of water', () => {
+                const loggedAt = Math.floor(Date.now() / 1000);
+                this._preferences.lastWaterAt = loggedAt;
+                this._preferences.lastWaterLogAt = loggedAt;
+                this._preferences.lastWaterReminderAt = loggedAt;
+                this._savePreferences();
+                this._updateReminderPage(new Date());
+            }, 'perdana-island__water-log'), 14, 72, 96, 30);
+            place(card, makeLabel('Every hour · 08:00–21:00',
+                'perdana-island__reminder-caption perdana-island__water-window'),
+                120, 88, pageWidth - 134, 14);
+        }
 
         this._updateReminderPage(now);
     }
@@ -5018,24 +5645,37 @@ export default class PerdanaIslandExtension extends Extension {
 
     _waterSummary(now = new Date()) {
         if (!this._preferences?.waterReminder)
-            return {caption: 'Reminder', value: 'Off', detail: 'Turn on in Settings'};
+            return {caption: 'Water reminder', value: 'Off', detail: 'Turn on in Settings', progress: 0};
         const minutes = now.getHours() * 60 + now.getMinutes();
         if (minutes < WATER_WINDOW_START)
-            return {caption: 'Next glass', value: '08:00', detail: 'Quiet hours until then'};
+            return {caption: 'Next glass', value: '08:00', detail: 'Quiet hours until then', progress: 0};
         if (minutes >= WATER_WINDOW_END)
-            return {caption: 'Next glass', value: '08:00', detail: 'Resumes tomorrow'};
-        const last = Number(this._preferences.lastWaterAt) || 0;
-        if (!last)
-            return {caption: 'Next glass', value: 'Now', detail: 'No glass logged yet'};
-        const lastDate = new Date(last * 1000);
-        const lastLabel = formatClockTime(lastDate.getHours() * 60 + lastDate.getMinutes());
+            return {caption: 'Next glass', value: '08:00', detail: 'Resumes tomorrow', progress: 0};
+        const lastReminder = Number(this._preferences.lastWaterReminderAt) || 0;
+        const lastLog = Number(this._preferences.lastWaterLogAt) || 0;
+        const lastLogDate = lastLog ? new Date(lastLog * 1000) : null;
+        const detail = lastLogDate
+            ? `Last glass ${formatClockTime(lastLogDate.getHours() * 60 + lastLogDate.getMinutes())}`
+            : 'No glass logged yet';
+        if (!lastReminder)
+            return {caption: 'Next glass', value: 'Now', detail, progress: 0.04};
         const remaining = Math.min(WATER_REMINDER_SECONDS,
-            Math.max(0, last + WATER_REMINDER_SECONDS - Math.floor(now.getTime() / 1000)));
+            Math.max(0, lastReminder + WATER_REMINDER_SECONDS - Math.floor(now.getTime() / 1000)));
         return {
             caption: 'Next glass',
             value: remaining <= 0 ? 'Now' : `${Math.ceil(remaining / 60)} min`,
-            detail: `Last glass ${lastLabel}`,
+            detail,
+            progress: remaining > 0
+                ? remaining / WATER_REMINDER_SECONDS
+                : 0.04,
         };
+    }
+
+    _waterTabLabel(value) {
+        if (value === 'Now' || value === 'Off' || value.includes(':'))
+            return `Water ${value}`;
+        const minutes = Number.parseInt(value, 10);
+        return `Water ${Number.isFinite(minutes) ? `${minutes}m` : value}`;
     }
 
     _updateReminderPage(now = new Date()) {
@@ -5043,25 +5683,60 @@ export default class PerdanaIslandExtension extends Extension {
             return;
         const minutes = now.getHours() * 60 + now.getMinutes();
         const times = this._preferences?.prayerReminder ? this._prayerTimesForToday() : null;
-        const next = times
-            ? PRAYER_NAMES.find(name => times[name] > minutes) || null
-            : null;
+        let next = times ? PRAYER_NAMES.find(name => times[name] > minutes) || null : null;
+        let minutesUntilNext = null;
+        if (next)
+            minutesUntilNext = times[next] - minutes;
+        else if (times) {
+            next = PRAYER_NAMES[0];
+            minutesUntilNext = 24 * 60 - minutes + times[next];
+        }
+        const [city] = splitCity(this._preferences?.prayerCity);
+        const method = PRAYER_METHODS.find(([value]) => value === this._preferences?.prayerMethod);
+        if (this._reminderNextCaption)
+            this._reminderNextCaption.text = times ? 'Next prayer' : this._prayerPageSubtitle(city, method ? method[1] : 'Kemenag');
+        if (this._reminderCityLabel)
+            this._reminderCityLabel.text = times ? `${city || 'No city'} · ${method ? method[1] : 'Kemenag'}` : '';
+        if (this._reminderNextName)
+            this._reminderNextName.text = next || '—';
+        if (this._reminderNextTime)
+            this._reminderNextTime.text = times && next ? formatClockTime(times[next]) : '—';
+        if (this._reminderNextIn) {
+            const remaining = Number(minutesUntilNext);
+            this._reminderNextIn.text = !times || !next ? ''
+                : remaining >= 24 * 60 ? 'tomorrow'
+                    : remaining >= 60 ? `in ${Math.floor(remaining / 60)} h ${remaining % 60} min`
+                        : `in ${remaining} min`;
+        }
         for (const row of this._reminderRows || []) {
             const state = !times ? null
-                : next === row.name ? 'next'
+                : next === row.name && minutesUntilNext < 24 * 60 ? 'next'
                     : times[row.name] <= minutes ? 'passed' : null;
+            for (const suffix of ['next', 'passed']) {
+                const className = `perdana-island__prayer-cell--${suffix}`;
+                if (state === suffix)
+                    row.cell.add_style_class_name(className);
+                else
+                    row.cell.remove_style_class_name(className);
+            }
             this._stylePrayerLabel(row.nameLabel, 'perdana-island__prayer-name', state);
             this._stylePrayerLabel(row.timeLabel, 'perdana-island__prayer-time', state);
-            if (times)
-                row.timeLabel.text = formatClockTime(times[row.name]);
+            row.timeLabel.text = times ? formatClockTime(times[row.name]) : '—';
         }
         const summary = this._waterSummary(now);
+        if (this._reminderWaterTabLabel)
+            this._reminderWaterTabLabel.text = this._waterTabLabel(summary.value);
         if (this._reminderWaterCaption)
             this._reminderWaterCaption.text = summary.caption;
         if (this._reminderWaterValue)
             this._reminderWaterValue.text = summary.value;
         if (this._reminderWaterDetail)
             this._reminderWaterDetail.text = summary.detail;
+        if (this._reminderWaterFill)
+            this._reminderWaterFill.set_size(
+                Math.max(0, Math.round(this._reminderWaterTrackWidth * summary.progress)),
+                4
+            );
     }
 
     _stylePrayerLabel(label, base, state) {
@@ -5081,6 +5756,12 @@ export default class PerdanaIslandExtension extends Extension {
             this._renderClipboardPage(body);
         else if (key === 'today')
             this._renderTodayPage(body);
+        else if (key === 'summary')
+            this._renderSummaryPage(body);
+        else if (key === 'shelfsegment')
+            this._renderShelfSegment(body);
+        else if (key === 'messages')
+            this._renderMessagesPage(body);
         else if (key === 'notifications')
             this._renderNotificationsPage(body);
         else if (key === 'settings')
@@ -5121,20 +5802,15 @@ export default class PerdanaIslandExtension extends Extension {
 
     _renderShelfPage(body) {
         const cardWidth = this._pageWidth();
-        const cardHeight = this._bodyHeight() - 8;
+        const cardTop = 8;
+        const cardHeight = this._bodyHeight() - cardTop - 8;
         const card = new St.Widget({
             layout_manager: new Clutter.FixedLayout(),
             style_class: 'perdana-island__shelf-card',
         });
         const view = this._preferences.shelfView;
-        const titleText = this._shelfItems.length > MAX_SHELF_ITEMS
-            ? `${MAX_SHELF_ITEMS} of ${this._shelfItems.length} files`
-            : `${this._shelfItems.length} ${this._shelfItems.length === 1 ? 'file' : 'files'}`;
         const compactControls = cardWidth < 480;
-        const shelfTitle = makeLabel(
-            this._shelfNotice || (this._shelfItems.length ? titleText : 'Shelf'),
-            'perdana-island__shelf-title'
-        );
+        this._renderShelfSegment(card);
         const addWidth = compactControls ? 72 : 86;
         const folderWidth = 30;
         const captureWidth = 30;
@@ -5145,9 +5821,6 @@ export default class PerdanaIslandExtension extends Extension {
             ? addX - buttonGap - folderWidth
             : addX - buttonGap - captureWidth - buttonGap - folderWidth;
         const viewX = folderX - buttonGap - viewWidth;
-        const titleWidth = Math.max(0, Math.min(130, viewX - 18));
-        place(card, shelfTitle, 12, 12, titleWidth, 22);
-
         const viewGroup = new St.BoxLayout({
             style_class: 'perdana-island__shelf-view-toggle',
             y_align: Clutter.ActorAlign.CENTER,
@@ -5221,7 +5894,7 @@ export default class PerdanaIslandExtension extends Extension {
             ), 12, 56, cardWidth - 24, 24);
         } else {
             const scroll = new St.ScrollView({
-                overlay_scrollbars: true,
+                overlay_scrollbars: false,
                 style_class: 'perdana-island__shelf-scroll',
             });
             scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
@@ -5257,7 +5930,7 @@ export default class PerdanaIslandExtension extends Extension {
             scroll.add_child(content);
             place(card, scroll, 8, 46, cardWidth - 16, cardHeight - 54);
         }
-        place(body, card, 0, 4, cardWidth, cardHeight);
+        place(body, card, 0, cardTop, cardWidth, cardHeight);
     }
 
     _createShelfFileButton(item, view, width, height) {
@@ -5330,24 +6003,54 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _renderClipboardPage(body) {
-        place(body, makeLabel('Clipboard', 'perdana-island__todo-heading'), 0, 5, 240, 22);
-        const hint = this._clipboardNotice || 'Local history while enabled · email/link masked';
+        const cardWidth = this._pageWidth();
+        const cardTop = 8;
+        const cardHeight = this._bodyHeight() - cardTop - 8;
+        const card = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            style_class: 'perdana-island__shelf-card perdana-island__clipboard-card',
+        });
+        this._renderShelfSegment(card);
+        const armed = this._clearClipboardArmed();
+        place(card, makeTextButton(armed ? 'Confirm' : 'Clear', 'Clear clipboard history',
+            () => this._clearClipboardPressed(),
+            `perdana-island__clipboard-action${armed ? ' perdana-island__clipboard-action--armed' : ''}`),
+            cardWidth - 82, 8, 72, 28);
+        const hint = this._clipboardNotice || `${this._clipboardItems.length} recent ${this._clipboardItems.length === 1 ? 'copy' : 'copies'} · email and links masked`;
         const hintStyle = this._clipboardNotice
             ? 'perdana-island__clipboard-notice'
             : 'perdana-island__muted';
-        place(body, makeLabel(hint, hintStyle), 244, 7, this._pageWidth() - 244, 20);
+        place(card, makeLabel(hint, hintStyle), 210, 12, Math.max(0, cardWidth - 310), 18);
         if (!this._clipboardItems.length) {
-            place(body, makeLabel('Copy text while the extension is enabled', 'perdana-island__empty-media'), 0, 66, this._pageWidth(), 24);
+            place(card, makeLabel('Copy text while the extension is enabled', 'perdana-island__empty-media'),
+                0, 76, cardWidth, 24);
+            place(body, card, 0, cardTop, cardWidth, cardHeight);
             return;
         }
-        this._clipboardItems.slice(0, 4).forEach((item, index) => {
+        const clipScroll = new St.ScrollView({
+            overlay_scrollbars: false,
+            style_class: 'perdana-island__clipboard-scroll',
+        });
+        clipScroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        clipScroll.set_position(8, 44);
+        clipScroll.set_size(cardWidth - 16, Math.max(0, cardHeight - 52));
+        const clipListWidth = Math.max(1, cardWidth - 36);
+        const visibleItems = this._clipboardItems.slice(0, CLIPBOARD_LIMIT);
+        const clipList = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            style_class: 'perdana-island__clip-list',
+        });
+        clipList.set_size(clipListWidth, Math.max(1, visibleItems.length * 34));
+        visibleItems.forEach(item => {
             const preview = maskClipboardPreview(item);
             const hasMaskedValue = preview !== item;
             const row = new St.BoxLayout({style_class: 'perdana-island__clip-row'});
+            row.set_size(clipListWidth, 32);
+            row.x_expand = true;
             const contents = new St.BoxLayout({style_class: 'perdana-island__clip-contents'});
             contents.add_child(new St.Icon({icon_name: 'edit-copy-symbolic', style_class: 'perdana-island__icon'}));
             const label = makeLabel(preview, 'perdana-island__clip-text');
-            label.clutter_text.max_width = Math.max(0, this._pageWidth() - 90);
+            label.clutter_text.max_width = Math.max(0, clipListWidth - 92);
             label.x_expand = true;
             contents.add_child(label);
             contents.x_expand = true;
@@ -5362,6 +6065,7 @@ export default class PerdanaIslandExtension extends Extension {
                     : 'Copy text again',
             });
             button.x_expand = true;
+            button.set_height(32);
             button.connect('clicked', () => {
                 St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, item);
             });
@@ -5373,8 +6077,11 @@ export default class PerdanaIslandExtension extends Extension {
                 () => this._deleteClipboardItem(item),
                 'perdana-island__clip-delete'
             ));
-            place(body, row, 0, 30 + index * 34, this._pageWidth(), 32);
+            clipList.add_child(row);
         });
+        clipScroll.add_child(clipList);
+        card.add_child(clipScroll);
+        place(body, card, 0, cardTop, cardWidth, cardHeight);
     }
 
     _renderTodayPage(body) {
@@ -5458,102 +6165,1576 @@ export default class PerdanaIslandExtension extends Extension {
         this._updateTodayMetrics();
     }
 
-    _renderNotificationsPage(body) {
-        const contentWidth = this._pageWidth();
-        const cardWidth = contentWidth - 18;
-        const visibleItems = this._visibleNotifications();
-        place(body, makeLabel('Notifications', 'perdana-island__todo-heading'), 0, 3, 220, 22);
-        const clearButton = makeTextButton('Clear', 'Clear notifications', () => this._clearNotifications(),
-            'perdana-island__notification-clear');
-        clearButton.reactive = this._notificationItems.length > 0;
-        clearButton.opacity = this._notificationItems.length > 0 ? 255 : 110;
-        place(body, clearButton, contentWidth - 58, 0, 58, 26);
+    _formatMmSs(seconds) {
+        const total = Math.max(0, Math.floor(seconds));
+        return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+    }
 
-        if (!visibleItems.length) {
-            const emptyText = this._notificationItems.length
-                ? 'All app sources are turned off' : 'No notifications yet';
-            place(body, makeLabel(emptyText, 'perdana-island__empty-media'), 0, 66, contentWidth, 24);
+    _makeSummaryIcon(kind) {
+        const styleClass = kind === 'lyrics'
+            ? 'perdana-island__summary-lyrics-icon'
+            : 'perdana-island__summary-row-icon';
+        const icon = new St.DrawingArea({style_class: styleClass});
+        icon.connect('repaint', area => {
+            const [width, height] = area.get_surface_size();
+            if (width <= 0 || height <= 0)
+                return;
+            const color = hexColorToRgb(this._preferences?.accentColor || DEFAULT_ACCENT_COLOR);
+            const cr = area.get_context();
+            cr.scale(width / 24, height / 24);
+            cr.setLineWidth(1.7);
+            cr.setLineCap(1);
+            cr.setLineJoin(1);
+            cr.setSourceRGBA(color[0], color[1], color[2], 1);
+
+            if (kind === 'focus') {
+                cr.arc(12, 13, 7.5, 0, Math.PI * 2);
+                cr.moveTo(12, 9);
+                cr.lineTo(12, 13);
+                cr.lineTo(15, 14.8);
+                cr.moveTo(9.5, 2.7);
+                cr.lineTo(14.5, 2.7);
+            } else if (kind === 'tasks') {
+                cr.arc(12, 12, 8.5, 0, Math.PI * 2);
+                cr.moveTo(8.2, 12.1);
+                cr.lineTo(10.7, 14.6);
+                cr.lineTo(15.9, 9.4);
+            } else if (kind === 'lyrics') {
+                cr.moveTo(6, 6.5);
+                cr.lineTo(18, 6.5);
+                cr.moveTo(6, 10.5);
+                cr.lineTo(18, 10.5);
+                cr.moveTo(6, 14.5);
+                cr.lineTo(16, 14.5);
+                cr.moveTo(6, 18.5);
+                cr.lineTo(13, 18.5);
+            } else {
+                cr.moveTo(5, 5.5);
+                cr.lineTo(19, 5.5);
+                cr.curveTo(20.4, 5.5, 21, 6.1, 21, 7.5);
+                cr.lineTo(21, 14.8);
+                cr.curveTo(21, 16.2, 20.3, 17, 18.8, 17);
+                cr.lineTo(12, 17);
+                cr.lineTo(7.5, 20.2);
+                cr.lineTo(7.5, 17);
+                cr.lineTo(5, 17);
+                cr.curveTo(3.6, 17, 3, 16.3, 3, 14.8);
+                cr.lineTo(3, 7.8);
+                cr.curveTo(3, 6.2, 3.8, 5.5, 5, 5.5);
+                cr.closePath();
+            }
+            cr.stroke();
+            cr.$dispose();
+        });
+        icon.set_size(18, 18);
+        this._summaryIconActors.push(icon);
+        return icon;
+    }
+
+    _renderSummaryPage(body) {
+        const width = this._pageWidth();
+        const gap = 16;
+        const leftWidth = Math.round((width - gap) * (1.06 / 2.06));
+        const rightX = leftWidth + gap;
+        const rightWidth = width - rightX;
+        const contentTop = 6;
+        const bodyHeight = this._bodyHeight() - contentTop;
+        const player = this._getSelectedPlayer();
+        const metadata = player ? this._getMetadata(player.proxy) : null;
+
+        // Match the preview's compact player card: cover, metadata, current
+        // lyric, seek bar, and transport controls all stay in one fixed card.
+        const musicCard = new St.Widget({
+            layout_manager: new Clutter.FixedLayout(),
+            reactive: true,
+            style_class: 'perdana-island__summary-card',
+        });
+        place(body, musicCard, 0, contentTop, leftWidth, bodyHeight);
+        if (player && metadata) {
+            this._summaryMediaBody = new St.Widget({layout_manager: new Clutter.FixedLayout()});
+            this._summaryMediaEmpty = null;
+            place(musicCard, this._summaryMediaBody, 0, 0, leftWidth, bodyHeight);
+            const artwork = new St.Widget({
+                layout_manager: new Clutter.BinLayout(),
+                clip_to_allocation: true,
+                style_class: 'perdana-island__album-art perdana-island__summary-art',
+            });
+            const artworkIcon = new St.Icon({
+                icon_name: 'audio-x-generic-symbolic',
+                style_class: 'perdana-island__album-art-icon',
+            });
+            artwork.add_child(artworkIcon);
+            const localArt = this._localArtIcon(metadata.artUrl);
+            if (localArt)
+                artworkIcon.gicon = localArt;
+            this._loadArtwork(artwork, artworkIcon, metadata.artUrl, 46, 11);
+            place(this._summaryMediaBody, artwork, 11, 11, 46, 46);
+
+            this._summaryTitle = makeLabel(metadata.title || 'Unknown title',
+                'perdana-island__summary-title');
+            this._summaryTitle.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            this._summaryArtist = makeLabel(metadata.artist || '', 'perdana-island__summary-artist');
+            this._summaryArtist.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            const equalizerX = leftWidth - 66;
+            const metadataWidth = Math.max(40, equalizerX - 76);
+            place(this._summaryMediaBody, this._summaryTitle, 68, 12, metadataWidth, 18);
+            place(this._summaryMediaBody, this._summaryArtist, 68, 32, metadataWidth, 16);
+
+            const equalizer = this._makeEqualizer();
+            equalizer.add_style_class_name('perdana-island__summary-equalizer');
+            equalizer.visible = this._isPlaying();
+            this._mediaEqualizer = equalizer;
+            place(this._summaryMediaBody, equalizer, equalizerX, 25, 22, 18);
+            const lyricsLink = new St.Button({
+                child: this._makeSummaryIcon('lyrics'),
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: 'perdana-button perdana-island__summary-lyrics-link',
+                accessible_name: 'Open synchronized lyrics',
+            });
+            lyricsLink.connect('clicked', () => this._selectPage('lyrics'));
+            attachButtonMotion(lyricsLink, {hoverScale: 1.07, pressScale: 0.93});
+            place(this._summaryMediaBody, lyricsLink, leftWidth - 38, 20, 26, 26);
+
+            this._summaryLyric = makeLabel('', 'perdana-island__summary-lyric');
+            this._summaryLyric.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            place(this._summaryMediaBody, this._summaryLyric, 12, 62, leftWidth - 24, 18);
+
+            this._mediaPositionLabel = makeLabel('0:00', 'perdana-island__summary-time');
+            this._mediaDurationLabel = makeLabel('0:00', 'perdana-island__summary-time');
+            this._mediaDurationLabel.clutter_text.x_align = Clutter.ActorAlign.END;
+            place(this._summaryMediaBody, this._mediaPositionLabel, 12, 84, 30, 14);
+            place(this._summaryMediaBody, this._mediaDurationLabel, leftWidth - 42, 84, 30, 14);
+            this._createProgressControl(this._summaryMediaBody, 46, 84, leftWidth - 92);
+
+            const playback = this._getProperty(player.proxy, 'PlaybackStatus') || 'Paused';
+            const isPlaying = playback === 'Playing';
+            const center = Math.round(leftWidth / 2);
+            place(this._summaryMediaBody, this._mediaButton(
+                'media-skip-backward-symbolic', 'Previous track', player.proxy, 'Previous',
+                this._canControl(player.proxy, 'CanGoPrevious')
+            ), center - 51, 112, 30, 30);
+            place(this._summaryMediaBody, this._mediaButton(
+                isPlaying ? 'media-playback-pause-symbolic' : 'media-playback-start-symbolic',
+                isPlaying ? 'Pause' : 'Play', player.proxy, isPlaying ? 'Pause' : 'Play',
+                this._canControl(player.proxy, isPlaying ? 'CanPause' : 'CanPlay'), true
+            ), center - 18, 109, 36, 36);
+            place(this._summaryMediaBody, this._mediaButton(
+                'media-skip-forward-symbolic', 'Next track', player.proxy, 'Next',
+                this._canControl(player.proxy, 'CanGoNext')
+            ), center + 21, 112, 30, 30);
+            this._ensureLyrics(metadata, player.name);
+            this._updateSummaryMedia();
+        } else {
+            this._summaryMediaBody = null;
+            this._summaryTitle = null;
+            this._summaryArtist = null;
+            this._summaryLyric = null;
+            const empty = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                style_class: 'perdana-island__summary-empty',
+            });
+            const emptyIcon = new St.Icon({
+                icon_name: 'audio-x-generic-symbolic',
+                style_class: 'perdana-island__summary-empty-icon',
+            });
+            this._summaryMediaEmpty = empty;
+            musicCard.add_child(empty);
+            empty.set_position(0, 0);
+            empty.set_size(leftWidth, bodyHeight);
+            const emptyGroupHeight = 70;
+            const emptyTop = Math.max(0, Math.round((bodyHeight - emptyGroupHeight) / 2));
+            place(empty, emptyIcon, Math.round((leftWidth - 26) / 2), emptyTop, 26, 26);
+            const emptyTitle = makeLabel('Nothing playing', 'perdana-island__summary-empty-title');
+            emptyTitle.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+            place(empty, emptyTitle, 12, emptyTop + 32, leftWidth - 24, 18);
+            const emptySubtitle = makeLabel('Start a player, or open Lyrics', 'perdana-island__summary-empty-sub');
+            emptySubtitle.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+            place(empty, emptySubtitle, 12, emptyTop + 52, leftWidth - 24, 16);
+            musicCard.connect('button-press-event', () => {
+                this._selectPage('lyrics');
+                return Clutter.EVENT_STOP;
+            });
+        }
+
+        // Right: priorities, each opens its page
+        const openTasks = this._tasks.filter(task => !task.done);
+        const chatItems = this._notificationItems.filter(item => isChatItem(item)
+            && this._isNotificationSourceEnabled(item.appKey));
+        const latestMessage = chatItems.find(item => !item.read) || chatItems[0];
+        const totalTasks = this._tasks.length;
+        const completedTasks = Math.max(0, totalTasks - openTasks.length);
+        const rows = [
+            {key: 'focus', title: 'Focus', icon: 'focus',
+                sub: this._focusSource ? `${this._formatMmSs(this._focusRemaining)} · ${this._focusModeLabel()}` : '25:00 · Focus',
+                value: this._focusSource ? 'Running' : 'Ready', live: Boolean(this._focusSource)},
+            {key: 'tasks', title: 'To-do', icon: 'tasks',
+                sub: openTasks[0]?.text || 'Your list is clear', value: `${completedTasks}/${totalTasks}`,
+                live: openTasks.length > 0},
+            {key: 'messages', title: 'Messages', icon: 'messages',
+                sub: latestMessage ? `${latestMessage.title} · ${latestMessage.app}` : 'No new messages',
+                value: `${chatItems.filter(item => !item.read).length} new`,
+                live: Boolean(latestMessage && !latestMessage.read)},
+        ];
+        const rowGap = 4;
+        const rowHeight = Math.max(1, (bodyHeight - rowGap * (rows.length - 1)) / rows.length);
+        this._summaryRows = {};
+        rows.forEach((row, index) => {
+            const content = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+            });
+            content.set_size(rightWidth, rowHeight);
+            const card = new St.Button({
+                child: content,
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: `perdana-button perdana-island__summary-row${row.live ? ' perdana-island__summary-row--live' : ''}`,
+                accessible_name: `${row.title}: ${row.sub}. ${row.value}`,
+            });
+            const y = contentTop + index * (rowHeight + rowGap);
+            place(body, card, rightX, y, rightWidth, rowHeight);
+            const icon = this._makeSummaryIcon(row.icon);
+            place(content, icon, 13, Math.round((rowHeight - 18) / 2), 18, 18);
+            const title = makeLabel(row.title, 'perdana-island__summary-row-title');
+            title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            place(content, title, 42,
+                Math.round(rowHeight / 2) - 15, Math.max(0, rightWidth - 132), 16);
+            const subtitle = makeLabel(row.sub, 'perdana-island__summary-row-sub');
+            subtitle.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            place(content, subtitle, 42,
+                Math.round(rowHeight / 2) + 1, Math.max(0, rightWidth - 132), 15);
+            const value = makeLabel(row.value, 'perdana-island__summary-row-value');
+            value.clutter_text.x_align = Clutter.ActorAlign.END;
+            place(content, value, rightWidth - 79, Math.round((rowHeight - 16) / 2), 67, 16);
+            this._summaryRows[row.key] = {title, subtitle, value};
+            card.connect('clicked', () => {
+                this._activePage = row.key;
+                this._renderPanel();
+            });
+        });
+        this._updateSummaryRows();
+    }
+
+    _updateSummaryRows() {
+        const focus = this._summaryRows?.focus;
+        if (focus) {
+            const remaining = this._focusSource && this._focusDeadline
+                ? Math.max(0, Math.ceil(this._focusDeadline - GLib.get_monotonic_time() / MICROSECONDS_PER_SECOND))
+                : this._focusRemaining;
+            focus.subtitle.text = `${this._formatMmSs(remaining)} · ${this._focusModeLabel()}`;
+            focus.value.text = this._focusSource ? 'Running'
+                : this._focusWasStarted && remaining > 0 ? 'Paused' : 'Ready';
+        }
+
+        const tasks = this._summaryRows?.tasks;
+        if (tasks) {
+            const pending = this._tasks.filter(task => !task.done);
+            const completed = Math.max(0, this._tasks.length - pending.length);
+            tasks.subtitle.text = pending[0]?.text || (this._tasks.length ? 'All tasks done' : 'No tasks yet');
+            tasks.value.text = `${completed}/${this._tasks.length}`;
+        }
+
+        const messages = this._summaryRows?.messages;
+        if (messages) {
+            const chats = this._notificationItems.filter(item => isChatItem(item)
+                && this._isNotificationSourceEnabled(item.appKey));
+            const latest = chats.find(item => !item.read) || chats[0];
+            messages.subtitle.text = latest ? `${latest.title} · ${latest.app}` : 'No new messages';
+            messages.value.text = `${chats.filter(item => !item.read).length} new`;
+        }
+    }
+
+    _updateSummaryMedia() {
+        const player = this._getSelectedPlayer();
+        const hasPlayer = Boolean(player);
+        if (this._summaryMediaBody)
+            this._summaryMediaBody.visible = hasPlayer;
+        if (this._summaryMediaEmpty) {
+            this._summaryMediaEmpty.visible = !hasPlayer;
             return;
         }
+        if (!this._summaryMediaBody)
+            return;
+        if (!player)
+            return;
+        const metadata = this._getMetadata(player.proxy);
+        if (this._summaryTitle)
+            this._summaryTitle.text = metadata.title || player.name.replace(MPRIS_PREFIX, '');
+        if (this._summaryArtist)
+            this._summaryArtist.text = metadata.artist || '';
+        if (this._summaryLyric) {
+            const lyric = this._currentLyricsText(this._positionForPlayer(player));
+            this._summaryLyric.text = lyric
+                || (this._lyricsStatus === 'Finding lyrics…' ? 'Finding lyrics…'
+                    : this._lyricsStatus === 'No lyrics found' ? 'No synced lyrics found'
+                        : 'Synced lyric appears here');
+        }
+        if (this._mediaEqualizer) {
+            const playing = this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing';
+            this._mediaEqualizer.visible = playing;
+            this._setEqualizerPlaying(this._mediaEqualizer,
+                Boolean(playing && this._expanded && this._activePage === 'summary'));
+        }
+    }
+
+    _clipboardVisible() {
+        return this._activePage === 'clipboard'
+            || (this._activePage === 'shelf' && this._shelfSegment === 'clipboard');
+    }
+
+    _renderShelfSegment(body) {
+        const segment = this._shelfSegment === 'clipboard' ? 'clipboard' : 'files';
+        const tabs = new St.BoxLayout({style_class: 'perdana-island__shelf-tabs'});
+        const makeTab = (key, label, selected) => {
+            const text = makeLabel(label, 'perdana-island__shelf-tab-label');
+            const button = new St.Button({
+                child: text,
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: `perdana-button perdana-button--segment perdana-island__shelf-tab${selected ? ' perdana-button--segment-active perdana-island__shelf-tab--active' : ''}`,
+                accessible_name: `${key === 'files' ? 'Shelf files' : 'Clipboard history'}${selected ? ', selected' : ''}`,
+            });
+            button.connect('clicked', () => {
+                this._shelfSegment = key;
+                if (this._activePage === 'clipboard' && key === 'files')
+                    this._activePage = 'shelf';
+                this._renderPanel();
+                if (key === 'clipboard')
+                    this._captureClipboard();
+            });
+            attachButtonMotion(button, {hoverScale: 1.025, pressScale: 0.98});
+            return {button, text};
+        };
+        const filesTab = makeTab('files', `Files ${this._shelfItems.length}`, segment === 'files');
+        const clipboardTab = makeTab('clipboard', `Clipboard ${this._clipboardItems.length}`, segment === 'clipboard');
+        this._shelfFilesCountLabel = filesTab.text;
+        this._shelfClipboardCountLabel = clipboardTab.text;
+        filesTab.button.set_size(78, 28);
+        clipboardTab.button.set_size(104, 28);
+        tabs.add_child(filesTab.button);
+        tabs.add_child(clipboardTab.button);
+        place(body, tabs, 10, 8, 190, 28);
+        return segment;
+    }
+
+    _updateClipboardIndicator() {
+        if (this._shelfClipboardCountLabel)
+            this._shelfClipboardCountLabel.text = `Clipboard ${this._clipboardItems.length}`;
+    }
+
+    _startDownloadWatch() {
+        if (this._downloadWatch)
+            return;
+        // Fall back to ~/Downloads when the desktop does not register the folder
+        const dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)
+            || GLib.build_filenamev([GLib.get_home_dir(), 'Downloads']);
+        const file = Gio.File.new_for_path(dir);
+        this._downloadWatch = {file, monitor: null, signal: 0, timer: 0};
+        // Re-read the folder every second as well, so a finished download is noticed even
+        // when the monitor does not deliver the rename promptly.
+        this._downloadWatch.timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+            if (!this._downloadWatch)
+                return GLib.SOURCE_REMOVE;
+            this._syncDownloadActivities();
+            return GLib.SOURCE_CONTINUE;
+        });
+        try {
+            this._downloadWatch.monitor = file.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
+            this._downloadWatch.signal = this._downloadWatch.monitor.connect('changed', () => this._syncDownloadActivities());
+        } catch (_error) {
+            this._downloadWatch.monitor = null;
+        }
+        this._syncDownloadActivities();
+    }
+
+    _stopDownloadWatch() {
+        const watch = this._downloadWatch;
+        if (!watch)
+            return;
+        if (watch.timer)
+            GLib.source_remove(watch.timer);
+        if (watch.monitor) {
+            if (watch.signal)
+                watch.monitor.disconnect(watch.signal);
+            watch.monitor.cancel();
+        }
+        this._downloadWatch = null;
+    }
+
+    _connectActivityService() {
+        if (this._activityDbus)
+            return;
+        const api = {
+            StartActivity: (id, title, subtitle, progress, icon) => {
+                this._startActivity({
+                    id: `app:${id}`,
+                    title,
+                    sub: subtitle,
+                    progress,
+                    icon,
+                    source: 'app',
+                });
+                return [];
+            },
+            UpdateActivity: (id, progress, subtitle) => {
+                this._updateActivity(`app:${id}`, {progress, sub: subtitle});
+                return [];
+            },
+            FinishActivity: (id, success) => {
+                this._finishActivity(`app:${id}`, success);
+                return [];
+            },
+            ListActivities: () => new GLib.Variant('(s)', [JSON.stringify(this._activitySnapshot())]),
+        };
+        try {
+            this._activityDbus = Gio.DBusExportedObject.wrapJSObject(ACTIVITY_DBUS_XML, api);
+            this._activityDbus.export(Gio.DBus.session, ACTIVITY_DBUS_PATH);
+            this._activityDbusOwnerId = Gio.bus_own_name_on_connection(
+                Gio.DBus.session,
+                ACTIVITY_DBUS_NAME,
+                Gio.BusNameOwnerFlags.NONE,
+                null,
+                null
+            );
+            this._activityApi = api;
+        } catch (error) {
+            logError(error, 'Perdana Island could not export its Activity D-Bus interface');
+            this._activityDbus = null;
+            this._activityDbusOwnerId = 0;
+            this._activityApi = null;
+        }
+    }
+
+    _disconnectActivityService() {
+        if (this._activityDbusOwnerId) {
+            Gio.bus_unown_name(this._activityDbusOwnerId);
+            this._activityDbusOwnerId = 0;
+        }
+        if (this._activityDbus) {
+            try {
+                this._activityDbus.unexport();
+            } catch (_error) {
+                // Shell shutdown also closes the session connection.
+            }
+            this._activityDbus = null;
+        }
+        this._activityApi = null;
+        for (const source of this._activityExpirySources.values())
+            GLib.source_remove(source);
+        this._activityExpirySources.clear();
+    }
+
+    _startActivity(raw, notify = true) {
+        const externalId = cleanActivityId(raw?.id);
+        if (!externalId)
+            return false;
+        const id = raw?.source === 'download' ? externalId : `app:${externalId.replace(/^app:/, '')}`;
+        const now = Date.now();
+        let item = this._activities.find(activity => activity.id === id);
+        const structural = !item || item.state !== 'running';
+        const appActivityCount = this._activities.filter(activity => activity.source !== 'download').length;
+        if (!item && raw?.source !== 'download' && appActivityCount >= ACTIVITY_LIMIT) {
+            const removable = this._activities.find(activity => activity.state !== 'running'
+                && activity.source !== 'download');
+            if (!removable)
+                return false;
+            this._dismissActivity(removable, false);
+        }
+        if (!item) {
+            item = {id};
+            this._activities.push(item);
+        }
+        this._clearActivityExpiry(id);
+        Object.assign(item, {
+            title: cleanActivityText(raw?.title) || externalId,
+            sub: cleanActivityText(raw?.sub ?? raw?.subtitle),
+            icon: cleanActivityIcon(raw?.icon),
+            progress: normalizeProgress(raw?.progress),
+            bytes: Math.max(0, Number(raw?.bytes ?? raw?.receivedBytes) || 0),
+            total: Math.max(0, Number(raw?.total ?? raw?.totalBytes) || 0),
+            source: raw?.source === 'download' ? 'download' : 'app',
+            state: 'running',
+            startedAt: structural ? now : item.startedAt,
+            updatedAt: now,
+            doneAt: 0,
+            path: raw?.path || '',
+        });
+        if (notify)
+            this._refreshActivityUi(structural);
+        return true;
+    }
+
+    _updateActivity(id, changes = {}) {
+        const key = cleanActivityId(id);
+        const item = this._activities.find(activity => activity.id === key);
+        if (!item || item.state !== 'running')
+            return false;
+        if ('progress' in changes)
+            item.progress = normalizeProgress(changes.progress);
+        if ('sub' in changes || 'subtitle' in changes)
+            item.sub = cleanActivityText(changes.sub ?? changes.subtitle);
+        const bytes = Number(changes.bytes ?? changes.receivedBytes);
+        if (Number.isFinite(bytes))
+            item.bytes = Math.max(0, bytes);
+        const total = Number(changes.total ?? changes.totalBytes);
+        if (Number.isFinite(total))
+            item.total = Math.max(0, total);
+        item.updatedAt = Date.now();
+        this._refreshActivityUi(false);
+        return true;
+    }
+
+    _finishActivity(id, success) {
+        const key = cleanActivityId(id);
+        const item = this._activities.find(activity => activity.id === key);
+        if (!item || item.state !== 'running')
+            return false;
+        item.state = success ? 'done' : 'failed';
+        item.doneAt = Date.now();
+        item.updatedAt = item.doneAt;
+        if (success)
+            item.progress = 1;
+        if (item.source !== 'download')
+            this._scheduleActivityExpiry(item.id);
+        this._refreshActivityUi(true);
+        return true;
+    }
+
+    _scheduleActivityExpiry(id) {
+        this._clearActivityExpiry(id);
+        const source = GLib.timeout_add(GLib.PRIORITY_DEFAULT, APP_ACTIVITY_EXPIRY_MS, () => {
+            this._activityExpirySources.delete(id);
+            const item = this._activities.find(activity => activity.id === id);
+            if (item && item.source !== 'download' && item.state !== 'running')
+                this._dismissActivity(item);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._activityExpirySources.set(id, source);
+    }
+
+    _clearActivityExpiry(id) {
+        const source = this._activityExpirySources.get(id);
+        if (!source)
+            return;
+        GLib.source_remove(source);
+        this._activityExpirySources.delete(id);
+    }
+
+    _activitySnapshot() {
+        return this._activities.map(item => ({
+            id: item.id,
+            title: item.title,
+            subtitle: item.sub,
+            icon: item.icon,
+            progress: item.progress,
+            receivedBytes: item.bytes,
+            totalBytes: item.total,
+            source: item.source,
+            state: item.state,
+            startedAt: item.startedAt,
+            updatedAt: item.updatedAt,
+            finishedAt: item.doneAt,
+        }));
+    }
+
+    _refreshActivityUi(structural) {
+        if (this._uiActorsAlive)
+            this._updateCollapsedLabel();
+        if (structural) {
+            try {
+                this._activityDbus?.emit_signal('ActivityChanged', null);
+            } catch (_error) {
+                // A lost D-Bus connection must not interrupt the UI.
+            }
+        }
+        this._renderActivityIfVisible();
+    }
+
+    _syncDownloadActivities() {
+        if (!this._downloadWatch?.file)
+            return;
+        const seen = new Map();
+        let scanned = false;
+        try {
+            const enumerator = this._downloadWatch.file.enumerate_children(
+                'standard::name,standard::size,standard::type', Gio.FileQueryInfoFlags.NONE, null);
+            let info;
+            while ((info = enumerator.next_file(null)) !== null) {
+                const name = info.get_name();
+                const suffix = partialSuffix(name);
+                const aria2 = isAria2Control(name);
+                if (!suffix && !aria2)
+                    continue;
+                const finalName = downloadTitle(name);
+                if (!finalName || finalName.startsWith('.'))
+                    continue;
+                const record = seen.get(finalName) || {finalName, bytes: 0, total: 0, partialName: '', aria2Name: ''};
+                if (suffix) {
+                    record.partialName = name;
+                    record.bytes = Math.max(record.bytes, info.get_size());
+                }
+                if (aria2) {
+                    record.aria2Name = name;
+                    const controlFile = this._downloadWatch.file.get_child(name);
+                    try {
+                        const controlInfo = controlFile.query_info(
+                            'standard::size', Gio.FileQueryInfoFlags.NONE, null);
+                        if (controlInfo.get_size() <= 4096) {
+                            const [ok, contents] = controlFile.load_contents(null);
+                            if (ok)
+                                record.total = aria2TotalLength(contents) || 0;
+                        }
+                    } catch (_error) {
+                        record.total = 0;
+                    }
+                    try {
+                        const outputInfo = this._downloadWatch.file.get_child(finalName).query_info(
+                            'standard::size,standard::type', Gio.FileQueryInfoFlags.NONE, null);
+                        if (outputInfo.get_file_type() === Gio.FileType.REGULAR)
+                            record.bytes = Math.max(record.bytes, outputInfo.get_size());
+                    } catch (_error) {
+                        // aria2 creates the output file after the control file.
+                    }
+                }
+                seen.set(finalName, record);
+            }
+            enumerator.close(null);
+            scanned = true;
+        } catch (_error) {
+            // Keep the last known activities if Downloads cannot be read.
+        }
+        const now = Date.now();
+        let structuralChanged = false;
+        for (const [finalName, record] of seen) {
+            const id = `dl:${finalName}`;
+            const previous = this._activities.find(item => item.id === id);
+            if (!previous || previous.state !== 'running')
+                structuralChanged = true;
+            const elapsed = previous?.sampledAt ? Math.max(0.001, (now - previous.sampledAt) / 1000) : 0;
+            const speedBytes = previous && elapsed > 0 ? Math.max(0, record.bytes - previous.bytes) / elapsed : 0;
+            this._startActivity({
+                id,
+                title: finalName,
+                sub: record.total > 0 ? 'Downloading' : 'Download in progress',
+                icon: 'folder-download-symbolic',
+                bytes: record.bytes,
+                total: record.total,
+                progress: record.total > 0 ? record.bytes / record.total : null,
+                source: 'download',
+                path: GLib.build_filenamev([this._downloadWatch.file.get_path(), finalName]),
+            }, false);
+            const item = this._activities.find(activity => activity.id === id);
+            if (item) {
+                item.partialName = record.partialName;
+                item.aria2Name = record.aria2Name;
+                item.speedBytes = speedBytes;
+                item.sampledAt = now;
+                item.missingSince = 0;
+            }
+        }
+        if (!scanned)
+            return;
+        for (const item of this._activities) {
+            if (item.source === 'download' && item.state === 'running' && !seen.has(item.title)) {
+                const finalFile = this._downloadWatch.file.get_child(item.title);
+                if (finalFile.query_exists(null)) {
+                    item.state = 'done';
+                    item.doneAt = now;
+                    item.path = finalFile.get_path();
+                    item.progress = 1;
+                    item.total = Math.max(item.total, item.bytes);
+                    item.sub = 'Download complete';
+                    structuralChanged = true;
+                    try {
+                        item.bytes = finalFile.query_info(
+                            'standard::size', Gio.FileQueryInfoFlags.NONE, null
+                        ).get_size();
+                    } catch (_error) {
+                        // Keep the last partial-file size if the final entry is not readable yet.
+                    }
+                } else {
+                    if (!item.missingSince)
+                        item.missingSince = now;
+                    else if (now - item.missingSince > 3500)
+                        item.state = 'cancelled';
+                }
+            }
+        }
+        const cancelled = this._activities.filter(item => item.state === 'cancelled');
+        for (const item of cancelled) {
+            structuralChanged = true;
+            this._dismissActivity(item, false);
+        }
+        this._refreshActivityUi(structuralChanged);
+    }
+
+    _makeNotificationIcon(item, size, styleClass) {
+        const fallback = Gio.ThemedIcon.new('application-x-executable-symbolic');
+        let gicon = null;
+        if (item.appIconFile && GLib.file_test(item.appIconFile, GLib.FileTest.EXISTS)) {
+            try {
+                gicon = Gio.FileIcon.new(Gio.File.new_for_path(item.appIconFile));
+            } catch (_error) {
+                gicon = null;
+            }
+        }
+        if (!gicon && item.appIconName) {
+            try {
+                gicon = Gio.ThemedIcon.new(item.appIconName);
+            } catch (_error) {
+                gicon = null;
+            }
+        }
+        if (!gicon)
+            gicon = item.notification?.gicon || item.source?.icon || item.source?.app?.get_icon?.() || null;
+        return new St.Icon({
+            gicon: gicon || fallback,
+            fallback_gicon: fallback,
+            icon_size: size,
+            style_class: styleClass,
+        });
+    }
+
+    _notificationAge(item) {
+        const age = Math.max(0, Date.now() - (Number(item.receivedAt) || Date.now()));
+        if (age < 60_000)
+            return 'now';
+        if (age < 60 * 60_000)
+            return `${Math.floor(age / 60_000)}m`;
+        if (age < 24 * 60 * 60_000)
+            return `${Math.floor(age / (60 * 60_000))}h`;
+        return new Intl.DateTimeFormat('en-GB', {day: '2-digit', month: 'short'}).format(item.receivedAt);
+    }
+
+    _activateNotificationItem(item) {
+        if (!item)
+            return;
+        item.read = true;
+        this._updateSummaryRows();
+        if (this._expanded)
+            this._renderPanel();
+        try {
+            item.notification.activate();
+        } catch (error) {
+            logError(error, 'Perdana Island could not activate a notification');
+            try {
+                item.source.open();
+            } catch (_error) {
+                // The source may have disappeared after its notification was listed.
+            }
+        }
+        this._pinned = false;
+        this._setExpanded(false);
+    }
+
+    _getNotificationReplyAction(item) {
+        const actions = item?.notification?.actions;
+        if (!Array.isArray(actions))
+            return null;
+        return actions.find(action => /reply|respond|answer|balas|répond|responder|rispondi|antwort/i.test(
+            String(action?.label || '')
+        ) && typeof action?.activate === 'function') || null;
+    }
+
+    _activateNotificationReply(item, action) {
+        if (!item || !action || this._getNotificationReplyAction(item) !== action)
+            return;
+        item.read = true;
+        this._updateSummaryRows();
+        try {
+            // This invokes the reply action provided by the originating app.
+            // GNOME notifications do not expose a generic text-input reply API.
+            action.activate();
+        } catch (error) {
+            logError(error, 'Perdana Island could not activate the notification reply action');
+        }
+        if (this._expanded)
+            this._renderPanel();
+    }
+
+    _renderMessagesPage(body) {
+        const contentWidth = this._pageWidth();
+        const chats = this._notificationItems.filter(isChatItem)
+            .filter(item => this._isNotificationSourceEnabled(item.appKey));
+        const compactHeader = contentWidth < 300;
+        const groupsByKey = new Map();
+        for (const item of [...chats].sort((first, second) =>
+            (Number(second.receivedAt) || 0) - (Number(first.receivedAt) || 0))) {
+            const key = `${item.appKey || item.app}\u0000${item.title}`;
+            if (!groupsByKey.has(key))
+                groupsByKey.set(key, {key, sender: item.title, app: item.app, items: []});
+            groupsByKey.get(key).items.push(item);
+        }
+        const groups = [...groupsByKey.values()];
+        const unread = chats.filter(item => !item.read).length;
+        const header = new St.BoxLayout({
+            style_class: `perdana-island__messages-header${compactHeader
+                ? ' perdana-island__messages-header--compact' : ''}`,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        header.add_child(makeLabel('Messages', 'perdana-island__todo-heading'));
+        const unreadLabel = makeLabel(chats.length
+            ? (unread ? `${unread} unread` : 'All read') : 'No messages',
+        'perdana-island__messages-count');
+        unreadLabel.x_expand = true;
+        unreadLabel.x_align = Clutter.ActorAlign.END;
+        header.add_child(unreadLabel);
+        const markRead = makeTextButton(contentWidth >= 340
+            ? 'Mark all read' : compactHeader ? 'Read' : 'Mark read',
+            'Mark all messages as read', () => {
+            this._notificationItems.forEach(item => {
+                if (isChatItem(item) && this._isNotificationSourceEnabled(item.appKey))
+                    item.read = true;
+            });
+            this._updateSummaryRows();
+            this._renderPanel();
+        }, 'perdana-island__notification-clear');
+        const markReadWidth = contentWidth >= 340 ? 88 : compactHeader ? 48 : 70;
+        markRead.set_size(markReadWidth, 26);
+        header.add_child(markRead);
+        const clear = makeTextButton('Clear', 'Clear chat messages', () =>
+            this._clearNotifications(isChatItem), 'perdana-island__notification-clear');
+        clear.set_size(compactHeader ? 48 : 54, 26);
+        header.add_child(clear);
+        place(body, header, 0, 8, contentWidth, 28);
+
+        if (!groups.length) {
+            const empty = makeLabel('No chat messages yet', 'perdana-island__empty-media');
+            empty.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+            place(body, empty, 0, 43, contentWidth, this._bodyHeight() - 47);
+            return;
+        }
+        const rowHeight = 50;
+        const rowGap = 5;
+        const list = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            style_class: 'perdana-island__messages-list',
+        });
+        const listWidth = Math.max(1, contentWidth - 18);
+        const replyGroupCount = groups.filter(group => {
+            const latest = [...group.items].sort((first, second) =>
+                (Number(second.receivedAt) || 0) - (Number(first.receivedAt) || 0))[0];
+            return Boolean(this._getNotificationReplyAction(latest));
+        }).length;
+        list.set_size(listWidth,
+            groups.length * rowHeight + replyGroupCount * 27 + Math.max(0, groups.length - 1) * rowGap);
+        groups.forEach(group => {
+            const latest = [...group.items].sort((first, second) =>
+                (Number(second.receivedAt) || 0) - (Number(first.receivedAt) || 0))[0];
+            const groupUnread = group.items.filter(item => !item.read).length;
+            const row = new St.BoxLayout({
+                style_class: `perdana-island__message-row${groupUnread ? ' perdana-island__message-row--unread' : ''}`,
+                clip_to_allocation: true,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            row.set_size(listWidth, rowHeight);
+            row.add_child(this._makeNotificationIcon(latest, 26, 'perdana-island__message-icon'));
+            const copy = new St.BoxLayout({
+                orientation: Clutter.Orientation.VERTICAL,
+                style_class: 'perdana-island__message-copy',
+                clip_to_allocation: true,
+                x_expand: true,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            const top = new St.BoxLayout({
+                style_class: 'perdana-island__message-top',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            const sender = makeLabel(group.sender || group.app, 'perdana-island__message-sender');
+            sender.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            sender.clutter_text.line_wrap = false;
+            sender.x_expand = true;
+            sender.x_align = Clutter.ActorAlign.FILL;
+            top.add_child(sender);
+            const appLabel = makeLabel(group.app, 'perdana-island__message-app');
+            appLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            appLabel.clutter_text.line_wrap = false;
+            top.add_child(appLabel);
+            copy.add_child(top);
+            const messageBody = makeLabel(latest.body || latest.title || 'New message',
+                'perdana-island__message-body');
+            messageBody.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            messageBody.clutter_text.line_wrap = false;
+            messageBody.x_expand = true;
+            messageBody.x_align = Clutter.ActorAlign.FILL;
+            copy.add_child(messageBody);
+            row.add_child(copy);
+            const meta = new St.BoxLayout({
+                orientation: Clutter.Orientation.VERTICAL,
+                style_class: 'perdana-island__message-meta',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            meta.add_child(makeLabel(this._notificationAge(latest), 'perdana-island__message-time'));
+            if (groupUnread)
+                meta.add_child(makeLabel(String(groupUnread), 'perdana-island__message-badge'));
+            row.add_child(meta);
+            const button = new St.Button({
+                child: row,
+                can_focus: true,
+                reactive: true,
+                track_hover: true,
+                style_class: 'perdana-button perdana-island__message-button',
+                accessible_name: `Open ${group.app} message from ${group.sender}`,
+            });
+            button.set_size(listWidth, rowHeight);
+            button.x_expand = true;
+            button.connect('clicked', () => {
+                group.items.forEach(item => item.read = true);
+                this._activateNotificationItem(latest);
+            });
+            const entry = new St.BoxLayout({
+                orientation: Clutter.Orientation.VERTICAL,
+                style_class: 'perdana-island__message-entry',
+            });
+            entry.add_child(button);
+            const replyAction = this._getNotificationReplyAction(latest);
+            if (replyAction) {
+                const reply = new St.Button({
+                    child: makeLabel('Reply', 'perdana-island__message-reply-label'),
+                    can_focus: true,
+                    reactive: true,
+                    track_hover: true,
+                    style_class: 'perdana-button perdana-island__message-reply',
+                    accessible_name: `Reply to ${group.sender} in ${group.app}`,
+                });
+                reply.set_size(62, 24);
+                reply.x_align = Clutter.ActorAlign.END;
+                reply.connect('clicked', () => this._activateNotificationReply(latest, replyAction));
+                entry.add_child(reply);
+            }
+            list.add_child(entry);
+        });
+        const scroll = new St.ScrollView({
+            overlay_scrollbars: false,
+            style_class: 'perdana-island__notification-scroll',
+        });
+        scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        scroll.add_child(list);
+        place(body, scroll, 0, 43, contentWidth, Math.max(0, this._bodyHeight() - 47));
+    }
+
+    _renderActivityPanel(body, top = 52) {
+        const contentWidth = this._pageWidth();
+        const listWidth = Math.max(1, contentWidth - 12);
+        const running = this._activities.filter(item => item.state === 'running');
+        const finished = this._activities.filter(item => item.state === 'done' || item.state === 'failed');
+        const shown = running.concat(finished);
+        this._activityRows = new Map();
+        if (!shown.length) {
+            place(body, makeLabel('No downloads or app tasks right now', 'perdana-island__empty-media'),
+                0, top + 16, contentWidth, 24);
+            return;
+        }
+        const rowHeight = 54;
+        const rowGap = 5;
+        const list = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            style_class: 'perdana-island__activity-list',
+        });
+        list.set_size(listWidth, shown.length * (rowHeight + rowGap) - rowGap);
+        shown.forEach(item => {
+            const terminal = item.state !== 'running';
+            const complete = item.state === 'done';
+            const downloadable = item.source === 'download' && complete;
+            const row = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                reactive: terminal,
+                can_focus: terminal,
+                track_hover: terminal,
+                style_class: `perdana-island__activity-row${terminal ? ' perdana-island__activity-row--done' : ''}`,
+            });
+            row.set_size(listWidth, rowHeight);
+            row.accessible_name = terminal
+                ? downloadable ? `Download complete: ${item.title}. Press Enter to open and dismiss.`
+                    : `${complete ? 'Activity complete' : 'Activity stopped'}: ${item.title}. Press Enter to dismiss.`
+                : `${item.source === 'download' ? 'Downloading' : 'In progress'}: ${item.title}`;
+            const icon = new St.Icon({
+                icon_name: complete ? 'emblem-ok-symbolic'
+                    : item.state === 'failed' ? 'dialog-warning-symbolic' : cleanActivityIcon(item.icon),
+                icon_size: 16,
+                style_class: 'perdana-island__activity-icon',
+            });
+            const titleLabel = makeLabel(cleanActivityText(item.title, 80), 'perdana-island__activity-title');
+            titleLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            titleLabel.clutter_text.line_wrap = false;
+            const stateText = terminal
+                ? downloadable ? 'Complete · open' : complete ? 'Complete · dismiss' : 'Stopped · dismiss'
+                : item.source === 'download' ? formatActivityValue(item) : 'Running';
+            const stateLabel = makeLabel(stateText, 'perdana-island__activity-sub');
+            stateLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            stateLabel.clutter_text.line_wrap = false;
+            const detailLabel = makeLabel(terminal
+                ? item.source === 'download' ? `Download complete · ${formatBytes(item.bytes)}` : item.sub || 'Finished'
+                : formatActivityDetail(item), 'perdana-island__activity-sub');
+            detailLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            detailLabel.clutter_text.line_wrap = false;
+            place(row, icon, 10, 6, 16, 16);
+            place(row, titleLabel, 34, 4, Math.max(1, listWidth - 142), 16);
+            place(row, stateLabel, listWidth - 104, 4, 94, 16);
+            place(row, detailLabel, 34, 21, listWidth - 46, 14);
+            const bar = new St.Widget({
+                layout_manager: new Clutter.FixedLayout(),
+                style_class: 'perdana-island__activity-bar',
+            });
+            place(row, bar, 34, 42, listWidth - 46, 4);
+            const fill = new St.Widget({style_class: `perdana-island__activity-fill${item.progress === null && !terminal
+                ? ' perdana-island__activity-fill--indeterminate' : ''}`});
+            bar.add_child(fill);
+            const barWidth = listWidth - 46;
+            const progress = terminal ? complete ? 1 : 0 : normalizeProgress(item.progress);
+            const initialWidth = progress === null ? Math.round(barWidth * 0.35)
+                : Math.round(barWidth * progress);
+            place(bar, fill, 0, 0, initialWidth, 4);
+            const entry = {row, icon, titleLabel, stateLabel, detailLabel, fill, barWidth, connected: false};
+            this._activityRows.set(item.id, entry);
+            if (terminal)
+                this._connectCompletedActivityRow(entry, item);
+            list.add_child(row);
+        });
+        const scroll = new St.ScrollView({
+            overlay_scrollbars: false,
+            style_class: 'perdana-island__notification-scroll',
+        });
+        scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        scroll.add_child(list);
+        place(body, scroll, 0, top, contentWidth, Math.max(0, this._bodyHeight() - top - 4));
+    }
+
+    _activityPercent(item) {
+        return formatActivityValue(item);
+    }
+
+    _formatBytes(bytes) {
+        return formatBytes(bytes);
+    }
+
+    _renderActivityIfVisible() {
+        if (!this._enabled || !this._expanded || this._activePage !== 'notifications' || this._noticeTab !== 'activity')
+            return;
+        if (!this._updateActivityRows())
+            this._renderPanel();
+    }
+
+    _connectCompletedActivityRow(entry, item) {
+        if (!entry || entry.connected)
+            return;
+        entry.connected = true;
+        const open = () => item.source === 'download' && item.state === 'done'
+            ? this._openCompletedDownload(item)
+            : this._dismissActivity(item);
+        entry.row.connect('button-press-event', (_actor, event) => {
+            if (event.get_button() !== 1)
+                return Clutter.EVENT_PROPAGATE;
+            open();
+            return Clutter.EVENT_STOP;
+        });
+        entry.row.connect('key-press-event', (_actor, event) => {
+            const key = event.get_key_symbol();
+            if (key !== Clutter.KEY_Return && key !== Clutter.KEY_KP_Enter && key !== Clutter.KEY_space)
+                return Clutter.EVENT_PROPAGATE;
+            open();
+            return Clutter.EVENT_STOP;
+        });
+    }
+
+    _updateActivityRows() {
+        if (!this._activityRows || this._activityRows.size !== this._activities.length)
+            return false;
+        for (const item of this._activities) {
+            const entry = this._activityRows.get(item.id);
+            if (!entry)
+                return false;
+            const terminal = item.state !== 'running';
+            const complete = item.state === 'done';
+            const downloadable = item.source === 'download' && complete;
+            entry.titleLabel.text = cleanActivityText(item.title, 80);
+            entry.stateLabel.text = terminal
+                ? downloadable ? 'Complete · open' : complete ? 'Complete · dismiss' : 'Stopped · dismiss'
+                : item.source === 'download' ? formatActivityValue(item) : 'Running';
+            entry.detailLabel.text = terminal
+                ? item.source === 'download' ? `Download complete · ${formatBytes(item.bytes)}` : item.sub || 'Finished'
+                : formatActivityDetail(item);
+            const progress = terminal ? complete ? 1 : 0 : normalizeProgress(item.progress);
+            entry.fill.width = progress === null ? Math.max(1, Math.round(entry.barWidth * 0.35))
+                : Math.round(entry.barWidth * progress);
+            if (terminal && !entry.connected) {
+                entry.row.reactive = true;
+                entry.row.can_focus = true;
+                entry.row.track_hover = true;
+                entry.row.accessible_name = downloadable
+                    ? `Download complete: ${item.title}. Press Enter to open and dismiss.`
+                    : `${complete ? 'Activity complete' : 'Activity stopped'}: ${item.title}. Press Enter to dismiss.`;
+                entry.row.add_style_class_name('perdana-island__activity-row--done');
+                this._connectCompletedActivityRow(entry, item);
+            } else if (!terminal && entry.connected) {
+                entry.row.reactive = false;
+                entry.row.can_focus = false;
+                entry.row.track_hover = false;
+                entry.row.remove_style_class_name('perdana-island__activity-row--done');
+                entry.row.accessible_name = `Downloading ${item.title}`;
+            }
+            if (progress === null && !terminal)
+                entry.fill.add_style_class_name('perdana-island__activity-fill--indeterminate');
+            else
+                entry.fill.remove_style_class_name('perdana-island__activity-fill--indeterminate');
+        }
+        return true;
+    }
+
+    _dismissActivity(item, refresh = true) {
+        if (!item)
+            return;
+        this._clearActivityExpiry(item.id);
+        this._activities = this._activities.filter(activity => activity !== item);
+        if (refresh)
+            this._refreshActivityUi(true);
+    }
+
+    _openCompletedDownload(item) {
+        if (!item || item.source !== 'download' || item.state !== 'done')
+            return;
+        try {
+            const file = Gio.File.new_for_path(item.path);
+            if (file.query_exists(null))
+                Gio.AppInfo.launch_default_for_uri(file.get_uri(), null);
+        } catch (error) {
+            logError(error, 'Perdana Island could not open the completed download');
+        }
+        this._dismissActivity(item);
+    }
+
+    _renderNotificationsPage(body) {
+        const contentWidth = this._pageWidth();
+        // Keep Alerts and Activity in a single header row, matching the preview.
+        const tabs = new St.BoxLayout({style_class: 'perdana-island__notification-tabs'});
+        const tabStyle = key => `perdana-island__rem-tab${this._noticeTab === key ? ' perdana-island__rem-tab--on' : ''}`;
+        const alertItems = this._notificationItems.filter(item => !isChatItem(item));
+        const visibleItems = this._visibleNotifications().filter(item => !isChatItem(item));
+        const activityCount = this._activities.length;
+        const tabWidth = Math.min(98, Math.max(72, Math.floor((contentWidth - 108) / 2)));
+        const alertsTab = makeTextButton(`Alerts ${visibleItems.length}`, 'Alerts', () => {
+            this._noticeTab = 'alerts';
+            this._renderPanel();
+        }, `perdana-island__notification-tab ${tabStyle('alerts')}`);
+        const activityTab = makeTextButton(`Activity ${activityCount}`, 'Activity', () => {
+            this._noticeTab = 'activity';
+            this._renderPanel();
+        }, `perdana-island__notification-tab ${tabStyle('activity')}`);
+        alertsTab.set_size(tabWidth, 22);
+        activityTab.set_size(tabWidth, 22);
+        tabs.add_child(alertsTab);
+        tabs.add_child(activityTab);
+        const tabsWidth = tabWidth * 2 + 8;
+        tabs.set_size(tabsWidth, 28);
+        place(body, tabs, 0, 8, tabsWidth, 28);
+        const clearWidth = Math.min(76, Math.max(58, Math.round(contentWidth * 0.15)));
+        const clearButton = makeTextButton('Clear all', 'Clear all app notifications', () =>
+            this._clearNotifications(item => !isChatItem(item)),
+        'perdana-island__notification-clear');
+        clearButton.reactive = alertItems.length > 0;
+        clearButton.opacity = alertItems.length > 0 ? 255 : 110;
+        const clearX = Math.max(tabsWidth + 8, contentWidth - clearWidth);
+        const safeClearWidth = Math.max(1, Math.min(clearWidth, contentWidth - clearX));
+        place(body, clearButton, clearX, 8, safeClearWidth, 26);
+        const status = this._noticeTab === 'activity'
+            ? 'Click a completed download to open it and dismiss it.'
+            : 'Chat notifications appear under Messages.';
+        place(body, makeLabel(status, 'perdana-island__notification-hint'), 0, 43, contentWidth - 4, 20);
+        if (this._noticeTab === 'activity') {
+            this._renderActivityPanel(body, 70);
+            return;
+        }
+
+        if (!visibleItems.length) {
+            const emptyText = alertItems.length
+                ? 'All app sources are turned off' : 'No notifications yet';
+            const empty = makeLabel(emptyText, 'perdana-island__empty-media');
+            empty.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+            place(body, empty, 0, 70, contentWidth, this._bodyHeight() - 74);
+            return;
+        }
+        const cardWidth = Math.max(1, contentWidth - 18);
+        const rowHeight = 42;
+        const rowGap = 5;
         const list = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
             style_class: 'perdana-island__notification-list',
         });
-        list.set_size(cardWidth, visibleItems.length * 41 - 3);
+        list.set_size(cardWidth, visibleItems.length * (rowHeight + rowGap) - rowGap);
         visibleItems.forEach(item => {
-            const card = new St.Widget({
-                layout_manager: new Clutter.FixedLayout(),
-                style_class: 'perdana-island__notification-card',
+            const unread = !item.read;
+            const row = new St.BoxLayout({
+                style_class: `perdana-island__notification-row${unread ? ' perdana-island__notification-row--unread' : ''}`,
+                clip_to_allocation: true,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            row.set_size(cardWidth, rowHeight);
+            row.add_child(this._makeNotificationIcon(item, 22, 'perdana-island__notification-icon'));
+            const copy = new St.BoxLayout({
+                orientation: Clutter.Orientation.VERTICAL,
+                style_class: 'perdana-island__notification-copy',
+                clip_to_allocation: true,
+                x_expand: true,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            const top = new St.BoxLayout({
+                style_class: 'perdana-island__notification-top',
+                y_align: Clutter.ActorAlign.CENTER,
             });
             const title = makeLabel(item.title, 'perdana-island__notification-title');
-            const app = makeLabel(item.app, 'perdana-island__notification-app');
-            app.clutter_text.x_align = Clutter.ActorAlign.END;
-            const bodyText = makeLabel(item.body || item.title, 'perdana-island__notification-body');
-            place(card, title, 10, 3, cardWidth - 126, 15);
-            place(card, app, cardWidth - 110, 3, 100, 15);
-            place(card, bodyText, 10, 18, cardWidth - 20, 15);
+            title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            title.clutter_text.line_wrap = false;
+            title.x_expand = true;
+            title.x_align = Clutter.ActorAlign.FILL;
+            top.add_child(title);
+            const appLabel = makeLabel(item.app, 'perdana-island__notification-app');
+            appLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            appLabel.clutter_text.line_wrap = false;
+            top.add_child(appLabel);
+            copy.add_child(top);
+            const bodyLabel = makeLabel(item.body || item.title, 'perdana-island__notification-body');
+            bodyLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            bodyLabel.clutter_text.line_wrap = false;
+            bodyLabel.x_expand = true;
+            bodyLabel.x_align = Clutter.ActorAlign.FILL;
+            copy.add_child(bodyLabel);
+            row.add_child(copy);
             const button = new St.Button({
-                child: card,
+                child: row,
                 can_focus: true,
                 reactive: true,
                 track_hover: true,
                 style_class: 'perdana-button perdana-island__notification-button',
                 accessible_name: `Open ${item.app}: ${item.title}`,
             });
-            button.connect('clicked', () => {
-                try {
-                    item.notification.activate();
-                } catch (error) {
-                    logError(error, 'Perdana Island could not activate a notification');
-                    try {
-                        item.source.open();
-                    } catch (_error) {
-                        // The source may have disappeared after its notification was listed.
-                    }
-                }
-                this._pinned = false;
-                this._setExpanded(false);
-            });
-            button.set_size(cardWidth, 38);
+            button.connect('clicked', () => this._activateNotificationItem(item));
+            button.set_size(cardWidth, rowHeight);
+            button.x_expand = true;
             attachButtonMotion(button, {hoverScale: 1.015, pressScale: 0.98});
             list.add_child(button);
         });
         const scroll = new St.ScrollView({
-            overlay_scrollbars: true,
+            overlay_scrollbars: false,
             style_class: 'perdana-island__notification-scroll',
         });
         scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
         scroll.add_child(list);
-        place(body, scroll, 0, 31, contentWidth, this._bodyHeight() - 31);
+        place(body, scroll, 0, 70, contentWidth, Math.max(0, this._bodyHeight() - 74));
+    }
+
+    _backupFolder() {
+        return GLib.build_filenamev([this._taskDirectory, 'backups']);
+    }
+
+    _fileChooser(method, title, options, callback) {
+        // Desktop file dialog via xdg-desktop-portal. callback(path|null, reason).
+        let proxy;
+        try {
+            proxy = Gio.DBusProxy.new_for_bus_sync(
+                Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE, null,
+                'org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop',
+                'org.freedesktop.portal.FileChooser', null);
+        } catch (_error) {
+            callback(null, 'unavailable');
+            return;
+        }
+        const owner = proxy.get_name_owner();
+        if (!owner) {
+            callback(null, 'unavailable');
+            return;
+        }
+        const handleToken = `perdana${Date.now()}`;
+        // The portal names its request object after the caller's unique bus name and our handle token
+        const request = `/org/freedesktop/portal/desktop/request/${owner.slice(1).replace(/\./g, '_')}/${handleToken}`;
+        let signal = 0;
+        const connection = proxy.get_connection();
+        signal = connection.signal_subscribe(
+            'org.freedesktop.portal.Desktop', 'org.freedesktop.portal.Request', 'Response',
+            request, null, Gio.DBusSignalFlags.NO_MATCH_RULE,
+            (_conn, _sender, _path, _iface, _signal, parameters) => {
+                if (answered)
+                    return;
+                answered = true;
+                GLib.source_remove(timeout);
+                connection.signal_unsubscribe(signal);
+                const [code, results] = parameters.deepUnpack();
+                const uris = results?.uris?.deepUnpack?.() ?? [];
+                if (code !== 0 || !uris.length)
+                    callback(null, 'cancelled');
+                else
+                    callback(Gio.File.new_for_uri(uris[0]).get_path(), null);
+            });
+        // If the portal never answers (no dialog service), stop waiting and report it as unavailable
+        let answered = false;
+        const timeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 8, () => {
+            if (!answered) {
+                answered = true;
+                connection.signal_unsubscribe(signal);
+                callback(null, 'unavailable');
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+        try {
+            proxy.call(method, new GLib.Variant('(ssa{sv})', ['', title, {
+                handle_token: GLib.Variant.new_string(handleToken),
+                ...options,
+            }]), Gio.DBusCallFlags.NONE, -1, null, (_proxy, result) => {
+                try {
+                    proxy.call_finish(result);
+                } catch (_error) {
+                    connection.signal_unsubscribe(signal);
+                    callback(null, 'unavailable');
+                }
+            });
+        } catch (_error) {
+            connection.signal_unsubscribe(signal);
+            callback(null, 'unavailable');
+        }
+    }
+
+    _saveBackup() {
+        const now = new Date();
+        const version = this.metadata?.['version-name']
+            || (this.metadata?.version ? `v${this.metadata.version}` : '');
+        const doc = buildBackup({
+            tasks: this._tasks,
+            notes: this._notes,
+            preferences: this._preferences,
+            focusLog: this._focusLog,
+        }, {version, now});
+        const write = path => {
+            try {
+                if (!GLib.file_set_contents(path, JSON.stringify(doc, null, 2)))
+                    throw new Error('Backup was not written');
+                this._backupStatus = `Saved to ${path}`;
+            } catch (_error) {
+                this._backupStatus = 'Could not save the backup. Check the folder permissions.';
+            }
+            this._renderPanel();
+        };
+        this._fileChooser('SaveFile', 'Save Perdana Island backup', {
+            current_name: GLib.Variant.new_string(backupFileName(now)),
+            filters: GLib.Variant.new_array(null, []),
+        }, (path, reason) => {
+            if (path) {
+                write(path);
+                return;
+            }
+            if (reason === 'cancelled') {
+                this._backupStatus = 'Save cancelled.';
+                this._renderPanel();
+                return;
+            }
+            // No portal: keep the backup in the app folder instead of failing
+            try {
+                GLib.mkdir_with_parents(this._backupFolder(), 0o700);
+                write(GLib.build_filenamev([this._backupFolder(), backupFileName(now)]));
+            } catch (_error) {
+                this._backupStatus = 'Could not create the backup folder. Check the folder permissions.';
+                this._renderPanel();
+            }
+        });
+    }
+
+    _requestRestore() {
+        this._fileChooser('OpenFile', 'Restore Perdana Island backup', {
+            multiple: GLib.Variant.new_boolean(false),
+        }, (path, reason) => {
+            if (path) {
+                this._loadRestoreFile(path);
+                return;
+            }
+            if (reason === 'cancelled') {
+                this._backupStatus = 'Restore cancelled.';
+                this._renderPanel();
+                return;
+            }
+            this._requestRestoreFromFolder();
+        });
+    }
+
+    _loadRestoreFile(path) {
+        let result;
+        try {
+            const [ok, contents] = GLib.file_get_contents(path);
+            result = ok
+                ? validateBackup(new TextDecoder().decode(contents))
+                : {ok: false, reason: 'The file could not be read.'};
+        } catch (_error) {
+            result = {ok: false, reason: 'The file could not be read.'};
+        }
+        if (!result.ok) {
+            this._pendingRestore = null;
+            this._backupStatus = result.reason;
+        } else {
+            this._pendingRestore = {name: GLib.path_get_basename(path), path, summary: result.summary, data: result.data};
+            this._backupStatus = null;
+        }
+        this._renderPanel();
+    }
+
+    _requestRestoreFromFolder() {
+        // Used when the desktop file dialog is not available: newest backup in the app folder.
+        let newest = null;
+        try {
+            const dir = Gio.File.new_for_path(this._backupFolder());
+            const en = dir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
+            let info;
+            while ((info = en.next_file(null)) !== null) {
+                const name = info.get_name();
+                if (/^perdana-island-backup-\d{4}-\d{2}-\d{2}\.json$/.test(name)
+                    && (!newest || name > newest))
+                    newest = name;
+            }
+            en.close(null);
+        } catch (_error) {
+            newest = null;
+        }
+        if (!newest) {
+            this._backupStatus = 'No backup found yet. Save one first.';
+            this._renderPanel();
+            return;
+        }
+        const path = GLib.build_filenamev([this._backupFolder(), newest]);
+        let result;
+        try {
+            const [ok, contents] = GLib.file_get_contents(path);
+            result = ok
+                ? validateBackup(new TextDecoder().decode(contents))
+                : {ok: false, reason: 'The file could not be read.'};
+        } catch (_error) {
+            result = {ok: false, reason: 'The file could not be read.'};
+        }
+        if (!result.ok) {
+            this._pendingRestore = null;
+            this._backupStatus = result.reason;
+        } else {
+            this._pendingRestore = {name: newest, path, summary: result.summary, data: result.data};
+            this._backupStatus = null;
+        }
+        this._renderPanel();
+    }
+
+    _applyRestore() {
+        const pending = this._pendingRestore;
+        if (!pending)
+            return;
+        const previous = {
+            tasks: this._tasks,
+            notes: this._notes,
+            focusLog: this._focusLog,
+            preferences: this._preferences,
+        };
+        // Keep a copy of the current data first, so a restore is never destructive by surprise
+        try {
+            GLib.mkdir_with_parents(this._taskDirectory, 0o700);
+            const safety = buildBackup(previous);
+            if (!GLib.file_set_contents(GLib.build_filenamev([this._taskDirectory, 'pre-restore.json']),
+                JSON.stringify(safety, null, 2)))
+                throw new Error('Safety copy was not written');
+        } catch (_error) {
+            this._backupStatus = 'Restore cancelled because a safety copy could not be saved.';
+            this._renderPanel();
+            return;
+        }
+        this._preferences = {...this._preferences, ...pending.data.preferences};
+        if (!this._savePreferences()) {
+            this._preferences = previous.preferences;
+            this._backupStatus = 'Restore cancelled because settings could not be saved.';
+            this._renderPanel();
+            return;
+        }
+        this._preferences = this._loadPreferences();
+        this._tasks = pending.data.tasks.map(task => ({...task, id: task.id || GLib.uuid_string_random()}));
+        this._notes = pending.data.notes.map(note => ({
+            id: note.id || GLib.uuid_string_random(),
+            text: note.text,
+            updatedAt: Number.isFinite(note.updatedAt) ? note.updatedAt
+                : Number.isFinite(note.updated) ? note.updated : Date.now(),
+        }));
+        this._focusLog = pending.data.focusLog;
+        const focusLogSaved = this._saveFocusLog();
+        const tasksSaved = this._saveTasks();
+        const notesSaved = this._saveNotes();
+        if (!focusLogSaved || !tasksSaved || !notesSaved) {
+            this._tasks = previous.tasks;
+            this._notes = previous.notes;
+            this._focusLog = previous.focusLog;
+            this._preferences = previous.preferences;
+            this._saveFocusLog();
+            this._saveTasks();
+            this._saveNotes();
+            this._savePreferences();
+            this._backupStatus = 'Restore could not be saved completely. Previous data was reinstated where possible; a safety copy is available as pre-restore.json.';
+            this._renderPanel();
+            return;
+        }
+        this._pendingRestore = null;
+        this._backupStatus = `Restored ${summarizeBackup(pending.summary)}. Copy of the previous data saved as pre-restore.json.`;
+        if (!this._visiblePages().some(page => page.key === this._activePage))
+            this._activePage = 'settings';
+        this._applyFontPreference();
+        this._applyTheme();
+        this._applyAccentStyles();
+        this._applyGlassPreference();
+        this._updateIslandShapePreference();
+        this._positionIsland();
+        this._applyKeepAwake();
+        this._prayerRetryAt = 0;
+        this._fetchPrayerTimes();
+        if (!this._preferences.browserOverlap)
+            this._setBrowserTucked(false);
+        this._renderPanel();
     }
 
     _renderSettingsPage(body) {
-        const layoutWidth = Math.max(0, this._pageWidth() - 16);
-        const navWidth = Math.min(168, Math.max(144, Math.round(layoutWidth * 0.22)));
-        const panelX = navWidth + 12;
+        const layoutWidth = Math.max(0, this._pageWidth() - 8);
+        const navWidth = Math.min(280, Math.max(196, Math.round(layoutWidth * 0.26)));
+        const panelX = navWidth + 24;
         const panelWidth = Math.max(0, layoutWidth - panelX);
-        // Keep the fixed-position content clear of St.ScrollView's
-        // non-overlay scrollbar and its right-side safe space.
-        const contentWidth = Math.max(0, panelWidth - 20);
+        // Keep fixed-position controls clear of St.ScrollView's non-overlay
+        // scrollbar and leave a visible safe inset at the right edge.
+        const contentWidth = Math.max(0, panelWidth - 30);
         const columnGap = 10;
         const halfWidth = Math.max(0, (contentWidth - columnGap) / 2);
         const sections = [
             ['island', 'Island'],
             ['greeting', 'Greeting'],
             ['music', 'Music'],
+            ['messages', 'Messages'],
             ['reminders', 'Reminders'],
             ['notifications', 'Notifications'],
             ['tabs', 'Tabs'],
+            ['data', 'Data'],
         ];
         if (!sections.some(([key]) => key === this._settingsSection))
             this._settingsSection = 'island';
 
         place(body, makeLabel('Settings', 'perdana-island__settings-title-label'),
-            0, 3, navWidth, 22);
+            4, 3, navWidth - 8, 22);
         place(body, makeLabel('Ctrl+Alt+X hide/show', 'perdana-island__settings-shortcut'),
             panelX, 5, panelWidth, 18);
 
-        sections.forEach(([key, label], index) => {
+        const navScroll = new St.ScrollView({
+            overlay_scrollbars: false,
+            clip_to_allocation: true,
+            style_class: 'perdana-island__settings-nav-scroll',
+        });
+        navScroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        const navList = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            style_class: 'perdana-island__settings-nav-list',
+        });
+        const navItemWidth = Math.max(1, navWidth - 38);
+        const navRowStep = 22;
+        navList.set_size(navItemWidth, sections.length * navRowStep);
+        navScroll.add_child(navList);
+        place(body, navScroll, 4, 29, navWidth - 12, Math.max(0, this._bodyHeight() - 29));
+
+        sections.forEach(([key, label]) => {
             const selected = this._settingsSection === key;
             const text = makeLabel(label, 'perdana-island__settings-tab-label');
             text.x_expand = true;
@@ -5574,21 +7755,43 @@ export default class PerdanaIslandExtension extends Extension {
                 this._settingsSection = key;
                 this._renderPanel();
             });
-            attachButtonMotion(button, {hoverScale: 1.04, pressScale: 0.95});
-            place(body, button, 0, 31 + index * 22, navWidth, 21);
+            attachButtonMotion(button, {hoverScale: 1, pressScale: 0.98});
+            button.set_size(navItemWidth, 21);
+            navList.add_child(button);
+        });
+
+        const selectedIndex = sections.findIndex(([key]) => key === this._settingsSection);
+        this._settingsNavScrollSource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._settingsNavScrollSource = 0;
+            const adjustment = navScroll.get_vadjustment?.();
+            if (!navScroll.get_stage() || !adjustment || adjustment.page_size <= 0)
+                return GLib.SOURCE_REMOVE;
+            const top = selectedIndex * navRowStep;
+            const bottom = top + 21;
+            const currentTop = adjustment.value;
+            const currentBottom = currentTop + adjustment.page_size;
+            const maxValue = Math.max(0, adjustment.upper - adjustment.page_size);
+            if (top < currentTop)
+                adjustment.value = Math.max(0, top);
+            else if (bottom > currentBottom)
+                adjustment.value = Math.min(maxValue, bottom - adjustment.page_size);
+            return GLib.SOURCE_REMOVE;
         });
 
         const contentHeights = {
             island: 670,
             greeting: 414,
-            music: 108,
+            music: 206,
+            messages: 210,
             reminders: 326,
             notifications: 240,
-            tabs: 172,
+            tabs: 206,
+            data: 230,
         };
         const contentHeight = contentHeights[this._settingsSection];
         const scroll = new St.ScrollView({
             overlay_scrollbars: false,
+            clip_to_allocation: true,
             style_class: 'perdana-island__settings-scroll',
         });
         scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
@@ -5801,8 +8004,8 @@ export default class PerdanaIslandExtension extends Extension {
                     () => this._setPositionMode(key));
                 this._positionButtons.set(key, button);
             });
-            place(content, makeLabel('Drag the resting pill or header to any monitor. Release near an edge to snap.',
-                'perdana-island__settings-hint'), 0, 636, contentWidth, 32);
+            place(content, makeLabel('Drag the resting pill or header. Release near an edge to snap.',
+                'perdana-island__settings-hint'), 0, 636, contentWidth, 26);
 
         } else if (this._settingsSection === 'greeting') {
             heading('Session greeting', 0);
@@ -5920,6 +8123,24 @@ export default class PerdanaIslandExtension extends Extension {
                 }, 'perdana-island__color-apply'), 0, 244, contentWidth, 30);
             place(content, makeLabel(this._prayerStatusText(), 'perdana-island__settings-hint'),
                 0, 280, contentWidth, 26);
+        } else if (this._settingsSection === 'messages') {
+            heading('Chat apps · shown on Messages', 0);
+            const chatGap = 8;
+            const chatWidth = (contentWidth - chatGap) / 2;
+            CHAT_SOURCE_OPTIONS.forEach(([key, label, iconName], index) => {
+                const enabled = this._preferences.notificationSources?.[key] !== false;
+                const row = Math.floor(index / 2);
+                const column = index % 2;
+                const x = column * (chatWidth + chatGap);
+                const y = 22 + row * 36;
+                settingButton(`${label} ${enabled ? 'on' : 'off'}`, enabled, x, y,
+                    chatWidth, () => this._setPreference('notificationSources', {
+                        ...this._preferences.notificationSources,
+                        [key]: !enabled,
+                    }), iconName);
+            });
+            place(content, makeLabel('Chat messages are grouped by sender on the Messages page.',
+                'perdana-island__settings-hint'), 0, 150, contentWidth, 24);
         } else if (this._settingsSection === 'notifications') {
             heading('Island notification banners', 0);
             settingButton(this._preferences.systemNotices ? 'Notices on' : 'Notices off',
@@ -5929,10 +8150,10 @@ export default class PerdanaIslandExtension extends Extension {
             place(content, makeLabel('Controls banners shown by the island; GNOME notifications stay unchanged.',
                 'perdana-island__settings-hint'), halfWidth + columnGap, 22, halfWidth, 32);
 
-            heading('App sources', 62);
+            heading('System alerts · shown on Notifications', 62);
             const sourceGap = 8;
             const sourceWidth = (contentWidth - sourceGap) / 2;
-            NOTIFICATION_SOURCE_OPTIONS.forEach(([key, label, iconName], index) => {
+            SYSTEM_SOURCE_OPTIONS.forEach(([key, label, iconName], index) => {
                 const enabled = this._preferences.notificationSources?.[key] !== false;
                 const row = Math.floor(index / 2);
                 const column = index % 2;
@@ -5944,13 +8165,37 @@ export default class PerdanaIslandExtension extends Extension {
                         [key]: !enabled,
                     }), iconName);
             });
-            place(content, makeLabel('Notifications from browser apps follow the source name GNOME reports.',
+            place(content, makeLabel('Chat apps are on the Messages section. These switches only filter the island.',
                 'perdana-island__settings-hint'), 0, 192, contentWidth, 24);
+        } else if (this._settingsSection === 'data') {
+            heading('Backup file', 0);
+            settingButton('Save backup', false, 0, 22, halfWidth, () => this._saveBackup(),
+                'document-save-symbolic');
+            settingButton('Restore backup', false, halfWidth + columnGap, 22, halfWidth,
+                () => this._requestRestore(), 'document-open-symbolic');
+            const restore = this._pendingRestore;
+            if (restore) {
+                place(content, makeLabel(`${restore.name} · ${summarizeBackup(restore.summary)}`,
+                    'perdana-island__settings-hint'), 0, 64, contentWidth, 18);
+                settingButton('Restore now', false, 0, 86, halfWidth, () => this._applyRestore(),
+                    'object-select-symbolic');
+                settingButton('Cancel', false, halfWidth + columnGap, 86, halfWidth,
+                    () => { this._pendingRestore = null; this._renderPanel(); }, 'window-close-symbolic');
+            }
+            let backupStatus = this._backupStatus
+                || 'Tasks, notes, settings, and focus history. Clipboard and Shelf files are not included.';
+            if (backupStatus.startsWith('Saved to ')) {
+                const fileName = backupStatus.slice('Saved to '.length).split(/[\\/]/).pop();
+                backupStatus = `Backup saved · ${fileName}`;
+            }
+            place(content, makeLabel(backupStatus,
+                'perdana-island__settings-hint'), 0, restore ? 118 : 64, contentWidth, 34);
         } else {
             heading('Visible tabs · Settings stays available', 0);
             place(content, makeLabel('Drag tabs in the bar to reorder. The first tab opens with the island.',
                 'perdana-island__settings-hint'), 0, 20, contentWidth, 18);
-            const pages = this._orderedPages().filter(page => page.key !== 'settings');
+            const pages = this._orderedPages().filter(page =>
+                !['settings', 'media', 'clipboard'].includes(page.key));
             const gap = 7;
             const itemWidth = (contentWidth - gap * 3) / 4;
             pages.forEach((page, index) => {
@@ -6053,6 +8298,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._resetFocusGuard();
                 if (this._activePage === 'focus')
                     this._renderPanel();
+                this._updateSummaryRows();
                 this._updateCollapsedLabel();
                 this._showFocusCompleteNotice(completedMode, completedDuration);
                 return GLib.SOURCE_REMOVE;
@@ -6153,6 +8399,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _updateFocusPage(remaining) {
+        this._updateSummaryRows();
         if (!this._focusLabel)
             return;
         this._focusLabel.text = formatTime(remaining);
@@ -6207,7 +8454,7 @@ export default class PerdanaIslandExtension extends Extension {
                 } catch (_error) {
                     this._playersLoaded = true;
                     this._playersError = true;
-                    if (this._expanded && ['media', 'lyrics'].includes(this._activePage))
+                    if (this._expanded && ['media', 'lyrics', 'summary'].includes(this._activePage))
                         this._renderPanel();
                 }
             }
@@ -6302,10 +8549,10 @@ export default class PerdanaIslandExtension extends Extension {
                     this._updateCollapsedLabel();
                     if (this._expanded && this._activePage === 'lyrics' && playbackChanged && !metadataChanged)
                         this._updateLyricsPlaybackButton();
-                    if (this._expanded && ['media', 'lyrics'].includes(this._activePage)
-                        && (visualChanged || (playbackChanged && this._activePage === 'media')))
+                    if (this._expanded && ['media', 'lyrics', 'summary'].includes(this._activePage)
+                        && (visualChanged || (playbackChanged && ['media', 'summary'].includes(this._activePage))))
                         this._renderPanel();
-                    else if (this._expanded && ['media', 'lyrics'].includes(this._activePage))
+                    else if (this._expanded && ['media', 'lyrics', 'summary'].includes(this._activePage))
                         this._updateMediaProgress();
                 });
                 entry.seekedSignalId = proxy.connect('g-signal', (_proxy, _sender, signalName, parameters) => {
@@ -6313,7 +8560,7 @@ export default class PerdanaIslandExtension extends Extension {
                         return;
                     entry.positionBase = Number(parameters.deep_unpack()[0]) || 0;
                     entry.positionStamp = GLib.get_monotonic_time();
-                    if (this._expanded && ['media', 'lyrics'].includes(this._activePage))
+                    if (this._expanded && ['media', 'lyrics', 'summary'].includes(this._activePage))
                         this._updateMediaProgress();
                 });
                 this._players.set(name, entry);
@@ -6325,7 +8572,7 @@ export default class PerdanaIslandExtension extends Extension {
         this._updateMediaTicker();
         this._syncSelectedPlayerLyrics();
         this._updateCollapsedLabel();
-        if (this._expanded && ['media', 'lyrics'].includes(this._activePage))
+        if (this._expanded && ['media', 'lyrics', 'summary'].includes(this._activePage))
             this._renderPanel();
     }
 
@@ -6333,9 +8580,9 @@ export default class PerdanaIslandExtension extends Extension {
         const player = this._getSelectedPlayer();
         const playing = player
             && this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing';
-        const smoothLyrics = this._preferences?.showRestingLyrics
-            || (this._expanded && this._activePage === 'lyrics');
+        const smoothLyrics = this._expanded && this._activePage === 'lyrics';
         const interval = smoothLyrics ? 250 : 1000;
+        this._updateRestingLyricsTicker();
         if (playing && (!this._mediaSource || this._mediaTickerInterval !== interval)) {
             this._clearTimeout('_mediaSource');
             this._mediaTickerInterval = interval;
@@ -6350,6 +8597,36 @@ export default class PerdanaIslandExtension extends Extension {
             this._clearTimeout('_mediaSource');
             this._mediaTickerInterval = 0;
         }
+    }
+
+    _updateRestingLyricsTicker() {
+        const player = this._getSelectedPlayer();
+        const shouldRun = Boolean(this._preferences?.showRestingLyrics && player
+            && this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing');
+        if (!shouldRun) {
+            this._clearTimeout('_restingLyricsSource');
+            return;
+        }
+        if (this._restingLyricsSource)
+            return;
+
+        this._restingLyricsSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 180, () => {
+            if (!this._enabled || !this._preferences?.showRestingLyrics) {
+                this._restingLyricsSource = 0;
+                return GLib.SOURCE_REMOVE;
+            }
+            const currentPlayer = this._getSelectedPlayer();
+            if (!currentPlayer || this._getProperty(currentPlayer.proxy, 'PlaybackStatus') !== 'Playing') {
+                this._restingLyricsSource = 0;
+                return GLib.SOURCE_REMOVE;
+            }
+            const metadata = this._getMetadata(currentPlayer.proxy);
+            this._ensureLyrics(metadata, currentPlayer.name);
+            const lyric = this._currentLyricsText(this._positionForPlayer(currentPlayer));
+            if (!this._expanded && !this._closing && !this._systemNoticeActive && !this._tuckedByBrowser)
+                this._setCompactTrackText(lyric || metadata.title || currentPlayer.name.replace(MPRIS_PREFIX, ''));
+            return GLib.SOURCE_CONTINUE;
+        });
     }
 
     _getSelectedPlayer() {
@@ -6765,7 +9042,7 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _updateMediaProgress() {
-        if (!this._expanded || !['media', 'lyrics'].includes(this._activePage)
+        if (!this._expanded || !['media', 'lyrics', 'summary'].includes(this._activePage)
             || !this._mediaPositionLabel || !this._mediaDurationLabel || !this._progressFill
             || !this._progressLine || !this._progressTrack)
             return;
@@ -6804,6 +9081,8 @@ export default class PerdanaIslandExtension extends Extension {
         this._progressFill._perdanaSmoothReady = true;
         if (this._activePage === 'lyrics')
             this._updateLyricsLines(position);
+        else if (this._activePage === 'summary')
+            this._updateSummaryMedia();
     }
 
     _callPlayer(proxy, method) {
@@ -6843,10 +9122,13 @@ export default class PerdanaIslandExtension extends Extension {
         if (!label)
             return;
 
-        const displayText = String(text || '');
+        const lyricsMode = Boolean(this._preferences?.showRestingLyrics);
+        const rawDisplayText = String(text || '');
+        const displayText = lyricsMode
+            ? rawDisplayText.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim()
+            : rawDisplayText;
         const previousText = label.text;
         const textChanged = previousText !== displayText;
-        const lyricsMode = Boolean(this._preferences?.showRestingLyrics);
         // Both resting titles and lyrics share one centered text slot. Keeping
         // the alignment fixed avoids a left-to-center jump when lyrics arrive.
         const layoutMode = 'centered';
@@ -6861,6 +9143,7 @@ export default class PerdanaIslandExtension extends Extension {
         const fitClasses = [
             'perdana-island__compact-track-title--lyrics-small',
             'perdana-island__compact-track-title--lyrics-smaller',
+            'perdana-island__compact-track-title--lyrics-tiny',
         ];
         let desiredFitClass = null;
 
@@ -6877,32 +9160,27 @@ export default class PerdanaIslandExtension extends Extension {
 
             const outerSpacing = 102;
             const availableTextWidth = Math.max(1, this._restingLyricsWidth - outerSpacing);
-            const fitKey = `${this._restingLyricsWidth}\u001f${displayText}`;
+            const fitKey = `${this._restingLyricsWidth}\u001f${this._preferences?.fontFamily || ''}\u001f${displayText}`;
             if (fitKey !== this._compactLyricsFitKey) {
                 this._compactLyricsFitKey = fitKey;
                 for (const fitClass of fitClasses)
                     label.remove_style_class_name(fitClass);
 
-                if (textChanged)
-                    label.text = displayText;
-                const [, initialHeight] = label.get_preferred_height(availableTextWidth);
-                let fitClass = null;
-                if (initialHeight > RESTING_LYRICS_HEIGHT - 16) {
-                    label.add_style_class_name(fitClasses[0]);
-                    fitClass = fitClasses[0];
-                    const [, smallerHeight] = label.get_preferred_height(availableTextWidth);
-                    if (smallerHeight > RESTING_LYRICS_HEIGHT - 16) {
-                        label.add_style_class_name(fitClasses[1]);
-                        fitClass = fitClasses[1];
-                    }
-                }
-                if (textChanged)
-                    label.text = previousText;
-                for (const candidate of fitClasses)
-                    label.remove_style_class_name(candidate);
-                if (this._compactLyricsAppliedFitClass)
-                    label.add_style_class_name(this._compactLyricsAppliedFitClass);
-                this._compactLyricsFitClass = fitClass;
+                const candidates = [
+                    {className: null, lineHeight: 16},
+                    {className: fitClasses[0], lineHeight: 15},
+                    {className: fitClasses[1], lineHeight: 12},
+                    {className: fitClasses[2], lineHeight: 10},
+                ];
+                const fit = candidates.find(candidate =>
+                    this._measureCompactLyricsHeight(
+                        displayText,
+                        availableTextWidth,
+                        candidate.className,
+                        candidate.lineHeight
+                    ) <= RESTING_LYRICS_HEIGHT - 12
+                ) || candidates[candidates.length - 1];
+                this._compactLyricsFitClass = fit.className;
             }
             desiredFitClass = this._compactLyricsFitClass;
         } else {
@@ -6936,11 +9214,31 @@ export default class PerdanaIslandExtension extends Extension {
             label.opacity = 255;
         }
 
-        const desiredWidth = this._focusSource ? PLAYING_WIDTH : this._collapsedWidth();
+        const desiredWidth = this._focusSource ? PLAYING_WIDTH
+            : this._isPlaying() ? this._collapsedWidth() : COLLAPSED_WIDTH;
         const desiredHeight = this._collapsedHeight();
         const geometryStable = !this._expanded && !this._closing && this._root
             && Math.round(this._root.width) === desiredWidth
             && Math.round(this._root.height) === desiredHeight;
+        if (lyricsMode && textChanged) {
+            this._compactTextTransitionGeneration++;
+            this._compactTrackPendingText = null;
+            label.remove_all_transitions();
+            applyFitClass();
+            label.text = displayText;
+            this._layoutCompactTrackTitle();
+            if (previousText && label.visible && geometryStable && !this._reducedMotion) {
+                label.opacity = 0;
+                label.ease({
+                    opacity: 255,
+                    duration: this._motionDuration(105),
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                });
+            } else {
+                label.opacity = 255;
+            }
+            return;
+        }
         const shouldFade = !layoutChanged && textChanged && previousText
             && label.visible && label.opacity > 0 && geometryStable;
         if (shouldFade) {
@@ -6960,6 +9258,7 @@ export default class PerdanaIslandExtension extends Extension {
                         return;
                     applyFitClass();
                     this._compactTrackTitle.text = displayText;
+                    this._layoutCompactTrackTitle();
                     this._compactTrackPendingText = null;
                     this._compactTrackTitle.ease({
                         opacity: 255,
@@ -6977,12 +9276,14 @@ export default class PerdanaIslandExtension extends Extension {
             label.remove_all_transitions();
             applyFitClass();
             label.text = displayText;
+            this._layoutCompactTrackTitle();
             if (lyricsMode && previousText && label.visible && !this._expanded && !this._closing)
                 label.opacity = 255;
         } else if (this._compactTrackPendingText === displayText) {
             return;
         } else if (this._compactLyricsAppliedFitClass !== desiredFitClass) {
             applyFitClass();
+            this._layoutCompactTrackTitle();
         }
     }
 
@@ -7016,8 +9317,6 @@ export default class PerdanaIslandExtension extends Extension {
         const playing = player && this._getProperty(player.proxy, 'PlaybackStatus') === 'Playing';
         const focusRunning = Boolean(this._focusSource);
         const showMedia = Boolean(playing && !focusRunning);
-        const activity = this._selectedRunningActivity();
-        const showActivity = Boolean(activity && !showMedia && !focusRunning);
         const restingWithClock = this._preferences?.restingStyle === 'eyes-clock';
         const showClock = Boolean(!playing && !focusRunning && !this._expanded && !this._closing
             && (restingWithClock || this._root?.hover));
@@ -7029,7 +9328,18 @@ export default class PerdanaIslandExtension extends Extension {
         this._compactLeading.visible = Boolean(showMedia && player);
         this._compactArtwork.visible = Boolean(showMedia && player);
         this._compactTrackTitle.visible = Boolean(showMedia && player);
+        this._compactTextSpacer.visible = Boolean(showMedia && player);
         this._focusCompact.visible = focusRunning;
+        const running = selectActivity(this._activities);
+        const showActivity = Boolean(!focusRunning && !showMedia && running);
+        this._activityCompact.visible = showActivity;
+        if (showActivity) {
+            this._activityCompactLabel.text = cleanActivityText(running.title, 64);
+            const progress = normalizeProgress(running.progress);
+            const ratio = progress ?? (running.total > 0
+                ? Math.min(1, running.bytes / running.total) : 0.35);
+            this._activityCompactFill.width = Math.round(this._activityCompactBar.width * ratio);
+        }
         if (focusRunning) {
             const remaining = Math.max(0, Math.ceil(
                 this._focusDeadline - GLib.get_monotonic_time() / MICROSECONDS_PER_SECOND
@@ -7041,17 +9351,13 @@ export default class PerdanaIslandExtension extends Extension {
         this._compactCenter.opacity = 255;
         this._idleEyes.visible = !showMedia && !focusRunning && !showActivity;
         this._compactClockLabel.visible = !showMedia && !focusRunning && !showActivity;
-        this._activityCompact.visible = showActivity;
-        if (showActivity)
-            this._updateActivityCompact();
         const compactState = focusRunning ? 'focus' : showMedia ? 'playing'
-            : showActivity ? 'activity'
-                : showClock ? (restingWithClock ? 'eyes-clock' : 'hover') : 'idle';
+            : showClock ? (restingWithClock ? 'eyes-clock' : 'hover') : 'idle';
         if (compactState !== this._compactVisualState) {
             this._compactVisualState = compactState;
             this._idleEyes.remove_all_transitions();
             this._compactClockLabel.remove_all_transitions();
-            if (showMedia || focusRunning || showActivity) {
+            if (showMedia || focusRunning) {
                 this._idleEyes.translation_x = 0;
                 this._idleEyes.translation_y = 0;
                 this._idleEyes.opacity = 0;
@@ -7088,7 +9394,8 @@ export default class PerdanaIslandExtension extends Extension {
             this._mediaEqualizer.visible = Boolean(playing);
             this._setEqualizerPlaying(
                 this._mediaEqualizer,
-                Boolean(playing && this._expanded && this._activePage === 'media')
+                Boolean(playing && this._expanded
+                    && ['media', 'summary'].includes(this._activePage))
             );
         }
         if (player) {
@@ -7128,7 +9435,8 @@ export default class PerdanaIslandExtension extends Extension {
         }
         this._updateHeaderClock();
         if (!this._expanded && !this._closing) {
-            const targetWidth = focusRunning ? PLAYING_WIDTH : this._collapsedWidth();
+            const targetWidth = focusRunning ? PLAYING_WIDTH
+                : playing ? this._collapsedWidth() : COLLAPSED_WIDTH;
             const targetHeight = this._collapsedHeight();
             const targetSize = `${targetWidth}x${targetHeight}`;
             const sizeMatches = Math.round(this._root.width) === targetWidth
@@ -7225,529 +9533,8 @@ export default class PerdanaIslandExtension extends Extension {
         this._clearTimeout('_todaySource');
     }
 
-    _connectActivityService() {
-        if (this._activityDbus)
-            return;
-        const owner = this;
-        this._activityApi = {
-            StartActivity(id, title, subtitle, progress, icon) {
-                owner._startActivity({id, title, subtitle, progress, icon, source: 'app'});
-                return [];
-            },
-            UpdateActivity(id, progress, subtitle) {
-                owner._updateActivity(id, {progress, subtitle});
-                return [];
-            },
-            FinishActivity(id, success) {
-                owner._finishActivity(id, success);
-                return [];
-            },
-            ListActivities() {
-                return new GLib.Variant('(s)', [JSON.stringify(owner._activitySnapshot())]);
-            },
-        };
-        try {
-            this._activityDbus = Gio.DBusExportedObject.wrapJSObject(
-                ACTIVITY_DBUS_XML,
-                this._activityApi
-            );
-            this._activityDbus.export(Gio.DBus.session, ACTIVITY_DBUS_PATH);
-            this._activityDbusOwnerId = Gio.bus_own_name_on_connection(
-                Gio.DBus.session,
-                ACTIVITY_DBUS_NAME,
-                Gio.BusNameOwnerFlags.NONE,
-                null,
-                null
-            );
-        } catch (error) {
-            logError(error, 'perdana-island: exporting the activity interface');
-            this._activityDbus = null;
-            this._activityDbusOwnerId = 0;
-        }
-    }
-
-    _disconnectActivityService() {
-        if (this._activityDbusOwnerId) {
-            Gio.bus_unown_name(this._activityDbusOwnerId);
-            this._activityDbusOwnerId = 0;
-        }
-        if (this._activityDbus) {
-            try {
-                this._activityDbus.unexport();
-            } catch (_error) {
-                // The shell session owns the connection; nothing to clean up.
-            }
-            this._activityDbus = null;
-        }
-        this._activityApi = null;
-    }
-
-    _startActivity(raw) {
-        const id = cleanActivityId(raw?.id);
-        if (!id)
-            return false;
-        const now = Date.now();
-        const existing = this._activities.get(id);
-        const receivedBytes = Number(raw?.receivedBytes);
-        const totalBytes = Number(raw?.totalBytes);
-        this._clearActivityExpiry(id);
-        this._activities.set(id, {
-            id,
-            title: cleanActivityText(raw?.title) || id,
-            subtitle: cleanActivityText(raw?.subtitle),
-            icon: cleanActivityIcon(raw?.icon),
-            progress: normalizeProgress(raw?.progress),
-            receivedBytes: Number.isFinite(receivedBytes) ? Math.max(0, receivedBytes) : 0,
-            totalBytes: Number.isFinite(totalBytes) ? Math.max(0, totalBytes) : 0,
-            source: raw?.source === 'download' ? 'download' : 'app',
-            state: 'running',
-            startedAt: existing?.startedAt ?? now,
-            updatedAt: now,
-            finishedAt: 0,
-        });
-        this._refreshActivityUi(true);
-        return true;
-    }
-
-    _updateActivity(id, changes = {}) {
-        const key = cleanActivityId(id);
-        const activity = this._activities.get(key);
-        if (!activity || activity.state !== 'running')
-            return false;
-        if ('progress' in changes)
-            activity.progress = normalizeProgress(changes.progress);
-        if ('subtitle' in changes)
-            activity.subtitle = cleanActivityText(changes.subtitle);
-        const receivedBytes = Number(changes.receivedBytes);
-        if (Number.isFinite(receivedBytes))
-            activity.receivedBytes = Math.max(0, receivedBytes);
-        const totalBytes = Number(changes.totalBytes);
-        if (Number.isFinite(totalBytes))
-            activity.totalBytes = Math.max(0, totalBytes);
-        activity.updatedAt = Date.now();
-        this._refreshActivityUi(false);
-        return true;
-    }
-
-    _finishActivity(id, success) {
-        const key = cleanActivityId(id);
-        const activity = this._activities.get(key);
-        if (!activity || activity.state !== 'running')
-            return false;
-        activity.state = success ? 'done' : 'failed';
-        activity.finishedAt = Date.now();
-        activity.updatedAt = activity.finishedAt;
-        if (success && (activity.progress === null || activity.progress < 1))
-            activity.progress = 1;
-        this._scheduleActivityExpiry(key);
-        this._refreshActivityUi(true);
-        return true;
-    }
-
-    _scheduleActivityExpiry(id) {
-        this._clearActivityExpiry(id);
-        const source = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ACTIVITY_EXPIRY_MS, () => {
-            this._activityExpirySources.delete(id);
-            this._activities.delete(id);
-            this._activityRows = [];
-            this._refreshActivityUi(true);
-            return GLib.SOURCE_REMOVE;
-        });
-        this._activityExpirySources.set(id, source);
-    }
-
-    _clearActivityExpiry(id) {
-        const source = this._activityExpirySources.get(id);
-        if (!source)
-            return;
-        GLib.source_remove(source);
-        this._activityExpirySources.delete(id);
-    }
-
-    _selectedRunningActivity() {
-        return selectActivity([...this._activities.values()]);
-    }
-
-    _activityPageItems() {
-        return [...this._activities.values()].sort((first, second) => {
-            const firstRunning = first.state === 'running' ? 0 : 1;
-            const secondRunning = second.state === 'running' ? 0 : 1;
-            if (firstRunning !== secondRunning)
-                return firstRunning - secondRunning;
-            if (firstRunning === 0)
-                return first.startedAt - second.startedAt;
-            return second.finishedAt - first.finishedAt;
-        });
-    }
-
-    _activitySnapshot() {
-        return this._activityPageItems().map(activity => ({
-            id: activity.id,
-            title: activity.title,
-            subtitle: activity.subtitle,
-            icon: activity.icon,
-            progress: activity.progress,
-            receivedBytes: activity.receivedBytes,
-            totalBytes: activity.totalBytes,
-            source: activity.source,
-            state: activity.state,
-            startedAt: activity.startedAt,
-            updatedAt: activity.updatedAt,
-            finishedAt: activity.finishedAt,
-        }));
-    }
-
-    _refreshActivityUi(structural) {
-        this._updateCollapsedLabel();
-        if (structural) {
-            try {
-                this._activityDbus?.emit_signal('ActivityChanged', null);
-            } catch (_error) {
-                // Signals are best-effort and must never break an update.
-            }
-        }
-        if (this._expanded && this._activePage === 'activity') {
-            if (structural)
-                this._renderPanel();
-            else
-                this._updateActivityPage();
-        } else if (this._activityCompact?.visible) {
-            this._updateActivityCompact();
-        }
-    }
-
-    _renderActivityPage(body) {
-        const pageWidth = this._pageWidth();
-        const items = this._activityPageItems();
-        const running = items.filter(item => item.state === 'running').length;
-        place(body, makeLabel('Activity', 'perdana-island__reminder-heading'), 0, 0, 90, 16);
-        const hidden = Math.max(0, items.length - 3);
-        const summary = items.length
-            ? `${running} running${items.length > running ? ` · ${items.length - running} done` : ''}`
-                + `${hidden ? ` · +${hidden}` : ''}`
-            : 'Nothing running';
-        const summaryLabel = makeLabel(summary, 'perdana-island__reminder-subtitle');
-        summaryLabel.clutter_text.x_align = Clutter.ActorAlign.END;
-        place(body, summaryLabel, 0, 0, pageWidth, 16);
-        this._activityRows = [];
-        if (!items.length) {
-            place(body, makeLabel('Downloads and app tasks appear here.',
-                'perdana-island__activity-empty'), 0, 56, pageWidth, 24);
-            return;
-        }
-        items.slice(0, 3).forEach((activity, index) => {
-            this._activityRows.push(
-                this._renderActivityRow(body, activity, 28 + index * 46, pageWidth)
-            );
-        });
-    }
-
-    _renderActivityRow(body, activity, y, pageWidth) {
-        const finished = activity.state !== 'running';
-        const iconName = activity.state === 'done' ? 'object-select-symbolic'
-            : activity.state === 'failed' ? 'dialog-warning-symbolic'
-                : activity.icon;
-        const icon = new St.Icon({
-            icon_name: iconName,
-            style_class: finished
-                ? 'perdana-island__activity-icon perdana-island__activity-icon--finished'
-                : 'perdana-island__activity-icon',
-        });
-        place(body, icon, 0, y + 7, 18, 18);
-        const title = place(body, makeLabel(cleanActivityText(activity.title, 80),
-            'perdana-island__activity-title'), 26, y, pageWidth - 100, 18);
-        const detail = place(body, makeLabel(
-            finished
-                ? (activity.state === 'done' ? 'Done' : 'Stopped')
-                : formatActivityDetail(activity),
-            'perdana-island__activity-detail'), 26, y + 18, pageWidth - 100, 16);
-        const value = place(body, makeLabel(
-            finished ? '' : formatActivityValue(activity),
-            'perdana-island__activity-value'), pageWidth - 70, y + 1, 70, 18);
-        value.clutter_text.x_align = Clutter.ActorAlign.END;
-        let track = null;
-        let fill = null;
-        if (!finished) {
-            track = new St.Widget({style_class: 'perdana-island__activity-track'});
-            fill = new St.Widget({style_class: 'perdana-island__activity-fill'});
-            track.add_child(fill);
-            place(body, track, 26, y + 37, pageWidth - 26, 3);
-            const progress = normalizeProgress(activity.progress);
-            fill.set_position(0, 0);
-            fill.set_size(progress === null ? 0
-                : Math.max(1, Math.round((pageWidth - 26) * progress)), 3);
-        }
-        return {id: activity.id, title, detail, value, track, fill};
-    }
-
-    _updateActivityPage() {
-        if (!this._expanded || this._activePage !== 'activity' || !this._activityRows.length)
-            return;
-        for (const row of this._activityRows) {
-            const activity = this._activities.get(row.id);
-            if (!activity)
-                continue;
-            row.title.text = cleanActivityText(activity.title, 80);
-            row.detail.text = activity.state === 'running' ? formatActivityDetail(activity)
-                : activity.state === 'done' ? 'Done' : 'Stopped';
-            row.value.text = activity.state === 'running'
-                ? formatActivityValue(activity) : '';
-            if (!row.track || !row.fill)
-                continue;
-            const progress = normalizeProgress(activity.progress);
-            const fillWidth = progress === null ? 0
-                : Math.max(1, Math.round(Math.max(1, row.track.width) * progress));
-            if (this._reducedMotion) {
-                row.fill.remove_all_transitions();
-                row.fill.width = fillWidth;
-            } else {
-                row.fill.ease({
-                    width: fillWidth,
-                    duration: 240,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                });
-            }
-        }
-    }
-
-    _connectDownloadWatcher() {
-        if (this._downloadsMonitor)
-            return;
-        let path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD);
-        if (!path)
-            path = GLib.build_filenamev([GLib.get_home_dir(), 'Downloads']);
-        this._downloadsDirectory = Gio.File.new_for_path(path);
-        try {
-            this._downloadsMonitor = this._downloadsDirectory.monitor_directory(
-                Gio.FileMonitorFlags.WATCH_MOVES,
-                null
-            );
-            this._downloadsMonitor.connect('changed', (_monitor, file, other, eventType) =>
-                this._onDownloadChanged(file, other, eventType));
-            this._scanDownloads();
-        } catch (error) {
-            logError(error, 'perdana-island: watching the Downloads folder');
-            this._downloadsMonitor = null;
-        }
-    }
-
-    _disconnectDownloadWatcher() {
-        if (this._downloadsMonitor) {
-            this._downloadsMonitor.cancel();
-            this._downloadsMonitor = null;
-        }
-        for (const source of this._downloadRefreshSources.values())
-            GLib.source_remove(source);
-        this._downloadRefreshSources.clear();
-        for (const source of this._downloadFinishSources.values())
-            GLib.source_remove(source);
-        this._downloadFinishSources.clear();
-        for (const source of this._activityExpirySources.values())
-            GLib.source_remove(source);
-        this._activityExpirySources.clear();
-        this._downloadActivities.clear();
-        this._downloadsDirectory = null;
-    }
-
-    _scanDownloads() {
-        let enumerator;
-        try {
-            enumerator = this._downloadsDirectory.enumerate_children(
-                'standard::name,standard::type',
-                Gio.FileQueryInfoFlags.NONE,
-                null
-            );
-        } catch (_error) {
-            return;
-        }
-        const names = [];
-        let info;
-        while ((info = enumerator.next_file(null))) {
-            if (info.get_file_type() === Gio.FileType.REGULAR)
-                names.push(info.get_name());
-        }
-        enumerator.close(null);
-        for (const name of names) {
-            if (isAria2Control(name)) {
-                const file = this._downloadsDirectory.get_child(name);
-                this._ensureDownloadActivity(file, name);
-            }
-        }
-        for (const name of names) {
-            if (partialSuffix(name)) {
-                const file = this._downloadsDirectory.get_child(name);
-                this._ensureDownloadActivity(file, name);
-            }
-        }
-    }
-
-    _downloadTargetInfo(file, name) {
-        if (isAria2Control(name)) {
-            const parent = file.get_parent();
-            const directory = parent?.get_path() || this._downloadsDirectory?.get_path();
-            if (!directory)
-                return null;
-            return {
-                path: GLib.build_filenamev([directory, downloadTitle(name)]),
-                title: downloadTitle(name),
-            };
-        }
-        if (!partialSuffix(name))
-            return null;
-        return {path: file.get_path(), title: downloadTitle(name)};
-    }
-
-    _ensureDownloadActivity(file, name) {
-        const target = this._downloadTargetInfo(file, name);
-        if (!target?.path)
-            return;
-        this._downloadActivityFor(target.path, target.title);
-        this._queueDownloadRefresh(target.path);
-    }
-
-    _downloadActivityFor(path, title) {
-        let id = this._downloadActivities.get(path);
-        if (id && this._activities.has(id))
-            return id;
-        id = `download:${path}`;
-        this._downloadActivities.set(path, id);
-        this._startActivity({
-            id,
-            title,
-            subtitle: 'Downloading',
-            icon: 'folder-download-symbolic',
-            progress: null,
-            source: 'download',
-        });
-        return id;
-    }
-
-    _queueDownloadRefresh(path) {
-        if (this._downloadRefreshSources.has(path))
-            return;
-        const source = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ACTIVITY_DOWNLOAD_DEBOUNCE_MS, () => {
-            this._downloadRefreshSources.delete(path);
-            this._refreshDownloadActivity(path);
-            return GLib.SOURCE_REMOVE;
-        });
-        this._downloadRefreshSources.set(path, source);
-    }
-
-    _refreshDownloadActivity(path) {
-        const id = this._downloadActivities.get(path);
-        if (!id || !this._activities.has(id))
-            return;
-        let received = 0;
-        try {
-            const info = Gio.File.new_for_path(path).query_info(
-                'standard::size,standard::type',
-                Gio.FileQueryInfoFlags.NONE,
-                null
-            );
-            if (info.get_file_type() === Gio.FileType.REGULAR)
-                received = Math.max(0, info.get_size());
-        } catch (_error) {
-            // The file may be between a rename and its final event.
-        }
-        let total = null;
-        try {
-            const [ok, contents] = Gio.File.new_for_path(`${path}.aria2`)
-                .load_contents(null);
-            if (ok)
-                total = aria2TotalLength(contents);
-        } catch (_error) {
-            // No aria2 control file; the activity stays indeterminate.
-        }
-        this._updateActivity(id, {
-            progress: total && total > 0 ? Math.min(1, received / total) : null,
-            receivedBytes: received,
-            totalBytes: total || 0,
-        });
-    }
-
-    _onDownloadChanged(file, other, eventType) {
-        const renamed = eventType === Gio.FileMonitorEvent.RENAMED
-            || eventType === Gio.FileMonitorEvent.MOVED;
-        if (renamed) {
-            this._downloadCreated(other);
-            this._downloadRemoved(file, other);
-            return;
-        }
-        if (eventType === Gio.FileMonitorEvent.DELETED
-            || eventType === Gio.FileMonitorEvent.MOVED_OUT)
-            this._downloadRemoved(file);
-        else
-            this._downloadCreated(file);
-    }
-
-    _downloadCreated(file) {
-        const name = file?.get_basename();
-        if (!name)
-            return;
-        if (!isAria2Control(name) && !partialSuffix(name)) {
-            const path = file.get_path();
-            if (path && this._downloadActivities.has(path))
-                this._queueDownloadRefresh(path);
-            return;
-        }
-        const target = this._downloadTargetInfo(file, name);
-        if (!target?.path)
-            return;
-        this._downloadActivityFor(target.path, target.title);
-        this._queueDownloadRefresh(target.path);
-    }
-
-    _downloadRemoved(file, nextFile = null) {
-        const name = file?.get_basename();
-        if (!name)
-            return;
-        const aria2 = isAria2Control(name);
-        const suffix = partialSuffix(name);
-        if (!aria2 && !suffix) {
-            const path = file.get_path();
-            const id = path ? this._downloadActivities.get(path) : null;
-            if (!id)
-                return;
-            this._downloadActivities.delete(path);
-            this._finishActivity(id, false);
-            return;
-        }
-        const target = this._downloadTargetInfo(file, name);
-        if (!target?.path || !this._downloadActivities.has(target.path))
-            return;
-        const nextName = nextFile?.get_basename();
-        const movedToFinal = nextName && !isAria2Control(nextName) && !partialSuffix(nextName);
-        const finalPath = movedToFinal
-            ? nextFile.get_path()
-            : aria2 ? target.path
-                : target.path.slice(0, target.path.length - suffix.length);
-        this._queueDownloadFinish(target.path, finalPath);
-    }
-
-    _queueDownloadFinish(targetPath, finalPath) {
-        if (this._downloadFinishSources.has(targetPath))
-            return;
-        const source = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ACTIVITY_DOWNLOAD_FINISH_MS, () => {
-            this._downloadFinishSources.delete(targetPath);
-            this._completeDownload(targetPath, finalPath);
-            return GLib.SOURCE_REMOVE;
-        });
-        this._downloadFinishSources.set(targetPath, source);
-    }
-
-    _completeDownload(targetPath, finalPath) {
-        const id = this._downloadActivities.get(targetPath);
-        if (!id)
-            return;
-        this._downloadActivities.delete(targetPath);
-        const success = finalPath
-            ? Gio.File.new_for_path(finalPath).query_exists(null)
-            : false;
-        this._finishActivity(id, success);
-    }
-
     _connectClipboardMonitor() {
-        if (!this._enabled || this._clipboardOwnerChangedSignal)
+        if (!this._enabled || this._clipboardOwnerChangedSignal || this._clipboardPollSource)
             return;
 
         try {
@@ -7763,18 +9550,31 @@ export default class PerdanaIslandExtension extends Extension {
                     this._scheduleClipboardCapture();
                 }
             );
-            this._scheduleClipboardCapture();
         } catch (error) {
             this._clipboardSelection = null;
             this._clipboardOwnerChangedSignal = 0;
             logError(error, 'Perdana Island could not monitor clipboard changes');
-            this._setClipboardNotice('Clipboard monitor unavailable');
+            this._setClipboardNotice('Clipboard event monitor unavailable; fallback active');
         }
+
+        // Mutter may miss owner-changed events for clipboard managers or some
+        // Wayland clients. Poll as a fallback; history de-duplication keeps the
+        // same value from being added again, while copies still appear promptly.
+        this._scheduleClipboardCapture();
+        this._clipboardPollSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            if (!this._enabled) {
+                this._clipboardPollSource = 0;
+                return GLib.SOURCE_REMOVE;
+            }
+            this._captureClipboard();
+            return GLib.SOURCE_CONTINUE;
+        });
     }
 
     _disconnectClipboardMonitor() {
         this._clearTimeout('_clipboardSource');
         this._clearTimeout('_clipboardRequestTimeoutSource');
+        this._clearTimeout('_clipboardPollSource');
         this._clipboardRequestGeneration++;
         this._clipboardInFlight = false;
         if (this._clipboardSelection && this._clipboardOwnerChangedSignal) {
@@ -7862,9 +9662,10 @@ export default class PerdanaIslandExtension extends Extension {
     _writeTasksToFile(path, tasks) {
         try {
             GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
-            GLib.file_set_contents(path, JSON.stringify(tasks));
+            return GLib.file_set_contents(path, JSON.stringify(tasks));
         } catch (error) {
             logError(error, 'Perdana Island could not synchronize its task list');
+            return false;
         }
     }
 
@@ -7913,6 +9714,13 @@ export default class PerdanaIslandExtension extends Extension {
                 this._setClipboardNotice('Password skipped');
                 return;
             }
+            const hasTextContent = mimeTypes.some(mimeType =>
+                /^text\//i.test(mimeType)
+                || ['utf8_string', 'string', 'compound_text'].includes(String(mimeType).toLowerCase()));
+            if (mimeTypes.length && !hasTextContent) {
+                this._setClipboardNotice('Only text copies are saved');
+                return;
+            }
             this._clipboardInFlight = true;
             requestGeneration = ++this._clipboardRequestGeneration;
             this._clipboardRequestTimeoutSource = GLib.timeout_add_seconds(
@@ -7942,11 +9750,15 @@ export default class PerdanaIslandExtension extends Extension {
                     this._setClipboardNotice('Password skipped');
                     return;
                 }
+                if (!rawValue && mimeTypes.length) {
+                    this._setClipboardNotice('No readable text in the current clipboard');
+                    return;
+                }
 
                 const noticeChanged = this._clipboardNotice !== null;
                 this._clipboardNotice = null;
                 if (!rawValue) {
-                    if (noticeChanged && this._expanded && this._activePage === 'clipboard')
+                    if (noticeChanged && this._expanded && this._clipboardVisible())
                         this._renderPanel();
                     return;
                 }
@@ -7980,9 +9792,10 @@ export default class PerdanaIslandExtension extends Extension {
                 }
 
                 this._clipboardItems.unshift(value);
-                this._clipboardItems = this._clipboardItems.slice(0, 4);
+                this._clipboardItems = this._clipboardItems.slice(0, CLIPBOARD_LIMIT);
                 this._saveClipboardItems();
-                if (this._expanded && this._activePage === 'clipboard')
+                this._updateClipboardIndicator();
+                if (this._expanded && this._clipboardVisible())
                     this._renderPanel();
             });
         } catch (error) {
@@ -8002,14 +9815,39 @@ export default class PerdanaIslandExtension extends Extension {
         if (this._clipboardNotice === message)
             return;
         this._clipboardNotice = message;
-        if (this._enabled && this._expanded && this._activePage === 'clipboard')
+        if (this._enabled && this._expanded && this._clipboardVisible())
             this._renderPanel();
+    }
+
+    _clearClipboardArmed() {
+        return Boolean(this._clipboardArmTimer);
+    }
+
+    _clearClipboardPressed() {
+        if (!this._clipboardItems.length)
+            return;
+        if (!this._clearClipboardArmed()) {
+            this._clipboardArmTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 4000, () => {
+                this._clipboardArmTimer = 0;
+                this._renderPanel();
+                return GLib.SOURCE_REMOVE;
+            });
+            this._renderPanel();
+            return;
+        }
+        GLib.source_remove(this._clipboardArmTimer);
+        this._clipboardArmTimer = 0;
+        this._clipboardItems = [];
+        this._saveClipboardItems();
+        this._updateClipboardIndicator();
+        this._renderPanel();
     }
 
     _deleteClipboardItem(item) {
         this._clipboardItems = this._clipboardItems.filter(value => value !== item);
         this._clipboardSuppressedValue = item;
         this._saveClipboardItems();
+        this._updateClipboardIndicator();
         this._renderPanel();
     }
 
@@ -8039,7 +9877,7 @@ export default class PerdanaIslandExtension extends Extension {
                     uniqueItems.push(value);
                 }
             });
-            const safeItems = uniqueItems.slice(0, 4);
+            const safeItems = uniqueItems.slice(0, CLIPBOARD_LIMIT);
             if (skippedSensitiveItem)
                 this._clipboardNotice = 'Password skipped';
             // Older extension versions may have created this file with the
@@ -8054,7 +9892,7 @@ export default class PerdanaIslandExtension extends Extension {
     _saveClipboardItems(items = this._clipboardItems) {
         try {
             GLib.mkdir_with_parents(this._taskDirectory, 0o700);
-            GLib.file_set_contents(this._clipboardFile, JSON.stringify(items.slice(0, 4)));
+            GLib.file_set_contents(this._clipboardFile, JSON.stringify(items.slice(0, CLIPBOARD_LIMIT)));
             Gio.File.new_for_path(this._taskDirectory).set_attribute_uint32(
                 'unix::mode', 0o700, Gio.FileQueryInfoFlags.NONE, null
             );
@@ -8595,6 +10433,7 @@ export default class PerdanaIslandExtension extends Extension {
                 this._content.hide();
                 this._noticeBanner = new St.BoxLayout({
                     style_class: 'perdana-island__notice-banner',
+                    clip_to_allocation: true,
                     reactive: actionable,
                     can_focus: actionable,
                     track_hover: actionable,
@@ -8674,6 +10513,12 @@ export default class PerdanaIslandExtension extends Extension {
                 });
                 this._noticeTitle = makeLabel('', 'perdana-island__notice-title');
                 this._noticeSubtitle = makeLabel('', 'perdana-island__notice-subtitle');
+                for (const label of [this._noticeTitle, this._noticeSubtitle]) {
+                    label.x_expand = true;
+                    label.x_align = Clutter.ActorAlign.FILL;
+                    label.clutter_text.line_wrap = false;
+                    label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                }
                 if (type === 'greeting') {
                     this._noticeTitle.add_style_class_name('perdana-island__notice-title--greeting');
                     this._noticeTitle.clutter_text.line_wrap = true;
@@ -8773,11 +10618,17 @@ export default class PerdanaIslandExtension extends Extension {
                     mode: Clutter.AnimationMode.EASE_OUT_QUAD,
                 });
             } else if (type === 'application') {
-                this._noticeTitle.text = data.app;
-                this._noticeSubtitle.text = data.body
-                    ? `${data.title} · ${data.body}` : data.title;
-                const sourceIcon = data.notification.gicon
-                    || data.source.icon || data.source.app?.get_icon?.()
+                const oneLine = value => String(value || '')
+                    .replace(/[\r\n\t\u2028\u2029]+/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                const appName = oneLine(data.app) || 'Notification';
+                const title = oneLine(data.title);
+                const body = oneLine(data.body);
+                this._noticeTitle.text = appName;
+                this._noticeSubtitle.text = [title, body].filter(Boolean).join(' · ');
+                const sourceIcon = data.notification?.gicon
+                    || data.source?.icon || data.source?.app?.get_icon?.()
                     || Gio.ThemedIcon.new('application-x-executable-symbolic');
                 if (data.appIconFile && GLib.file_test(data.appIconFile, GLib.FileTest.EXISTS)) {
                     this._noticeVolumeIcon.gicon = Gio.FileIcon.new(Gio.File.new_for_path(data.appIconFile));
@@ -8785,7 +10636,8 @@ export default class PerdanaIslandExtension extends Extension {
                     this._noticeVolumeIcon.gicon = data.appIconName
                         ? Gio.ThemedIcon.new(data.appIconName) : sourceIcon;
                 }
-                this._noticeVolumeIcon.fallback_gicon = sourceIcon;
+                this._noticeVolumeIcon.fallback_gicon = isChatItem(data)
+                    ? Gio.ThemedIcon.new('application-x-executable-symbolic') : sourceIcon;
             } else if (type === 'greeting') {
                 this._noticeTitle.text = data.title;
                 this._noticeVolumeIcon.icon_name = 'avatar-default-symbolic';
@@ -8952,17 +10804,20 @@ export default class PerdanaIslandExtension extends Extension {
         this._renderPanel();
     }
 
-    _addTask(text, due = null, priority = null) {
+    _addTask(text, due = null, priority = null, dueDate = null) {
         const trimmed = text.trim().slice(0, 120);
         if (!trimmed)
             return;
+        const scheduleDate = typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate)
+            ? dueDate
+            : Number.isInteger(due) ? dateKey() : null;
         this._tasks.push({
             id: GLib.uuid_string_random(),
             text: trimmed,
             done: false,
             doneAt: null,
             due: Number.isInteger(due) ? due : null,
-            dueDate: Number.isInteger(due) ? dateKey() : null,
+            dueDate: scheduleDate,
             priority: TASK_PRIORITIES.includes(priority) ? priority : null,
         });
         this._saveTasks();
@@ -8983,7 +10838,7 @@ export default class PerdanaIslandExtension extends Extension {
             ? {
                 ...task,
                 due: Number.isInteger(minutes) ? minutes : null,
-                dueDate: Number.isInteger(minutes) ? dateKey() : null,
+                dueDate: task.dueDate || (Number.isInteger(minutes) ? dateKey() : null),
             }
             : task);
         this._saveTasks();
@@ -9032,8 +10887,9 @@ export default class PerdanaIslandExtension extends Extension {
 
     _agendaTasks(key = dateKey()) {
         return this._tasks
-            .filter(task => !task.done && task.dueDate === key && Number.isInteger(task.due))
-            .sort((first, second) => first.due - second.due);
+            .filter(task => !task.done && task.dueDate === key)
+            .sort((first, second) => (first.due ?? Number.MAX_SAFE_INTEGER)
+                - (second.due ?? Number.MAX_SAFE_INTEGER));
     }
 
     _tasksDoneToday() {
@@ -9062,7 +10918,7 @@ export default class PerdanaIslandExtension extends Extension {
         ];
         if (agenda.length) {
             lines.push(`Scheduled: ${agenda
-                .map(task => `${formatClockTime(task.due)} ${task.text}`)
+                .map(task => `${Number.isInteger(task.due) ? `${formatClockTime(task.due)} ` : ''}${task.text}`)
                 .join(', ')}`);
         }
         lines.push(`Focus: ${focus} min`);
@@ -9103,7 +10959,7 @@ export default class PerdanaIslandExtension extends Extension {
                 const shown = this._showSystemNotice('agenda', {
                     title: `${agenda.length} ${agenda.length === 1 ? 'task' : 'tasks'} today`,
                     subtitle: agenda.slice(0, 2)
-                        .map(task => `${formatClockTime(task.due)} ${task.text}`)
+                        .map(task => `${Number.isInteger(task.due) ? `${formatClockTime(task.due)} ` : ''}${task.text}`)
                         .join(' · '),
                 });
                 if (!shown)
@@ -9142,9 +10998,11 @@ export default class PerdanaIslandExtension extends Extension {
     _saveFocusLog() {
         try {
             GLib.mkdir_with_parents(this._taskDirectory, 0o755);
-            GLib.file_set_contents(this._focusLogFile, JSON.stringify(this._focusLog, null, 2));
+            return GLib.file_set_contents(this._focusLogFile,
+                JSON.stringify(this._focusLog, null, 2));
         } catch (error) {
             logError(error, 'Perdana Island could not save the focus log');
+            return false;
         }
     }
 
@@ -9183,8 +11041,9 @@ export default class PerdanaIslandExtension extends Extension {
     }
 
     _saveTasks() {
-        this._writeTasksToFile(this._taskFile, this._tasks);
-        this._writeTasksToFile(this._legacyTaskFile, this._tasks);
+        const currentSaved = this._writeTasksToFile(this._taskFile, this._tasks);
+        const legacySaved = this._writeTasksToFile(this._legacyTaskFile, this._tasks);
+        return currentSaved && legacySaved;
     }
 
     _loadNotes() {
@@ -9209,9 +11068,11 @@ export default class PerdanaIslandExtension extends Extension {
     _saveNotes() {
         try {
             GLib.mkdir_with_parents(this._taskDirectory, 0o755);
-            GLib.file_set_contents(this._notesFile, JSON.stringify(this._notes, null, 2));
+            return GLib.file_set_contents(this._notesFile,
+                JSON.stringify(this._notes, null, 2));
         } catch (error) {
             logError(error, 'Perdana Island could not save the notes');
+            return false;
         }
     }
 
@@ -9729,13 +11590,19 @@ export default class PerdanaIslandExtension extends Extension {
         if (this._preferences.waterReminder
             && minutes >= WATER_WINDOW_START && minutes < WATER_WINDOW_END) {
             const nowSeconds = Math.floor(now.getTime() / 1000);
-            if (nowSeconds - (Number(this._preferences.lastWaterAt) || 0) >= WATER_REMINDER_SECONDS) {
+            let lastReminder = Number(this._preferences.lastWaterReminderAt) || 0;
+            if (!lastReminder) {
+                this._preferences.lastWaterReminderAt = nowSeconds;
+                this._savePreferences();
+                lastReminder = nowSeconds;
+            }
+            if (nowSeconds - lastReminder >= WATER_REMINDER_SECONDS) {
                 const shown = this._showSystemNotice('water', {
                     title: 'Drink water',
                     subtitle: 'Time for a glass of water',
                 });
                 if (shown) {
-                    this._preferences.lastWaterAt = nowSeconds;
+                    this._preferences.lastWaterReminderAt = nowSeconds;
                     this._savePreferences();
                 }
             }
