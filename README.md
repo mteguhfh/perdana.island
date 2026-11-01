@@ -26,7 +26,7 @@ GNOME and KDE have independent version tracks: v79 is GNOME Shell, while the ret
 
 ## Feature previews
 
-These images show representative UI states with sample media, files, notifications, and system values. A running extension reads those values from the current desktop session; the screenshots are not runtime captures.
+These images show representative UI states with sample media, files, notifications, and system values. They are examples, not live readings from your current desktop session.
 
 | Feature | Preview |
 | --- | --- |
@@ -39,11 +39,13 @@ These images show representative UI states with sample media, files, notificatio
 | Shelf grid | ![Shelf Grid view with file thumbnails](assets/screenshots/shelf.png) |
 | Shelf list | ![Shelf List view with filenames](assets/screenshots/shelf-list.png) |
 | To-do | ![To-do page with task completion and editing controls](assets/screenshots/todo.png) |
+| Quick capture | ![Quick capture preview for a scheduled task](assets/screenshots/quick-capture.png) |
 | Notes | ![Notes page with a note list and a wrapping editor](assets/screenshots/notes.png) |
 | Clipboard | ![Clipboard history with masked email and link previews](assets/screenshots/clipboard.png) |
 | Today | ![Today calendar with processor, memory, disk, and battery indicators](assets/screenshots/today.png) |
 | Notifications | ![Recent notifications with Clear all and app activation controls](assets/screenshots/notifications.png) |
 | Settings | ![Settings for appearance, greetings, reminders, and visible tabs](assets/screenshots/settings.png) |
+| Backup and restore | ![Settings data section for saving and restoring a backup](assets/screenshots/backup-restore.png) |
 | Activity | ![Activity progress rows with app and download work](assets/screenshots/activity.png) |
 | Charging notice | ![Charging notice with battery level](assets/screenshots/notice-charging.png) |
 | Charger disconnected | ![Charger disconnected notice](assets/screenshots/notice-disconnected.png) |
@@ -179,7 +181,7 @@ The GNOME extension is distributed under [GPL-3.0-or-later](LICENSE), a license 
 
 ### mteguhfh
 
-PRs #1–#11 and #24 are merged. PRs #12 and #13 were closed without merging; compatible motion and same-monitor layout behavior were adapted in v73. PRs #25 and #26 supplied improvements adapted into v79 while retaining the existing UI and legacy backup support. Their final GitHub status and porting decisions are recorded in the [v79 PR audit](docs/pr-audit-v79.md).
+PRs #1–#11 and #24 are merged. PRs #12 and #13 were closed without merging; compatible motion and same-monitor layout behavior were adapted in v73. PRs #25 and #26 were closed without merge after their parser and backup improvements were adapted into v79 on `main`; existing UI and legacy backup support were retained. The [v79 PR audit](docs/pr-audit-v79.md) explains each disposition.
 
 - [PR #1 — Clipboard privacy](https://github.com/txtperdana/perdana.island/pull/1): masks dotted email addresses more completely and skips explicitly named API keys, access and refresh tokens, generic token fields, client secrets, authorization values, and private-key blocks. The checks target credential-shaped fields rather than treating ordinary copied text as a password.
 - [PR #2 — Contribution workflow](https://github.com/txtperdana/perdana.island/pull/2): adds the contributor guide, bug-report and feature-request templates, and pull-request template.
@@ -195,5 +197,5 @@ PRs #1–#11 and #24 are merged. PRs #12 and #13 were closed without merging; co
 - [PR #12 — Motion polish](https://github.com/txtperdana/perdana.island/pull/12) (**closed, not merged; adapted in v73**): smooths island and page transitions, button feedback, media progress, notices, and the focus ring; adds hover lift and a moving active-tab highlight while respecting GNOME's animation setting.
 - [PR #13 — Draggable tabs and island placement](https://github.com/txtperdana/perdana.island/pull/13) (**closed, not merged; adapted in v73**): lets people reorder tabs and position the island on the current monitor; cross-monitor movement remains deferred.
 - [PR #24 — Activity progress](https://github.com/txtperdana/perdana.island/pull/24) (**merged; adapted in v79**): adds app-reported Activity through session D-Bus, partial-download tracking, aria2 total-size parsing, and Activity progress screenshots. v79 keeps completed downloads until the user selects them.
-- [PR #25 — Quick Capture](https://github.com/txtperdana/perdana.island/pull/25) (**adapted in v79**): expands Indonesian and English date, weekday, time, period, and priority parsing. The existing capture UI and `Catatan:` note flow stay in place; invalid dates and clock values remain visible instead of being silently normalized.
-- [PR #26 — Backup and restore](https://github.com/txtperdana/perdana.island/pull/26) (**adapted in v79**): uses a versioned nested JSON shape and filters local-only state. v79 retains the earlier flat backup format for restore compatibility.
+- [PR #25 — Quick Capture](https://github.com/txtperdana/perdana.island/pull/25) (**closed without merge; adapted in v79**): expands Indonesian and English date, weekday, time, period, and priority parsing. The existing capture UI and `Catatan:` note flow stay in place; invalid dates and clock values remain visible instead of being silently normalized. It was closed after publication to avoid duplicating the feature and reintroducing stale packaging details.
+- [PR #26 — Backup and restore](https://github.com/txtperdana/perdana.island/pull/26) (**closed without merge; adapted in v79**): uses a versioned nested JSON shape and filters local-only state. v79 retains the earlier flat backup format for restore compatibility. It was closed after publication to avoid duplicating the Settings → Data implementation and stale packaging changes.
