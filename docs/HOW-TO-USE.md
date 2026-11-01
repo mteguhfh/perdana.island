@@ -24,6 +24,28 @@ Open **Lyrics** while a player is active. The page shows album art, title, artis
 
 Custom durations accept 1–86,400 seconds or 1–1,440 minutes. The page counts completed focus sessions for the current session.
 
+## Activity
+
+Activity follows short-lived background work. The resting pill shows the oldest running item with an icon, a short title, a percentage or byte count, and a thin progress bar. Media and focus keep priority over the pill. Open the island and select **Activity** to see running items; completed rows stay for a few seconds and then disappear.
+
+Downloads are detected automatically in `~/Downloads`:
+
+- Files ending in `.part`, `.crdownload`, `.download`, or `.opdownload` show an indeterminate bar with the bytes received. When the partial file is renamed to its final name, the row shows **Done**.
+- aria2 downloads are tracked from their `.aria2` control file, so the bar shows a real percentage from the downloaded size and the total length in the control file.
+- The watcher reads file names, sizes, and the aria2 control metadata. It never opens the downloaded content.
+
+Apps and scripts can report their own progress on the session bus. `progress` is `0` to `1`; pass a negative value for an indeterminate task. `icon` is an icon name such as `utilities-terminal-symbolic`.
+
+```sh
+gdbus call --session --dest org.perdana.Island   --object-path /org/perdana/Island   --method org.perdana.Island.StartActivity   "site-build" "Building site" "Compiling assets" 0.4 "utilities-terminal-symbolic"
+
+gdbus call --session --dest org.perdana.Island   --object-path /org/perdana/Island   --method org.perdana.Island.UpdateActivity   "site-build" 0.8 "Writing pages"
+
+gdbus call --session --dest org.perdana.Island   --object-path /org/perdana/Island   --method org.perdana.Island.FinishActivity   "site-build" true
+```
+
+`ListActivities` returns a JSON array with the current activities. The interface is session-local and optional; the Downloads watcher works without it. Hide the Activity tab under **Settings → Tabs** if you do not want it.
+
 ## Shelf
 
 Choose **Grid** or **List**. Grid shows image thumbnails; List shows filenames in rows. Scroll the Shelf area to browse up to 10 visible files. Select **Add files** to copy chosen files into Shelf. Use the folder button to open the Shelf directory. Files copied into that folder appear in Shelf automatically.

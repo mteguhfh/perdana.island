@@ -49,6 +49,7 @@ gnome-extensions pack ./extension \
   --extra-source=layout-utils.js \
   --extra-source=music-classifier.js \
   --extra-source=backup-utils.js \
+  --extra-source=progress-utils.js \
   --out-dir ./dist
 gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.zip
 gnome-extensions disable perdana.island@perdana

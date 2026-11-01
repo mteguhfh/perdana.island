@@ -17,6 +17,7 @@ node --check extension/extension.js
 node --check extension/clipboard-utils.js
 node --check extension/layout-utils.js
 node --check extension/backup-utils.js
+node --check extension/progress-utils.js
 
 for file in package.json extension/metadata.json plasma-widget/metadata.json; do
     python3 -m json.tool "$file" >/dev/null || fail "invalid JSON: $file"
@@ -44,6 +45,7 @@ gnome_required = {
     'clipboard-utils.js',
     'layout-utils.js',
     'backup-utils.js',
+    'progress-utils.js',
     'stylesheet.css',
     'LICENSE',
     'schemas/org.gnome.shell.extensions.perdana-island.gschema.xml',
