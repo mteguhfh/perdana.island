@@ -48,6 +48,7 @@ gnome-extensions pack ./extension \
   --extra-source=clipboard-utils.js \
   --extra-source=layout-utils.js \
   --extra-source=quick-capture.js \
+  --extra-source=progress-utils.js \
   --out-dir ./dist
 gnome-extensions install --force ./dist/perdana.island@perdana.shell-extension.zip
 gnome-extensions disable perdana.island@perdana
