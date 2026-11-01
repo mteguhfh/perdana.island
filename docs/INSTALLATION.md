@@ -10,7 +10,7 @@
 From the project root, build the package and install the generated archive:
 
 ```sh
-./scripts/build-gnome.sh
+./scripts/package-release.sh v79
 gnome-extensions install --force ./dist/Perdana-Island-GNOME-v79.shell-extension.zip
 gnome-extensions enable perdana.island@perdana
 ```

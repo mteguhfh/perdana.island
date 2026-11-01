@@ -30,7 +30,7 @@ v79 builds on the v78.19 feature set. It adapts merged Activity progress work fr
 - The GNOME package includes its new progress helper and runtime icons only. README screenshots remain in the source assets but are excluded from the extension archive.
 - **Not included:** PR #17's movement between monitors. Existing page transitions and same-monitor placement remain part of the baseline.
 
-GNOME and KDE have independent version tracks: v79 is GNOME Shell, while the retained KDE Plasma widget remains v76 until it receives a KDE-specific update. PR status, adaptations, and closure reasoning are listed in [the v79 PR audit](docs/pr-audit-v79.md).
+GNOME and KDE have independent version tracks: v79 is GNOME Shell, while the retained KDE Plasma widget remains v76 until it receives a KDE-specific update.
 
 ## Feature previews
 
@@ -110,12 +110,12 @@ GNOME Shell 49 and earlier, and 52 or later, are outside the compatibility range
 
 ## Install
 
-See [Installation](docs/INSTALLATION.md) for requirements, build/install, update, removal, and troubleshooting steps.
+See [Installation](docs/INSTALLATION.md) for requirements, install, update, removal, and troubleshooting steps.
 
 Quick install from this repository:
 
 ```sh
-./scripts/build-gnome.sh
+./scripts/package-release.sh v79
 gnome-extensions install --force ./dist/Perdana-Island-GNOME-v79.shell-extension.zip
 gnome-extensions enable perdana.island@perdana
 ```
@@ -127,7 +127,7 @@ The repository keeps the GNOME extension and KDE Plasma widget as separate packa
 - `Perdana-Island-GNOME-v79.shell-extension.zip` for GNOME Shell 50 and 51.
 - KDE Plasma uses its own package and installation instructions in [README-KDE.md](README-KDE.md).
 
-Build the current GNOME package with `./scripts/build-gnome.sh`. GNOME releases use `v<number>` tags; KDE releases use `plasma-v<number>` tags and package only the Plasma widget. Neither package changes the other platform's version.
+Build the current GNOME package with `./scripts/package-release.sh v79`. GNOME releases use `v<number>` tags; KDE releases use `plasma-v<number>` tags and package only the Plasma widget. Neither package changes the other platform's version.
 
 ## Use
 
@@ -149,13 +149,13 @@ extension/schemas/           GNOME extension preferences schema
 extension/assets/            Runtime icons only
 plasma-widget/               Separate KDE Plasma 6 widget
 assets/screenshots/          README feature previews
-docs/                        Product, usage, install, and release notes
-scripts/                     Independent GNOME/KDE packaging and validation
+docs/                        Usage, install, and release notes
+scripts/                     GNOME/KDE packaging and validation
 tests/                       Regression checks for parsers, privacy, backup, and progress
 dist/                        Local package output; excluded from GitHub source
 ```
 
-The release source keeps GNOME and KDE code in their own folders, plus runtime assets, documentation, build scripts, tests, and the license. HTML mockups, agent prompts, local settings, and generated archives stay out of the GitHub source tree. Only the feature screenshots used above remain under `assets/screenshots/`.
+The release source keeps GNOME and KDE code in their own folders, plus runtime assets, usage and release documentation, packaging scripts, tests, and the license. HTML mockups, agent prompts, local settings, and generated archives stay out of the GitHub source tree.
 
 The GNOME extension is distributed under [GPL-3.0-or-later](LICENSE), a license compatible with GNOME Shell's GPL-2.0-or-later terms.
 
@@ -166,7 +166,7 @@ The GNOME extension is distributed under [GPL-3.0-or-later](LICENSE), a license 
 - **GNOME foundation:** created the Shell extension lifecycle, top-attached island, resting and expanded states, responsive page widths, tab navigation, and transitions. Built Music controls over MPRIS, LRCLIB lyric lookup and sync, the focus timer, Shelf file handling, To-do, local clipboard history, Today metrics, desktop notices, and Settings.
 - **Persistence and migration:** added local storage for tasks and clipboard history, carried task and Shelf data forward from the former `pulo-island` data folder, and maintained settings across extension sessions.
 - **KDE port:** created the separate Plasma 6 widget, its supported Music, Focus, Tasks, and Clipboard pages, and KDE-specific installation, usage, and compatibility documentation. GNOME and KDE code, package contents, and version tracks remain separate.
-- **Project maintenance:** owns product direction, design reviews, release packaging, versioning, screenshots, README/PRD/how-to guides, and integration of community changes. Reviewed and merged contributor work while preserving attribution in this README.
+- **Project maintenance:** owns product direction, design reviews, release packaging, versioning, screenshots, README and how-to guides, and integration of community changes. Reviewed and merged contributor work while preserving attribution in this README.
 - **v70:** implemented first-session and returning-session greetings; added account, device, and custom display-name choices; editable welcome and return text with a `{name}` token; preview buttons; and once-per-login greeting state. Split Settings into Island, Greeting, Reminders, and Tabs side sections, with scroll-safe content in each section.
 - **v71:** added configurable MPRIS music classification to keep podcasts, movies, social videos, and ambiguous media out of the music island; refined Notes spacing and safe insets; and guarded Keep awake against delayed session-manager replies.
 - **v72:** added Settings → Notifications controls for app banners from WhatsApp, Discord, Telegram Web/Desktop, and Google Chat; added Notch/Pill shape selection, browser-overlap tuck-away, and a hardware brightness OSD. GNOME retains control of desktop notifications and brightness changes.
@@ -189,7 +189,7 @@ The GNOME extension is distributed under [GPL-3.0-or-later](LICENSE), a license 
 
 ### mteguhfh
 
-PRs #1–#11 and #24 are merged. PRs #12 and #13 were closed without merging; compatible motion and same-monitor layout behavior were adapted in v73. PRs #25 and #26 were closed without merge after their parser and backup improvements were adapted into v79 on `main`; existing UI and legacy backup support were retained. The [v79 PR audit](docs/pr-audit-v79.md) explains each disposition.
+PRs #1–#11 and #24 are merged. PRs #12 and #13 were closed without merging; compatible motion and same-monitor layout behavior were adapted in v73. PRs #25 and #26 were closed without merge after their parser and backup improvements were adapted into v79 on `main`; existing UI and legacy backup support were retained.
 
 - [PR #1 — Clipboard privacy](https://github.com/txtperdana/perdana.island/pull/1): masks dotted email addresses more completely and skips explicitly named API keys, access and refresh tokens, generic token fields, client secrets, authorization values, and private-key blocks. The checks target credential-shaped fields rather than treating ordinary copied text as a password.
 - [PR #2 — Contribution workflow](https://github.com/txtperdana/perdana.island/pull/2): adds the contributor guide, bug-report and feature-request templates, and pull-request template.
