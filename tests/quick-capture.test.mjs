@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {parseCapture} from '../extension/quick-capture.js';
+import {captureChips, parseCapture} from '../extension/quick-capture.js';
 
 const NOW = new Date(2026, 9, 31, 9, 30, 0);
 
@@ -80,4 +80,21 @@ test('note suffix and invalid clock values stay safe and visible', () => {
     const invalid = parseCapture('Rapat jam 10:75', NOW);
     assert.equal(invalid.title, 'Rapat jam 10:75');
     assert.equal(invalid.time, null);
+});
+
+test('capture chips summarize mode, title, schedule and priority', () => {
+    const chips = captureChips(parseCapture('Telepon ibu besok jam 5 penting', NOW));
+    assert.deepEqual(chips.map(chip => chip.text), [
+        'Tugas', 'Telepon ibu', 'Min, 1 Nov', '05:00', '! High',
+    ]);
+    assert.equal(chips[1].style, 'title');
+    assert.equal(chips[4].style, 'priority');
+
+    const note = captureChips(parseCapture('Catatan: beli susu', NOW));
+    assert.deepEqual(note.map(chip => chip.text), ['Catatan', 'beli susu']);
+});
+
+test('capture chips keep an empty title visible', () => {
+    const chips = captureChips({mode: 'task', title: '', day: null, time: null, priority: null, period: null});
+    assert.deepEqual(chips.map(chip => chip.text), ['Tugas', 'Judul kosong']);
 });

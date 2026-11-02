@@ -107,6 +107,74 @@ export function selectActivity(activities) {
         || (activity.startedAt || 0) < (oldest.startedAt || 0) ? activity : oldest, null);
 }
 
+export const ACTIVITY_LIMIT = 32;
+
+export function activityId(value, source = 'app') {
+    const id = cleanActivityId(value);
+    if (!id)
+        return '';
+    return source === 'download' ? id : `app:${id.replace(/^app:/, '')}`;
+}
+
+export function normalizeActivity(raw, {id, now, previous = null} = {}) {
+    const structural = !previous || previous.state !== 'running';
+    return {
+        ...(previous || {}),
+        id,
+        title: cleanActivityText(raw?.title) || id,
+        sub: cleanActivityText(raw?.sub ?? raw?.subtitle),
+        icon: cleanActivityIcon(raw?.icon),
+        progress: normalizeProgress(raw?.progress),
+        bytes: Math.max(0, Number(raw?.bytes ?? raw?.receivedBytes) || 0),
+        total: Math.max(0, Number(raw?.total ?? raw?.totalBytes) || 0),
+        source: raw?.source === 'download' ? 'download' : 'app',
+        state: 'running',
+        startedAt: structural ? now : previous.startedAt,
+        updatedAt: now,
+        doneAt: 0,
+        path: raw?.path || '',
+    };
+}
+
+export function updateActivity(item, changes, now) {
+    if (!item || item.state !== 'running')
+        return null;
+    const next = {...item};
+    if ('progress' in changes)
+        next.progress = normalizeProgress(changes.progress);
+    if ('sub' in changes || 'subtitle' in changes)
+        next.sub = cleanActivityText(changes.sub ?? changes.subtitle);
+    const bytes = Number(changes.bytes ?? changes.receivedBytes);
+    if (Number.isFinite(bytes))
+        next.bytes = Math.max(0, bytes);
+    const total = Number(changes.total ?? changes.totalBytes);
+    if (Number.isFinite(total))
+        next.total = Math.max(0, total);
+    next.updatedAt = now;
+    return next;
+}
+
+export function finishActivity(item, success, now) {
+    if (!item || item.state !== 'running')
+        return null;
+    return {
+        ...item,
+        state: success ? 'done' : 'failed',
+        doneAt: now,
+        updatedAt: now,
+        progress: success ? 1 : item.progress,
+    };
+}
+
+export function activitySnapshot(activities) {
+    return activities.map(item => ({
+        id: item.id, title: item.title, subtitle: item.sub, icon: item.icon,
+        progress: item.progress, receivedBytes: item.bytes, totalBytes: item.total,
+        source: item.source, state: item.state, startedAt: item.startedAt,
+        updatedAt: item.updatedAt, finishedAt: item.doneAt,
+    }));
+}
+
 export function aria2TotalLength(contents) {
     if (!contents)
         return null;

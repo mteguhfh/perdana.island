@@ -10,12 +10,12 @@
 From the project root, build the package and install the generated archive:
 
 ```sh
-./scripts/package-release.sh v79
-gnome-extensions install --force ./dist/Perdana-Island-GNOME-v79.shell-extension.zip
+./scripts/package-release.sh v79.2
+gnome-extensions install --force ./dist/Perdana-Island-GNOME-v79.2.shell-extension.zip
 gnome-extensions enable perdana.island@perdana
 ```
 
-The script reads the GNOME version from `extension/metadata.json`, compiles the settings schema, and packages the extension with its runtime assets and license. It writes `dist/Perdana-Island-GNOME-v79.shell-extension.zip`. KDE packaging uses its own version and is not part of this command.
+The script reads the GNOME version from `extension/metadata.json`, compiles the settings schema, and packages the extension with its runtime assets and license. It writes `dist/Perdana-Island-GNOME-v79.2.shell-extension.zip`. KDE packaging uses its own version and is not part of this command.
 
 If Perdana Island was already enabled, GNOME may still have the previous extension code loaded in memory. On Wayland, loading the newly installed code can require ending the desktop session and signing in again. The installer does not do that automatically.
 

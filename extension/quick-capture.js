@@ -246,3 +246,25 @@ export function parseCapture(input, now = new Date()) {
     result.day = day;
     return result;
 }
+
+/**
+ * Build the preview chips shown under the Quick Capture entry.
+ * Kept in this pure module so the panel renderer stays free of parser details.
+ */
+export function captureChips(result) {
+    const chips = [
+        {text: result.mode === 'note' ? 'Catatan' : 'Tugas', style: ''},
+        {text: result.title || 'Judul kosong', style: 'title'},
+    ];
+    if (result.day)
+        chips.push({text: result.day.toLocaleDateString('id-ID', {
+            weekday: 'short', day: 'numeric', month: 'short',
+        }), style: ''});
+    if (result.time)
+        chips.push({text: `${String(result.time.h).padStart(2, '0')}:${String(result.time.m).padStart(2, '0')}`, style: ''});
+    if (result.priority)
+        chips.push({text: `! ${result.priority}`, style: 'priority'});
+    if (result.period)
+        chips.push({text: result.period, style: ''});
+    return chips;
+}

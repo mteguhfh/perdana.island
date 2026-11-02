@@ -12,6 +12,11 @@ import {
     normalizeProgress,
     partialSuffix,
     selectActivity,
+    activityId,
+    activitySnapshot,
+    finishActivity,
+    normalizeActivity,
+    updateActivity,
 } from '../extension/progress-utils.js';
 
 test('activity input is bounded and progress stays in range', () => {
@@ -55,4 +60,24 @@ test('aria2 total length parser rejects malformed control files', () => {
     view.setUint16(0, 2, false);
     assert.equal(aria2TotalLength(bytes), null);
     assert.equal(aria2TotalLength(new Uint8Array(8)), null);
+});
+
+test('activity lifecycle helpers normalize, update, finish, and snapshot state', () => {
+    const started = normalizeActivity({id: 'job', title: ' Build\napp ', progress: .4}, {
+        id: activityId('job'), now: 1000,
+    });
+    assert.equal(started.id, 'app:job');
+    assert.equal(started.sub, '');
+    assert.equal(started.startedAt, 1000);
+    const updated = updateActivity(started, {progress: .8, bytes: 80}, 1100);
+    assert.equal(updated.progress, .8);
+    assert.equal(updated.bytes, 80);
+    const finished = finishActivity(updated, true, 1200);
+    assert.equal(finished.state, 'done');
+    assert.equal(finished.progress, 1);
+    assert.deepEqual(activitySnapshot([finished])[0], {
+        id: 'app:job', title: 'Build app', subtitle: '', icon: 'folder-download-symbolic',
+        progress: 1, receivedBytes: 80, totalBytes: 0, source: 'app', state: 'done',
+        startedAt: 1000, updatedAt: 1200, finishedAt: 1200,
+    });
 });

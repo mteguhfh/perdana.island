@@ -17,6 +17,8 @@ for file in extension/*.js; do
     node --check "$file"
 done
 
+python3 scripts/check-gi-imports.py
+
 for file in package.json extension/metadata.json plasma-widget/metadata.json; do
     python3 -m json.tool "$file" >/dev/null || fail "invalid JSON: $file"
 done

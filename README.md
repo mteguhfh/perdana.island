@@ -4,18 +4,32 @@
 [![GJS](https://img.shields.io/badge/runtime-GJS%20%2F%20JavaScript-f1e05a?logo=javascript&logoColor=111)](https://gjs.guide/)
 [![St and Clutter](https://img.shields.io/badge/UI-St%20%2B%20Clutter-5267a8)](https://gnome.pages.gitlab.gnome.org/gnome-shell/st/)
 [![MPRIS](https://img.shields.io/badge/media-MPRIS%20over%20D--Bus-383838)](https://specifications.freedesktop.org/mpris-spec/latest/)
-[![Activity API](https://img.shields.io/badge/activity-session%20D--Bus-5267a8)](docs/releases/v79.1.md)
+[![Activity API](https://img.shields.io/badge/activity-session%20D--Bus-5267a8)](docs/releases/v79.2.md)
 [![Fedora 44](https://img.shields.io/badge/target-Fedora%2044-51a2da?logo=fedora&logoColor=white)](https://fedoraproject.org/)
 
 Website: [island.perdana.ai.id](https://island.perdana.ai.id)
 
-Perdana Island is a GNOME Shell extension for Shell 50 and 51. It places media controls, synced lyrics, a focus timer, a file shelf, tasks, notes, clipboard history, notifications, settings, and system information in a compact Notch or floating Pill. The repository also retains a separate KDE Plasma 6 widget and guide; v79.1 packages the GNOME extension. On GNOME, **Ctrl+Alt+X** hides or shows the island.
+Perdana Island is a GNOME Shell extension for Shell 50 and 51. It places media controls, synced lyrics, a focus timer, a file shelf, tasks, notes, clipboard history, notifications, settings, and system information in a compact Notch or floating Pill. The repository also retains a separate KDE Plasma 6 widget and guide; v79.2 packages the GNOME extension. On GNOME, **Ctrl+Alt+X** hides or shows the island.
 
-## GNOME v79.1
+## GNOME v79.2
+
+v79.2 is a behavior-preserving maintenance release. The GNOME source is split into focused domain modules, page renderers, and runtime helpers. `extension/extension.js` remains the entry point and drops from 11,866 to 9,147 lines. The interface, stored data formats, and desktop behavior are unchanged. See [v79.2 release notes](docs/releases/v79.2.md).
+
+### v79.2 changes
+
+- **Source layout:** domain logic (tasks, notes, focus, reminders, preferences, clipboard, Shelf, notifications, progress) lives in named modules with unit tests.
+- **Page renderers:** each page builds its UI from explicit inputs and callbacks instead of reaching into the extension state.
+- **Persistence:** file reads and guarded writes go through `state-store.js`, with the same paths and clipboard permission modes.
+- **Activity:** removes a duplicate progress-bar child that produced a Clutter warning.
+- **Shelf:** fixes the Clipboard tab, which failed to render after the split.
+- **Checks:** `scripts/validate.sh` also verifies that every runtime module imports the GNOME libraries it uses.
+- **Package:** GNOME metadata and archive use `v79.2`; KDE remains on its independent v76 track.
+
+### Base release v79.1
 
 v79.1 is a focused patch on v79. It fixes clipped Messages previews, makes conversation cards scroll and expand without covering following cards, removes the per-conversation number badges, and keeps the page-wide unread summary. It also removes browser URLs from chat previews and keeps the message timestamp aligned with the sender row. See [v79.1 release notes](docs/releases/v79.1.md) for the full patch and verification details.
 
-### v79.1 patch changes
+#### v79.1 patch changes
 
 - **Messages layout:** sender and latest-message preview use their own two-line column; timestamp stays aligned at the upper right. Long previews ellipsize on one line instead of being cut off.
 - **Conversation list:** the scrollable list uses the available page height. Expanding a conversation triggers natural relayout and scrolls the card into view, so cards below it move instead of overlapping.
@@ -23,11 +37,11 @@ v79.1 is a focused patch on v79. It fixes clipped Messages previews, makes conve
 - **Chat text:** known WhatsApp, Telegram, and Google Chat website labels are stripped from chat notifications. Links to unrelated websites remain intact.
 - **Package:** GNOME metadata and archive use `v79.1`; KDE remains on its independent v76 track.
 
-### Base release v79
+#### Base release v79
 
 v79 builds on the v78.19 feature set. It adapts merged Activity progress work from [PR #24](https://github.com/txtperdana/perdana.island/pull/24) and Quick Capture and backup improvements from [PR #25](https://github.com/txtperdana/perdana.island/pull/25) and [PR #26](https://github.com/txtperdana/perdana.island/pull/26). It adds a reworked Messages page for chat notifications, keeps every incoming message, and restores unread chat messages after logout. Cross-monitor movement is deferred. Release notes and known issues are in [docs/releases/v79.md](docs/releases/v79.md).
 
-### v79 changes
+#### v79 changes
 
 - **Messages:** chat notifications are grouped into one card per conversation. Expand a card to read every message in order. Each message has its own unread state, and `Mark all read` and `Clear` keep working.
 - **No lost messages:** chat apps that reuse one notification object for each new message now produce a separate history row, so earlier messages are not overwritten.
@@ -42,7 +56,7 @@ v79 builds on the v78.19 feature set. It adapts merged Activity progress work fr
 - The GNOME package includes its new progress helper and runtime icons only. README screenshots remain in the source assets but are excluded from the extension archive.
 - **Not included:** PR #17's movement between monitors. Existing page transitions and same-monitor placement remain part of the baseline.
 
-GNOME and KDE have independent version tracks: GNOME is now v79.1, while the retained KDE Plasma widget remains v76.
+GNOME and KDE have independent version tracks: GNOME is now v79.2, while the retained KDE Plasma widget remains v76.
 
 ## Feature previews
 
@@ -112,13 +126,13 @@ The GNOME extension declares GNOME Shell **50.x and 51.x** compatibility. This G
 
 | Distribution / release | GNOME Shell | Support status |
 | --- | --- | --- |
-| Fedora Linux 44 | 50.6 on the development system | v79.1 build and package validated; active GNOME session not reloaded |
-| Ubuntu 26.04 LTS | 50.1 package | Version checked; v79.1 runtime not independently tested |
-| Debian testing (Forky) | 50.4 package | Version checked; v79.1 runtime not independently tested |
-| Ubuntu 26.10 | 51.0 on a previous test system | Earlier baseline smoke-tested in headless Wayland; v79.1 not independently tested |
+| Fedora Linux 44 | 50.6 on the development system | v79.2 build, package, headless render, and live lyrics, notifications, tab drag, and Shelf checked |
+| Ubuntu 26.04 LTS | 50.1 package | Version checked; v79.2 runtime not independently tested |
+| Debian testing (Forky) | 50.4 package | Version checked; v79.2 runtime not independently tested |
+| Ubuntu 26.10 | 51.0 on a previous test system | Earlier baseline smoke-tested in headless Wayland; v79.2 not independently tested |
 | Other Linux distributions | GNOME Shell 50.x or 51.x required | Expected to work; not individually tested |
 
-GNOME Shell 49 and earlier, and 52 or later, are outside the compatibility range declared by this release. The v79.1 source has unit, syntax, schema, and package checks; the active desktop session was not reloaded for GUI or D-Bus verification. X11 has not been independently tested.
+GNOME Shell 49 and earlier, and 52 or later, are outside the compatibility range declared by this release. The v79.2 source has unit, syntax, schema, import, and package checks, plus isolated headless render checks. GNOME Shell loads an extension module once per session, so an already-running session keeps the previous code until it is logged out and back in. X11 has not been independently tested.
 
 ## Install
 
@@ -127,8 +141,8 @@ See [Installation](docs/INSTALLATION.md) for requirements, install, update, remo
 Quick install from this repository:
 
 ```sh
-./scripts/package-release.sh v79.1
-gnome-extensions install --force ./dist/Perdana-Island-GNOME-v79.1.shell-extension.zip
+./scripts/package-release.sh v79.2
+gnome-extensions install --force ./dist/Perdana-Island-GNOME-v79.2.shell-extension.zip
 gnome-extensions enable perdana.island@perdana
 ```
 
@@ -136,10 +150,10 @@ gnome-extensions enable perdana.island@perdana
 
 The repository keeps the GNOME extension and KDE Plasma widget as separate packages. Their versions may differ:
 
-- `Perdana-Island-GNOME-v79.1.shell-extension.zip` for GNOME Shell 50 and 51.
+- `Perdana-Island-GNOME-v79.2.shell-extension.zip` for GNOME Shell 50 and 51.
 - KDE Plasma uses its own package and installation instructions in [README-KDE.md](README-KDE.md).
 
-Build the current GNOME package with `./scripts/package-release.sh v79.1`. GNOME releases use `v<number>` tags, with optional patch numbers such as `v79.1`; KDE releases use `plasma-v<number>` tags and package only the Plasma widget. Neither package changes the other platform's version.
+Build the current GNOME package with `./scripts/package-release.sh v79.2`. GNOME releases use `v<number>` tags, with optional patch numbers such as `v79.2`; KDE releases use `plasma-v<number>` tags and package only the Plasma widget. Neither package changes the other platform's version.
 
 ## Use
 
@@ -154,20 +168,22 @@ GNOME Shell does not provide the dragged desktop file list to these island actor
 ## Repository layout
 
 ```text
-extension/extension.js      GNOME Shell extension entry point
-extension/stylesheet.css    Island and page styles
-extension/*-utils.js         Isolated GNOME helpers
-extension/schemas/           GNOME extension preferences schema
-extension/assets/            Runtime icons only
+extension/                   GNOME Shell extension source (packaged)
+  extension.js               Composition root and extension lifecycle
+  *-domain.js, *-utils.js    Pure logic with unit tests
+  *-page.js, *-list.js, ...  Page renderers and shared controls
+  stylesheet.css             Island and page styles
+  schemas/                   GNOME preferences schema
+  assets/                    Runtime icons only
 plasma-widget/               Separate KDE Plasma 6 widget
-assets/screenshots/          README feature previews
-docs/                        Usage, install, and release notes
+assets/screenshots/          README feature previews (not packaged)
+docs/                        Install, usage, and release notes
 scripts/                     GNOME/KDE packaging and validation
-tests/                       Regression checks for parsers, privacy, backup, and progress
-dist/                        Local package output; excluded from GitHub source
+tests/                       Unit tests for parsers, privacy, backup, and progress
+dist/                        Local package output; not committed
 ```
 
-The release source keeps GNOME and KDE code in their own folders, plus runtime assets, usage and release documentation, packaging scripts, tests, and the license. HTML mockups, agent prompts, local settings, and generated archives stay out of the GitHub source tree.
+Release packages contain only `extension/` plus `LICENSE`. Preview screenshots, the KDE widget, and generated archives are not part of the GNOME package.
 
 The GNOME extension is distributed under [GPL-3.0-or-later](LICENSE), a license compatible with GNOME Shell's GPL-2.0-or-later terms.
 
