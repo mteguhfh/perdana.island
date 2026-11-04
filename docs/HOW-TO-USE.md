@@ -2,14 +2,16 @@
 
 ## Open and close
 
-- Click the compact island at the top center to open it.
+- Click the compact island wherever it is currently positioned to open it.
 - When a media player or focus timer is active, hover over the island to open its page.
 - Select a page from the tab bar. With the island open, use **Left / Right** to switch pages.
 - Press **Escape** or click outside the panel to close it.
+- Drag a tab along the bar to reorder tabs. The first tab is the one opened when you click the compact island.
+- Drag the resting island or the open island's header to move it. Release near an edge to snap there; release farther away to leave it free. The island remains horizontal.
 
 ## Music
 
-The Music page reads active players through MPRIS. It can show the title, artist, artwork, elapsed and total time, and playback controls. Click the progress bar to seek. Previous, Play/Pause, and Next are available when the active player exposes those capabilities. Smart detection checks player and track metadata so podcasts, films, social clips, and unclear sessions are ignored. Turn it off under **Settings → Music** if you want every media session to be eligible. Some browsers only publish media after playback has started.
+The Music area on **Summary** reads active players through MPRIS. It can show the title, artist, artwork, elapsed and total time, and playback controls. Click the progress bar to seek. Previous, Play/Pause, and Next are available when the active player exposes those capabilities. Smart detection checks player and track metadata so podcasts, films, social clips, and unclear sessions are ignored. Turn it off under **Settings → Island** if you want every media session to be eligible. Some browsers only publish media after playback has started.
 
 ## Lyrics
 
@@ -34,13 +36,17 @@ GNOME Shell does not expose the desktop's dragged file list to the island actors
 
 Use **Add task** to create an item. Select its check control to mark it complete or incomplete. Select **Edit** to show task deletion controls. The list is saved to `~/.local/share/perdana.island/tasks.json`.
 
+## Quick Capture
+
+Press **Ctrl+Alt+N** or the **+** beside the clock. Type a task with optional Indonesian or English dates, weekdays, times, parts of day, or priority—for example, `Telepon ibu Jumat jam 5 sore penting` or `Review tomorrow at 2:30pm`. The preview shows the parsed schedule before saving. Press **Enter** to add a task, **Ctrl+Enter** to save a note, or use the task/note buttons. Start with `Catatan:` or end with `/note` to mark a note. Invalid dates and clock values remain in the title instead of being changed silently.
+
 ## Notes
 
 Notes is a quick scratchpad. Select **+** to create a note, then write in the editor on the right; the first line becomes the title in the list. Press **Enter** for a new line and **Escape** to leave the editor. Text saves to `~/.local/share/perdana.island/notes.json` about half a second after you stop typing. Use the trash control to delete a note; an **Undo** row stays available for seven seconds. Notes that are still empty when you leave the page are discarded.
 
 ## Clipboard
 
-Clipboard records text changes while the extension is enabled, even when the island is collapsed or another page is selected. Open the Clipboard page to review up to four recent entries. Recopying an item already in the list moves that entry to the top instead of adding a duplicate. Repeated URLs are compared without differences in scheme/host capitalization, default ports, or a final root slash creating another row. Select a row to copy its original text again; use its delete control to remove it. Email addresses and links are masked in the preview, and clipboard data stays on this device. Explicitly marked password-manager MIME data and text matching credential patterns are skipped.
+Clipboard records text changes while the extension is enabled, even when the island is collapsed or another page is selected. Open **Shelf**, then choose **Clipboard** to review up to 25 recent entries. Recopying an item already in the list moves that entry to the top instead of adding a duplicate. Repeated URLs are compared without differences in scheme/host capitalization, default ports, or a final root slash creating another row. Select a row to copy its original text again; use its delete control to remove it. Email addresses and links are masked in the preview, and clipboard data stays on this device. Explicitly marked password-manager MIME data and text matching credential patterns are skipped.
 
 ## Today and system notices
 
@@ -48,18 +54,20 @@ Today shows the local date and available CPU, memory, disk, and battery readings
 
 ## Notifications
 
-Open **Notifications** to review recent desktop notifications. Select a row to activate it and close the island. **Clear** dismisses the listed notifications from their applications. App banners can be filtered in **Settings → Notifications** for WhatsApp Web, Discord, Telegram Web/Desktop, and Google Chat when GNOME reports a recognizable source name. These switches affect Perdana Island only; they do not change GNOME's notification settings. A browser that reports only its own generic name cannot be separated by website. Hardware brightness keys can also show the current backlight level in an island OSD; GNOME still applies the brightness change.
+Open **Notifications** to review recent desktop notifications. Select a row to activate it and close the island. **Clear** dismisses the listed notifications from their applications. The **Activity** section shows downloads and work reported by compatible apps. Progress updates in place; a completed download stays listed until selected, then opens and clears. App-reported completed work clears after a short interval. App banners can be filtered in **Settings → Notifications** for WhatsApp Web, Discord, Telegram Web/Desktop, and Google Chat when GNOME reports a recognizable source name. These switches affect Perdana Island only; they do not change GNOME's notification settings. A browser that reports only its own generic name cannot be separated by website. Hardware brightness keys can also show the current backlight level in an island OSD; GNOME still applies the brightness change.
 
 ## Settings
 
-Settings are divided into six side sections:
+Settings are divided into eight side sections:
 
-- **Island** chooses the material, Notch or Pill shape, browser tuck-away, resting clock style, glass appearance, accent color, island position, and keep awake. Browser tuck-away shrinks the island when an overlapping browser is active and the pointer reaches the top edge; moving away restores it. Choose Top, Bottom, Left, Right, or Free, or drag the island by its resting pill or open header. Enter a hex color or choose a swatch. **Keep awake** asks the session manager to block idle and suspend until you turn it off; the inhibitor is released when the extension is disabled.
+- **Island** chooses the material, Notch or Pill shape, browser tuck-away, resting clock style, glass appearance, smart music detection, accent color, island position, and keep awake. Use **Position** to snap to Top, Bottom, Left, or Right, or select Free. Browser tuck-away shrinks the island when an overlapping browser is active and the pointer reaches the top edge; moving away restores it. Enter a hex color or choose a swatch. **Keep awake** asks the session manager to block idle and suspend until you turn it off; the inhibitor is released when the extension is disabled.
 - **Greeting** controls the one-time welcome and returning-session message. Choose the Linux account name, device name, or enter a custom name. Edit the first sign-in and returning text; use `{name}` wherever the selected name should appear. Select either preview and click **Show on island** to see it. Greeting text is stored locally. The welcome appears the first time the feature runs; later desktop login sessions use the returning text. A manual preview counts as the greeting for the current session, preventing a duplicate automatic banner.
-- **Music** toggles smart music detection. When enabled, metadata and player names help filter podcasts, films, social clips, and ambiguous video from the resting music state.
+- **Music** controls smart playback detection. It filters podcasts, films, social clips, and unclear media sessions from the playing island.
+- **Messages** filters supported chat sources such as WhatsApp, Discord, Telegram, and Google Chat. Messages stay separate from system alerts.
 - **Reminders** controls morning agenda, evening recap, focus guard, water reminders, and prayer reminders, including city and calculation method.
-- **Notifications** controls island banners and filters WhatsApp Web, Discord, Telegram Web/Desktop, and Google Chat. Clicking a banner activates the original desktop notification; replies are not sent from the island. GNOME's own notification banners are not changed.
-- **Tabs** shows or hides feature pages in the bottom navigation. Settings remains available. Drag tabs in the bottom navigation to reorder them; the first visible tab becomes the page opened by a click on the resting island.
+- **Notifications** controls island banners and system alert sources such as package updates, calendar, battery, downloads, and browser notifications. Clicking a banner activates the original desktop notification; replies are not sent from the island. GNOME's own notification banners are not changed.
+- **Tabs** shows or hides feature pages in the bottom navigation. Settings remains available.
+- **Data** saves or restores a versioned JSON backup of tasks, notes, settings, and focus history. v79 can also restore the earlier flat local backup format. Clipboard history and Shelf files are excluded. Restore keeps a safety copy of current data first.
 
 Each section scrolls independently if its controls exceed the available panel height. Settings and greeting preferences are saved locally.
 

@@ -153,3 +153,47 @@ export function isSensitiveClipboardMimeType(mimeType) {
     // unrelated MIME name cannot suppress normal copied text.
     return String(mimeType || '').trim().toLowerCase() === 'application/x-kde-passwordmanagerhint';
 }
+
+export const CLIPBOARD_HISTORY_LIMIT = 25;
+export const CLIPBOARD_VALUE_LIMIT = 1200;
+
+export function normalizeClipboardHistory(values, limit = CLIPBOARD_HISTORY_LIMIT) {
+    if (!Array.isArray(values))
+        return {items: [], skippedSensitive: false};
+    const items = [];
+    const seenKeys = new Set();
+    let skippedSensitive = false;
+    for (const value of values) {
+        if (typeof value !== 'string')
+            continue;
+        const normalized = value.trim().slice(0, CLIPBOARD_VALUE_LIMIT);
+        if (!normalized)
+            continue;
+        if (isPasswordLikeClipboardText(normalized)) {
+            skippedSensitive = true;
+            continue;
+        }
+        const key = normalizeClipboardHistoryKey(normalized);
+        if (seenKeys.has(key))
+            continue;
+        seenKeys.add(key);
+        items.push(normalized);
+        if (items.length >= limit)
+            break;
+    }
+    return {items, skippedSensitive};
+}
+
+export function addClipboardHistoryValue(values, value, limit = CLIPBOARD_HISTORY_LIMIT) {
+    const normalized = String(value || '').trim().slice(0, CLIPBOARD_VALUE_LIMIT);
+    if (!normalized || isPasswordLikeClipboardText(normalized))
+        return {items: [...values], added: false, sensitive: Boolean(normalized)};
+    const duplicateIndex = values.findIndex(item => areClipboardHistoryValuesEqual(item, normalized));
+    if (duplicateIndex >= 0) {
+        const items = [...values];
+        const [existing] = items.splice(duplicateIndex, 1);
+        items.unshift(existing);
+        return {items: items.slice(0, limit), added: false, moved: duplicateIndex > 0, sensitive: false};
+    }
+    return {items: [normalized, ...values].slice(0, limit), added: true, moved: false, sensitive: false};
+}

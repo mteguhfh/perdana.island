@@ -1,9 +1,12 @@
 {
   "uuid": "perdana.island@perdana",
   "name": "Perdana Island",
-  "description": "Smart music detection, synced lyrics, app-filtered notifications, focus timer, file shelf, tasks, clipboard, Pill or Notch shape, browser tuck-away, and system status.",
-  "shell-version": ["50", "51"],
+  "description": "Smart music detection, synced lyrics, app-filtered notifications, focus timer, file shelf, to-do with quick capture, local clipboard history, Messages, Pill or Notch shape, browser tuck-away, backup and restore, and system status.",
+  "shell-version": [
+    "50",
+    "51"
+  ],
   "settings-schema": "org.gnome.shell.extensions.perdana-island",
   "url": "https://github.com/txtperdana/perdana.island",
-  "version-name": "v76"
+  "version-name": "v79.2"
 }

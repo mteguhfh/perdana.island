@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+      - "plasma-v*"
 
 permissions:
   contents: write
@@ -17,24 +18,36 @@ jobs:
       - name: Install packaging dependencies
         run: sudo apt-get update && sudo apt-get install --yes zip libglib2.0-bin
 
-      - name: Build GNOME and KDE packages
+      - name: Build tagged package
         run: ./scripts/package-release.sh "$GITHUB_REF_NAME"
+
+      - name: Select package and release title
+        id: package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$RELEASE_TAG" == plasma-v* ]]; then
+            version="${RELEASE_TAG#plasma-v}"
+            echo "asset=dist/Perdana-Island-KDE-Plasma-v${version}.zip" >> "$GITHUB_OUTPUT"
+            echo "title=Perdana Island KDE Plasma v${version}" >> "$GITHUB_OUTPUT"
+          else
+            echo "asset=dist/Perdana-Island-GNOME-${RELEASE_TAG}.shell-extension.zip" >> "$GITHUB_OUTPUT"
+            echo "title=Perdana Island GNOME ${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TITLE: ${{ steps.package.outputs.title }}
+          RELEASE_ASSET: ${{ steps.package.outputs.asset }}
         run: |
           if [[ -f "docs/releases/${RELEASE_TAG}.md" ]]; then
-            gh release create "$RELEASE_TAG" \
-              "dist/Perdana-Island-GNOME-${RELEASE_TAG}.shell-extension.zip" \
-              "dist/Perdana-Island-KDE-Plasma-${RELEASE_TAG}.zip" \
-              --title "Perdana Island ${RELEASE_TAG}" \
+            gh release create "$RELEASE_TAG" "$RELEASE_ASSET" \
+              --title "$RELEASE_TITLE" \
               --notes-file "docs/releases/${RELEASE_TAG}.md"
           else
-            gh release create "$RELEASE_TAG" \
-              "dist/Perdana-Island-GNOME-${RELEASE_TAG}.shell-extension.zip" \
-              "dist/Perdana-Island-KDE-Plasma-${RELEASE_TAG}.zip" \
-              --title "Perdana Island ${RELEASE_TAG}" \
+            gh release create "$RELEASE_TAG" "$RELEASE_ASSET" \
+              --title "$RELEASE_TITLE" \
               --generate-notes
           fi

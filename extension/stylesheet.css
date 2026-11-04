@@ -73,6 +73,7 @@
 .perdana-island.perdana-island--glass StViewport,
 .perdana-island.perdana-island--glass .perdana-island__album-art,
 .perdana-island.perdana-island--glass .perdana-island__compact-artwork,
+.perdana-island.perdana-island--glass .perdana-island__settings-nav-list,
 .perdana-island.perdana-island--glass .perdana-island__settings-scroll-content,
 .perdana-island.perdana-island--glass .perdana-island__settings-content,
 .perdana-island.perdana-island--glass .perdana-island__notification-list,
@@ -132,8 +133,8 @@
 
 .perdana-island__compact-track-title {
   min-width: 0;
-  margin-left: 12px;
-  margin-right: 14px;
+  margin-left: 0;
+  margin-right: 0;
   color: #ffffff;
   font-size: 12px;
   font-weight: 500;
@@ -155,6 +156,11 @@
 .perdana-island__compact-track-title--lyrics-smaller {
   font-size: 9px;
   line-height: 12px;
+}
+
+.perdana-island__compact-track-title--lyrics-tiny {
+  font-size: 8px;
+  line-height: 10px;
 }
 
 .perdana-island__focus-compact {
@@ -328,7 +334,7 @@
 
 .perdana-button--nav:hover {
   color: #ffffff;
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: transparent;
 }
 
 .perdana-button--nav-active {
@@ -338,7 +344,7 @@
 
 .perdana-button--nav-active:hover {
   color: #ffffff;
-  background-color: rgba(255, 255, 255, 0.14);
+  background-color: transparent;
 }
 
 .perdana-island__tab-content {
@@ -346,8 +352,8 @@
 }
 
 .perdana-island__tab-icon {
-  icon-size: 16px;
-  color: currentColor;
+  width: 18px;
+  height: 18px;
 }
 
 .perdana-island__tab-label {
@@ -410,7 +416,7 @@
 .perdana-button--lyrics-resting-active,
 .perdana-button--lyrics-resting-active:hover {
   color: #ffffff;
-  background-color: var(--perdana-accent-soft, rgba(85, 119, 184, 0.24));
+  background-color: rgba(85, 119, 184, 0.24);
 }
 
 .perdana-button.perdana-button--lyrics-play {
@@ -782,9 +788,33 @@
 }
 
 .perdana-island__shelf-card {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 17px;
   background-color: rgba(255, 255, 255, 0.045);
+}
+
+.perdana-island__shelf-tabs {
+  spacing: 4px;
+  padding: 2px;
+  border-radius: 16px;
+  background-color: rgba(255, 255, 255, 0.07);
+}
+
+.perdana-island__shelf-tab {
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 14px;
+  font-size: 10px;
+}
+
+.perdana-island__shelf-tab-label {
+  color: currentColor;
+  font-size: 10px;
+}
+
+.perdana-island__clipboard-card {
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .perdana-island__shelf-title {
@@ -895,6 +925,10 @@
 .perdana-island__clip-row {
   min-height: 32px;
   spacing: 6px;
+}
+
+.perdana-island__clip-list {
+  spacing: 2px;
 }
 
 .perdana-island__clip-item {
@@ -1140,11 +1174,11 @@
 
 .perdana-island__notification-clear {
   min-height: 26px;
-  padding: 0 9px;
+  padding: 0 10px;
   border-radius: 13px;
   color: rgba(255, 255, 255, 0.74);
   background-color: rgba(255, 255, 255, 0.09);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .perdana-island__notification-button {
@@ -1158,6 +1192,7 @@
 
 .perdana-island__notification-scroll,
 .perdana-island__task-scroll,
+.perdana-island__settings-nav-scroll,
 .perdana-island__settings-scroll,
 .perdana-island__notification-list {
   min-width: 0;
@@ -1166,6 +1201,10 @@
   border: 0;
   background-color: transparent;
   box-shadow: none;
+}
+
+.perdana-island__settings-nav-list {
+  spacing: 1px;
 }
 
 .perdana-island__notification-list {
@@ -1192,10 +1231,10 @@
 }
 
 .perdana-island__notice-banner {
-  spacing: 14px;
-  padding: 0 28px;
-  min-width: 394px;
-  min-height: 76px;
+  spacing: 12px;
+  padding: 0 20px;
+  min-width: 0;
+  min-height: 0;
   color: #ffffff;
 }
 
@@ -1206,7 +1245,6 @@
   max-height: 28px;
   width: 28px;
   height: 28px;
-  margin-right: 12px;
 }
 
 .perdana-island__notice-icon-wrap {
@@ -1216,16 +1254,66 @@
   max-height: 28px;
   width: 28px;
   height: 28px;
-  margin-right: 12px;
 }
 
 .perdana-island__notice-copy {
   spacing: 1px;
   min-width: 0;
+  min-height: 0;
+}
+
+.perdana-island__notice-source {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+}
+
+.perdana-island__notice-stack {
+  spacing: 2px;
+  min-width: 0;
+}
+
+.perdana-island__notice-message {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+}
+
+.perdana-island__notice-message--latest {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.perdana-island__notice-message--title {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .perdana-island__notice-right {
-  spacing: 4px;
+  spacing: 5px;
+}
+
+.perdana-button.perdana-island__notice-action {
+  min-height: 24px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.12);
+  font-size: 9px;
+}
+
+.perdana-button.perdana-island__notice-action:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.perdana-button.perdana-island__notice-action--primary {
+  background-color: rgba(85, 119, 184, 0.34);
+}
+
+.perdana-island__notice-action-label {
+  color: inherit;
+  font-size: 9px;
 }
 
 .perdana-island__notice-action {
@@ -1243,6 +1331,8 @@
 }
 
 .perdana-island__notice-title {
+  min-width: 0;
+  min-height: 0;
   color: #ffffff;
   font-size: 18px;
   font-weight: 600;
@@ -1253,6 +1343,8 @@
 }
 
 .perdana-island__notice-subtitle {
+  min-width: 0;
+  min-height: 0;
   color: rgba(255, 255, 255, 0.55);
   font-size: 14px;
 }
@@ -1283,7 +1375,6 @@
 
 .perdana-island--reduced-motion .perdana-island__bar {
   animation: none;
-  transform: scaleY(0.35);
 }
 
 .perdana-island__todo-report {
@@ -1441,13 +1532,32 @@
   font-weight: 600;
 }
 
+.perdana-island__notes-heading-row {
+  min-width: 0;
+  min-height: 28px;
+  background-color: transparent;
+}
+
 .perdana-island__notes-add {
-  min-width: 28px;
-  min-height: 24px;
-  padding: 0;
-  border-radius: 12px;
+  min-width: 58px;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 13px;
   color: #ffffff;
   background-color: rgba(255, 255, 255, 0.1);
+}
+
+.perdana-island__notes-add-content {
+  spacing: 4px;
+}
+
+.perdana-island__notes-add-content .perdana-island__icon {
+  icon-size: 13px;
+}
+
+.perdana-island__notes-add-label {
+  color: #ffffff;
+  font-size: 11px;
 }
 
 .perdana-island__notes-add:hover {
@@ -1515,16 +1625,33 @@
 .perdana-island__notes-editor {
   min-height: 108px;
   padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 12px;
+  border: 0;
+  border-radius: 0;
   color: #ffffff;
-  background-color: rgba(255, 255, 255, 0.07);
+  background-color: transparent;
   font-size: 12px;
 }
 
 .perdana-island__notes-editor:focus {
-  border-color: rgba(255, 255, 255, 0.42);
-  background-color: rgba(255, 255, 255, 0.1);
+  border: 0;
+  background-color: transparent;
+}
+
+.perdana-island__notes-editor-scroll {
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.055);
+}
+
+.perdana-island__notes-editor-scroll--focused {
+  border-color: rgba(255, 255, 255, 0.3);
+  background-color: rgba(255, 255, 255, 0.075);
+}
+
+.perdana-island.perdana-island--glass .perdana-island__notes-editor-scroll {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background-color: rgba(255, 255, 255, 0.045);
 }
 
 .perdana-island__note-status {
@@ -1535,6 +1662,12 @@
 .perdana-island__notes-empty {
   color: rgba(255, 255, 255, 0.55);
   font-size: 12px;
+}
+
+.perdana-island__notes-empty-card {
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.035);
 }
 
 .perdana-island__notes-undo {
@@ -1600,22 +1733,22 @@
   background-color: rgba(255, 255, 255, 0.18);
 }
 
-.perdana-island__prayer-name,
-.perdana-island__prayer-time {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
+.perdana-island__prayer-name {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 
-.perdana-island__prayer-name--next,
-.perdana-island__prayer-time--next {
+.perdana-island__prayer-time {
   color: #ffffff;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
-.perdana-island__prayer-name--passed,
-.perdana-island__prayer-time--passed {
-  color: rgba(255, 255, 255, 0.35);
+.perdana-island__prayer-name--next {
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .perdana-island__water-value {
@@ -1650,12 +1783,11 @@
 .perdana-island--theme-aero .perdana-island__color-apply,
 .perdana-island--theme-aero .perdana-button--focus-unit,
 .perdana-island--theme-aero .perdana-island__focus-custom-entry,
-.perdana-island--theme-aero .perdana-island__notes-editor,
+.perdana-island--theme-aero .perdana-island__notes-editor-scroll,
 .perdana-island--theme-aero .perdana-island__note-row {
   border-radius: 5px;
 }
 
-.perdana-island--theme-aero .perdana-button--nav:hover,
 .perdana-island--theme-aero .perdana-button--segment:hover,
 .perdana-island--theme-aero .perdana-island__setting-option:hover,
 .perdana-island--theme-aero .perdana-island__notification-button:hover,
@@ -1679,7 +1811,7 @@
 .perdana-island--theme-aqua .perdana-island__color-apply,
 .perdana-island--theme-aqua .perdana-button--focus-unit,
 .perdana-island--theme-aqua .perdana-island__focus-custom-entry,
-.perdana-island--theme-aqua .perdana-island__notes-editor,
+.perdana-island--theme-aqua .perdana-island__notes-editor-scroll,
 .perdana-island--theme-aqua .perdana-island__note-row {
   border-radius: 10px;
 }
@@ -1690,7 +1822,6 @@
   border-radius: 14px;
 }
 
-.perdana-island--theme-aqua .perdana-button--nav:hover,
 .perdana-island--theme-aqua .perdana-button--segment:hover,
 .perdana-island--theme-aqua .perdana-island__setting-option:hover,
 .perdana-island--theme-aqua .perdana-island__notification-button:hover,
@@ -1714,12 +1845,11 @@
 .perdana-island--theme-yaru .perdana-island__color-apply,
 .perdana-island--theme-yaru .perdana-button--focus-unit,
 .perdana-island--theme-yaru .perdana-island__focus-custom-entry,
-.perdana-island--theme-yaru .perdana-island__notes-editor,
+.perdana-island--theme-yaru .perdana-island__notes-editor-scroll,
 .perdana-island--theme-yaru .perdana-island__note-row {
   border-radius: 9px;
 }
 
-.perdana-island--theme-yaru .perdana-button--nav:hover,
 .perdana-island--theme-yaru .perdana-button--segment:hover,
 .perdana-island--theme-yaru .perdana-island__setting-option:hover,
 .perdana-island--theme-yaru .perdana-island__notification-button:hover,
@@ -1739,12 +1869,11 @@
 .perdana-island--theme-graphite .perdana-island__color-apply,
 .perdana-island--theme-graphite .perdana-button--focus-unit,
 .perdana-island--theme-graphite .perdana-island__focus-custom-entry,
-.perdana-island--theme-graphite .perdana-island__notes-editor,
+.perdana-island--theme-graphite .perdana-island__notes-editor-scroll,
 .perdana-island--theme-graphite .perdana-island__note-row {
   border-radius: 6px;
 }
 
-.perdana-island--theme-graphite .perdana-button--nav:hover,
 .perdana-island--theme-graphite .perdana-button--segment:hover,
 .perdana-island--theme-graphite .perdana-island__setting-option:hover,
 .perdana-island--theme-graphite .perdana-island__notification-button:hover,
@@ -1756,4 +1885,631 @@
 .perdana-island--theme-graphite .perdana-island__focus-custom-entry,
 .perdana-island--theme-graphite .perdana-button--focus-unit {
   background-color: rgba(255, 255, 255, 0.09);
+}
+
+/* Quick capture (issue #20): compact chips and header button, matching the preview */
+.perdana-island__capture-open {
+  width: 24px;
+  height: 24px;
+  margin-left: 0;
+  padding: 0;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.perdana-island__capture-open:hover {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+.perdana-island__capture-open .perdana-island__icon {
+  icon-size: 14px;
+}
+.perdana-island__capture-chip {
+  font-size: 10px;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.perdana-island__capture-chip--title {
+  font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.16);
+}
+.perdana-island__capture-chip--priority {
+  background-color: rgba(255, 159, 67, 0.22);
+}
+.perdana-island__capture-preview {
+  background-color: transparent;
+}
+.perdana-island__capture-status {
+  font-size: 10px;
+}
+.perdana-island__capture-status--error {
+  color: #ff8a80;
+}
+.perdana-button.perdana-island__clipboard-action {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* Reminders split tabs: Prayer | Water, same pattern as the other split tabs */
+.perdana-island__rem-tabs {
+  spacing: 4px;
+  padding: 2px;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.07);
+}
+.perdana-island__notification-tabs {
+  spacing: 3px;
+  padding: 2px;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.07);
+}
+.perdana-button.perdana-island__notification-tab {
+  min-height: 22px;
+  padding: 0 7px;
+  border-radius: 9px;
+  color: rgba(255, 255, 255, 0.62);
+  background-color: transparent;
+  font-size: 10px;
+}
+.perdana-button.perdana-island__notification-tab.perdana-island__rem-tab--on {
+  color: #ffffff;
+  background-color: rgba(85, 119, 184, 0.24);
+}
+.perdana-button.perdana-island__rem-tab {
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 9px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+  background-color: transparent;
+}
+.perdana-button.perdana-island__rem-tab--on {
+  color: #ffffff;
+  background-color: rgba(85, 119, 184, 0.24);
+}
+
+/* Reminders rows: thin row band behind each prayer time, as in the preview */
+.perdana-island__prayer-row {
+  background-color: rgba(255, 255, 255, 0.075);
+  border-radius: 8px;
+}
+
+/* Messages: unread conversations get a stronger card, like the preview's unread rows */
+.perdana-island__notification-card--unread {
+  background-color: rgba(255, 255, 255, 0.13);
+}
+.perdana-island__todo-subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Summary: music card on the left, three priority rows on the right */
+.perdana-island__summary-card {
+  border: 0;
+  border-radius: 16px;
+  background-color: rgba(255, 255, 255, 0.09);
+}
+.perdana-island__summary-art {
+  border-radius: 11px;
+}
+.perdana-island__summary-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+.perdana-island__summary-artist {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.perdana-island__summary-lyric {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.68);
+}
+.perdana-island__summary-time {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.perdana-island__summary-lyrics-link {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.62);
+  background-color: rgba(255, 255, 255, 0.06);
+}
+.perdana-island__summary-lyrics-link:hover {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.12);
+}
+.perdana-island__summary-lyrics-icon {
+  width: 16px;
+  height: 16px;
+}
+.perdana-island__summary-equalizer {
+  min-width: 22px;
+  max-width: 22px;
+  min-height: 18px;
+  padding: 0;
+}
+.perdana-island__summary-row-icon {
+  width: 18px;
+  height: 18px;
+}
+.perdana-island__summary-row {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.075);
+  box-shadow: none;
+}
+.perdana-island__summary-row:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+.perdana-island__summary-row--live {
+  background-color: rgba(85, 119, 184, 0.16);
+}
+.perdana-island__summary-row--live:hover {
+  background-color: rgba(85, 119, 184, 0.23);
+}
+.perdana-island__summary-row-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+}
+.perdana-island__summary-row-sub {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.perdana-island__summary-row-value {
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.perdana-island__summary-empty {
+  color: rgba(255, 255, 255, 0.55);
+}
+.perdana-island__summary-empty-icon {
+  icon-size: 26px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.perdana-island__summary-empty-title {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+.perdana-island__summary-empty-sub {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 10px;
+  text-align: center;
+}
+
+/* Activity (downloads and app tasks), compact pill and page rows, matching the preview */
+.perdana-island__activity-compact {
+  spacing: 8px;
+  padding: 0 14px;
+}
+.perdana-island__activity-compact-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #ffffff;
+}
+.perdana-island__activity-compact-bar {
+  width: 60px;
+  height: 3px;
+  border-radius: 2px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+.perdana-island__activity-compact-fill {
+  height: 3px;
+  border-radius: 2px;
+  background-color: #ffffff;
+}
+.perdana-island__activity-row {
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.075);
+}
+.perdana-island__activity-row--done {
+  background-color: rgba(85, 119, 184, 0.16);
+}
+.perdana-island__activity-row--done:hover {
+  background-color: rgba(85, 119, 184, 0.24);
+}
+.perdana-island__activity-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+}
+.perdana-island__activity-sub {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.perdana-island__activity-bar {
+  border-radius: 2px;
+  background-color: rgba(255, 255, 255, 0.14);
+}
+.perdana-island__activity-fill {
+  border-radius: 2px;
+  background-color: #5577b8;
+  height: 3px;
+}
+
+/* Clipboard clear: second press confirms, same as the preview */
+.perdana-button.perdana-island__clipboard-action--armed {
+  background-color: rgba(255, 99, 99, 0.3);
+}
+
+/* Compact pages keep their content clear of the non-overlay scrollbar. */
+.perdana-island__messages-header {
+  spacing: 7px;
+}
+.perdana-island__messages-header--compact {
+  spacing: 4px;
+}
+.perdana-island__messages-header--compact .perdana-island__todo-heading {
+  font-size: 14px;
+}
+.perdana-island__messages-count {
+  min-width: 28px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+}
+.perdana-island__messages-list,
+.perdana-island__notification-list,
+.perdana-island__activity-list {
+  spacing: 5px;
+  min-width: 0;
+  min-height: 0;
+}
+.perdana-island__message-entry {
+  spacing: 2px;
+  min-width: 0;
+}
+.perdana-button.perdana-island__message-reply {
+  min-width: 44px;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.78);
+  background-color: rgba(85, 119, 184, 0.24);
+  font-size: 10px;
+}
+.perdana-button.perdana-island__message-reply:hover {
+  background-color: rgba(85, 119, 184, 0.42);
+}
+.perdana-island__message-reply-label {
+  color: inherit;
+  font-size: 10px;
+}
+.perdana-button.perdana-island__message-button,
+.perdana-button.perdana-island__notification-button {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 11px;
+  background-color: transparent;
+  box-shadow: none;
+}
+.perdana-island__message-row,
+.perdana-island__notification-row {
+  spacing: 9px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 5px 9px;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.075);
+}
+
+/* Messages page: vertical cards own their natural height; only the list scrolls. */
+.msg-scroll {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+}
+.msg-list {
+  spacing: 8px;
+  padding-right: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+.msg-scroll StScrollBar {
+  min-width: 4px;
+  padding: 0;
+  background-color: transparent;
+}
+.msg-scroll StScrollBar StBin#trough {
+  border-radius: 2px;
+  background-color: transparent;
+}
+.msg-scroll StScrollBar > .vhandle {
+  min-width: 4px;
+  border: 0;
+  border-radius: 2px;
+  background-color: rgba(255, 255, 255, 0.25);
+}
+.msg-group {
+  min-width: 0;
+  border: 0;
+  border-radius: 13px;
+  background-color: rgba(255, 255, 255, 0.075);
+}
+.msg-group--open {
+  background-color: rgba(255, 255, 255, 0.11);
+}
+.msg-header {
+  min-width: 0;
+  min-height: 48px;
+  padding: 9px 12px;
+  border-radius: 13px;
+  background-color: transparent;
+  box-shadow: none;
+}
+.msg-header-row {
+  spacing: 11px;
+  min-width: 0;
+}
+.msg-header:hover {
+  background-color: rgba(255, 255, 255, 0.045);
+}
+.msg-header:focus {
+  background-color: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+.msg-group--open .msg-header {
+  border-radius: 13px 13px 0 0;
+}
+.msg-icon {
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 9px;
+}
+.msg-copy {
+  spacing: 3px;
+  min-width: 0;
+}
+.msg-meta {
+  min-width: 0;
+}
+.msg-sender {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: bold;
+}
+.msg-sub {
+  min-width: 0;
+  max-width: 140px;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 10px;
+}
+.msg-preview {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 11px;
+}
+.msg-chevron {
+  min-width: 14px;
+  margin-left: 1px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.msg-body {
+  min-width: 0;
+  padding: 0 11px 9px;
+}
+.msg-line {
+  min-width: 0;
+  min-height: 28px;
+  padding: 6px 0 6px 40px;
+  spacing: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.msg-line-last {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.msg-dot {
+  min-width: 7px;
+  min-height: 7px;
+  border-radius: 4px;
+  background-color: transparent;
+}
+.msg-dot--unread {
+  background-color: #ffffff;
+}
+.msg-text {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+}
+.msg-time {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 10px;
+}
+.msg-footer {
+  min-width: 0;
+  padding-top: 8px;
+  spacing: 6px;
+}
+.msg-action {
+  min-height: 24px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 10px;
+}
+.msg-action:hover,
+.msg-action:focus {
+  background-color: rgba(255, 255, 255, 0.17);
+}
+.msg-action:focus {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+.msg-action-primary {
+  font-weight: bold;
+}
+.perdana-island__message-row--unread,
+.perdana-island__notification-row--unread {
+  background-color: rgba(85, 119, 184, 0.24);
+}
+.perdana-island__message-icon,
+.perdana-island__notification-icon {
+  icon-size: 22px;
+  border-radius: 8px;
+}
+.perdana-island__message-icon {
+  icon-size: 26px;
+}
+.perdana-island__message-copy,
+.perdana-island__notification-copy {
+  spacing: 1px;
+  min-width: 0;
+}
+.perdana-island__message-top,
+.perdana-island__notification-top {
+  spacing: 6px;
+  min-width: 0;
+}
+.perdana-island__message-sender,
+.perdana-island__notification-title {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.perdana-island__message-app {
+  flex: none;
+  max-width: 78px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 9px;
+}
+.perdana-island__message-time {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 10px;
+}
+.perdana-island__notification-app {
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 9px;
+}
+.perdana-island__message-body,
+.perdana-island__notification-body {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 10px;
+}
+.perdana-island__message-meta {
+  spacing: 3px;
+  min-width: 28px;
+}
+.perdana-island__message-badge {
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 8px;
+  background-color: #5577b8;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+.perdana-button.perdana-island__message-button:hover .perdana-island__message-row,
+.perdana-button.perdana-island__notification-button:hover .perdana-island__notification-row {
+  background-color: rgba(255, 255, 255, 0.13);
+}
+.perdana-button.perdana-island__message-button:focus,
+.perdana-button.perdana-island__notification-button:focus {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+.perdana-island__notification-hint {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 10px;
+}
+
+/* Reminders use one calm card; the water value and bar never share a row. */
+.perdana-island__reminder-card {
+  border-radius: 13px;
+  background-color: rgba(255, 255, 255, 0.055);
+}
+.perdana-island__reminder-caption,
+.perdana-island__reminder-city,
+.perdana-island__reminder-next-in {
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 10px;
+}
+.perdana-island__reminder-next-in {
+  color: rgba(255, 255, 255, 0.7);
+  text-align: right;
+}
+.perdana-island__water-window {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 9px;
+}
+.perdana-island__reminder-next-name {
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 600;
+}
+.perdana-island__reminder-next-time {
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.perdana-island__prayer-cell {
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.075);
+}
+.perdana-island__prayer-cell--next {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+.perdana-island__prayer-cell--passed {
+  opacity: 0.42;
+}
+.perdana-island__water-track {
+  border-radius: 2px;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+.perdana-island__water-fill {
+  min-width: 0;
+  min-height: 4px;
+  border-radius: 2px;
+  background-color: #4c83e2;
+  transition: width 300ms linear;
+}
+.perdana-island__rem-tab-label {
+  color: inherit;
+  font-size: 11px;
+}
+.perdana-button.perdana-island__water-log {
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+}
+.perdana-button.perdana-island__water-log:hover {
+  background-color: rgba(255, 255, 255, 0.17);
+}
+
+/* Prayer's next-up tile is separate from the prayer-time strip, matching v2. */
+.perdana-island__reminder-next {
+  border-radius: 12px;
+  background-color: rgba(85, 119, 184, 0.24);
+}
+.perdana-island__reminder-city {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 10px;
 }
